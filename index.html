@@ -1144,7 +1144,10 @@ const IMG_MODELS=[
   {id:"google/gemini-3-pro-image",name:"Nano Banana Pro",res:["1K","2K","4K"]},
   {id:"google/gemini-3.1-flash-image",name:"Nano Banana 2",res:["1K","2K","4K"]},
   {id:"bytedance-seed/seedream-4.5",name:"Seedream 4.5",res:["1K","2K","4K"]},
-  {id:"openai/gpt-image-2",name:"GPT Image 2",res:[]}
+  {id:"openai/gpt-image-2",name:"GPT Image 2",res:[]},
+  {id:"bytedance-seed/seedream-5-0-flash",name:"Seedream 5.0 Flash (cheap)",res:["1K","2K"]},
+  {id:"qwen/qwen-image-2.1-turbo",name:"Qwen Image 2.1 Turbo (cheap)",res:["1K","2K"]},
+  {id:"black-forest-labs/flux-3-image-klein",name:"FLUX 3 Klein (cheapest)",res:["1K","2K","4K"]}
 ];
 const imgSet={model:"google/gemini-3-pro-image",res:"1K",n:2};
 const imgModel=()=>IMG_MODELS.find(m=>m.id===imgSet.model)||IMG_MODELS[0];
