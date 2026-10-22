@@ -344,7 +344,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <label class="field" for="setKey">OpenRouter API key<input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…"></label>
   <p class="muted">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p>
   <p class="muted" id="setConn"></p>
-  <div class="row"><label class="field" for="setImg">Frame model<select id="setImg"></select></label><label class="field" for="setImgRes">Frame size<select id="setImgRes"><option value="1K">1K (drafts, 720p)</option><option value="2K">2K (1080p)</option></select></label></div>
+  <div class="row"><label class="field" for="setImg">Frame model<select id="setImg"></select></label><label class="field" for="setImgRes">Frame size<select id="setImgRes"><option value="1K">1K (drafts, 720p)</option><option value="2K">2K (1080p)</option></select></label><label class="field" for="setImgN">Versions per Generate<select id="setImgN"><option value="1">1 (half the cost)</option><option value="2">2 (pick the best)</option></select></label></div>
   <label class="chk"><input type="checkbox" id="setAll"> Show every video model OpenRouter offers, not just Wan and Seedance</label>
   <div class="row"><button type="button" id="setTest" class="btn small">Test key</button><span id="setMsg" class="muted"></span><span class="grow"></span><button type="button" id="setClose" class="btn ghost">Close</button><button type="submit" class="btn primary">Save</button></div>
 </form></dialog>
@@ -1138,7 +1138,7 @@ $("bTakes").addEventListener("click",async e=>{
 });
 
 /* ---------- frame generation: lives inside the frame slots, nothing more ----------
-   Generate     → 2 variants from the keyframe prompt (+ the project's reference images); click one to use it.
+   Generate     → 1 or 2 variants (Settings) from the keyframe prompt (+ the project's reference images); click one to use it.
    From start   → edits the start frame: "keep it identical, only change X". The trick for static shots. */
 const IMG_MODELS=[
   {id:"google/gemini-3-pro-image",name:"Nano Banana Pro",res:["1K","2K","4K"]},
@@ -1146,7 +1146,7 @@ const IMG_MODELS=[
   {id:"bytedance-seed/seedream-4.5",name:"Seedream 4.5",res:["1K","2K","4K"]},
   {id:"openai/gpt-image-2",name:"GPT Image 2",res:[]}
 ];
-const imgSet={model:"google/gemini-3-pro-image",res:"1K"};
+const imgSet={model:"google/gemini-3-pro-image",res:"1K",n:2};
 const imgModel=()=>IMG_MODELS.find(m=>m.id===imgSet.model)||IMG_MODELS[0];
 let fpanel=null;   /* {slot:"key"|"endKey", mode:"gen"|"from", vars:[{state,url,blob,error}]} — in memory only */
 const MAX_REFS=3;
@@ -1171,7 +1171,7 @@ function renderPanels(){
     const ta=$(pre+"Prompt");if(document.activeElement!==ta)ta.value=panelText(s,slot,fpanel.mode);
     ta.placeholder=fpanel.mode==="from"?"What changes? e.g. the rider is much farther down the trail, small near the bend":"Describe the frame: who, where, framing, light. The reference images take care of what the characters look like.";
     $(pre+"Lead").textContent=fpanel.mode==="from"?"Only the change. Everything else stays as in the start frame.":"Keyframe prompt (shared with side A)";
-    const busy=fpanel.vars.some(v=>v.state==="busy");$(pre+"Go").disabled=busy;$(pre+"Go").textContent=fpanel.vars.length&&!busy?"Generate 2 more":"Generate 2";
+    const busy=fpanel.vars.some(v=>v.state==="busy");$(pre+"Go").disabled=busy;const n=imgSet.n===1?1:2;$(pre+"Go").textContent=fpanel.vars.length&&!busy?(n===1?"Generate another":"Generate 2 more"):(n===1?"Generate":"Generate 2");
     $(pre+"Vars").innerHTML=fpanel.vars.map((v,i)=>v.state==="busy"?`<span class="var"><span class="spin"></span></span>`:
       v.state==="err"?`<span class="var err" title="${esc(v.error)}">${esc(v.error)}</span>`:
       `<button type="button" class="var" data-vi="${i}" title="Use this one"><img src="${v.url}" alt="Variant ${i+1}"></button>`).join("");
@@ -1217,7 +1217,7 @@ async function runPanel(){
   const prompt=p.mode==="from"
     ?`Edit the first image. Keep it exactly identical: same camera position, same framing, same landscape, same light and colors. The only change: ${text.replace(/\.*$/,"")}.`+(hasRefs?" The other images only show what the characters look like.":"")
     :text+(hasRefs?"\n\nUse the reference images only for what the characters and the horse look like (faces, outfits, coat). Ignore their style and framing. 16:9 widescreen.":"\n\n16:9 widescreen.");
-  const slots=[{state:"busy"},{state:"busy"}];p.vars.push(...slots);renderPanels();
+  const slots=Array.from({length:imgSet.n===1?1:2},()=>({state:"busy"}));p.vars.push(...slots);renderPanels();
   const pid=cur.id;
   await Promise.all(slots.map(async v=>{
     try{const g=await genImage(prompt,refs);v.blob=g.blob;v.url=URL.createObjectURL(g.blob);v.state="ok";
@@ -1242,7 +1242,7 @@ $("fEndFrom").onclick=()=>openPanel("endKey","from");
 /* ---------- settings ---------- */
 function openSettings(msg){
   $("setKey").value=apiKey;$("setAll").checked=showAll;$("setMsg").textContent=msg||"";
-  $("setImg").innerHTML=IMG_MODELS.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");$("setImg").value=imgSet.model;$("setImgRes").value=imgSet.res;
+  $("setImg").innerHTML=IMG_MODELS.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");$("setImg").value=imgSet.model;$("setImgRes").value=imgSet.res;$("setImgN").value=String(imgSet.n);
   $("setConn").textContent=viaProxy?(proxyHasKey?"Running through the local server, which already has an API key. You can leave the field empty.":"Running through the local server. Requests go through it to OpenRouter."):"This page calls OpenRouter directly from your browser.";
   $("dlgSettings").showModal();setTimeout(()=>$("setKey").focus(),30);
 }
@@ -1250,7 +1250,7 @@ $("settingsb").onclick=()=>openSettings();
 $("setClose").onclick=()=>$("dlgSettings").close();
 $("setForm").onsubmit=async e=>{e.preventDefault();
   apiKey=$("setKey").value.trim();showAll=$("setAll").checked;await putSetting("apiKey",apiKey);await putSetting("showAll",showAll);
-  imgSet.model=$("setImg").value;imgSet.res=$("setImgRes").value;await putSetting("img",{model:imgSet.model,res:imgSet.res});
+  imgSet.model=$("setImg").value;imgSet.res=$("setImgRes").value;imgSet.n=+$("setImgN").value;await putSetting("img",{model:imgSet.model,res:imgSet.res,n:imgSet.n});
   $("dlgSettings").close();toast("Settings saved");credits=null;renderB();refreshCredits();refreshCatalog().then(()=>{if(side==="b")renderGen()})};
 $("setTest").onclick=async()=>{
   const k=$("setKey").value.trim();$("setMsg").textContent="Checking…";

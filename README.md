@@ -33,7 +33,7 @@ Video generation is asynchronous: takes show "Queued" → "Rendering" → "Downl
 
 Each frame slot can **Upload** an image, use the keyframe from side A, or **Generate** one:
 
-- **Generate** makes 2 variants from the keyframe prompt (shared with side A). Click the one you like; the rest are discarded.
+- **Generate** makes 1 or 2 variants from the keyframe prompt (shared with side A); set how many in **Settings**. One costs half as much; two let you pick. Click the one you like; the rest are discarded.
 - **From start** (end frame only) edits the start frame: you write only what changes ("the rider much farther down the trail") and everything else is kept identical. Use it for static shots.
 - **References**: up to 3 images per project (character sheet, portrait, horse…) sent with every generated frame, so characters stay consistent.
 
