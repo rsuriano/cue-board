@@ -1081,8 +1081,9 @@ async function pollOnce(){
   polling=false;if(cur&&cur.id===pid){renderBList();renderBHead()}
 }
 async function downloadJob(id,j){
-  const signed=(j.urls||[]).map(u=>typeof u==="string"?u:u&&u.url).filter(Boolean);
-  for(const u of signed){try{const r=await fetch(u);if(r.ok)return await r.blob()}catch(e){}}
+  /* completed jobs list unsigned_urls: OpenRouter API URLs that need the key, so they go through apiFetch (and the proxy) */
+  const urls=(j.unsigned_urls||j.urls||[]).map(u=>typeof u==="string"?u:u&&u.url).filter(Boolean);
+  for(const u of urls){try{const r=u.startsWith(OR_DIRECT+"/")?await apiFetch(u.slice(OR_DIRECT.length)):await fetch(u);if(r.ok)return await r.blob()}catch(e){}}
   const r=await apiFetch("/videos/"+encodeURIComponent(id)+"/content?index=0");
   if(!r.ok)throw new Error("download failed (HTTP "+r.status+")");return r.blob();
 }

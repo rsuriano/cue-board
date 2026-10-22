@@ -9,16 +9,17 @@ Everything lives in your browser (IndexedDB): the song, keyframes, takes and you
 
 ## Run it
 
-**Option 1: just open it.** Double-click `index.html`. Works in current Chrome, Edge and Firefox.
+**Option 1: just open it.** Double-click `index.html`. Works in current Chrome, Edge and Firefox, side B included: OpenRouter's API allows cross-origin requests, so the page can call it straight from a local file. Your API key is then stored in the browser.
 
-**Option 2: local server (recommended for side B).** If your browser blocks requests to OpenRouter from a local file, or you'd rather keep the API key out of the browser:
+**Option 2: local server.** Use it if you'd rather keep the API key out of the browser:
 
 ```bash
 node server.mjs                                  # http://localhost:5173
 OPENROUTER_API_KEY=sk-or-... node server.mjs     # key stays on the server
+node --env-file=.env server.mjs                  # same, key read from .env (Node 20.6+)
 ```
 
-Needs Node 18+, no `npm install`. The server only listens on `127.0.0.1`.
+Needs Node 18+, no `npm install`. The server only listens on `127.0.0.1`. For the `.env` route, put `OPENROUTER_API_KEY=sk-or-...` in a `.env` file next to `server.mjs`; it's in `.gitignore`.
 
 ## Side B setup
 
