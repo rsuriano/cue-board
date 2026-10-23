@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Cue Board: plan an AI music video against the song (side A) and generate each shot through OpenRouter (side B).">
 <title>Cue Board</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141317'/%3E%3Cg fill='%23a8702a'%3E%3Crect x='2' y='18' width='4' height='8' rx='2'/%3E%3Crect x='8' y='14' width='4' height='16' rx='2'/%3E%3C/g%3E%3Cg fill='%238b8896'%3E%3Crect x='20' y='12' width='4' height='18' rx='2'/%3E%3Crect x='26' y='17' width='4' height='10' rx='2'/%3E%3C/g%3E%3Crect x='14' y='8' width='4' height='22' rx='2' fill='%23f0a33a'/%3E%3Cpath d='M6 2h20L16 13z' fill='%23f0a33a'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
@@ -135,6 +135,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .bitem img,.bitem video{width:100%;height:100%;object-fit:cover;pointer-events:none}
 .bitem .bi{display:grid;gap:1px;min-width:0}
 .bmain{display:grid;gap:14px;min-width:0}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .bempty{background:var(--panel);border:1px dashed var(--line);border-radius:8px;padding:28px;color:var(--muted)}
 .bbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
 .bshot{display:flex;align-items:center;gap:12px;min-width:0}
@@ -206,6 +207,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <label class="btn primary" for="song" id="songlbl">Load song</label>
     <button type="button" id="delsong" class="btn ghost" hidden>Remove song</button>
     <input id="song" type="file" accept="audio/*" hidden>
+    <button type="button" id="examplep" class="btn small ghost" title="Open a sample project: a 13-shot cut of a public-domain song">Example</button>
     <label class="btn small ghost" for="importf">Import</label><input id="importf" type="file" accept=".json,application/json" hidden>
     <button type="button" id="exportb" class="btn small ghost">Export</button>
     <button type="button" id="settingsb" class="btn small ghost">Settings</button>
@@ -225,7 +227,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     </div>
 
     <aside class="editor" id="editor">
-      <div id="ed-empty" class="ed-empty">Load a song to start. While it plays, press <kbd>M</kbd> at every change in the music and each stretch becomes a shot.</div>
+      <div id="ed-empty" class="ed-empty">Load a song to start. While it plays, press <kbd>M</kbd> at every change in the music and each stretch becomes a shot. Or <button type="button" class="linkbtn" data-example>open the example project</button> to see a finished cut.</div>
       <div id="ed-body" hidden style="display:grid;gap:10px">
         <div class="ed-head"><span class="ed-n" id="ed-n">01</span><span id="ed-time" class="tc"></span><span id="ed-clip" class="clip"></span></div>
         <label class="field">Title<input id="f-title" placeholder="e.g. John crosses the river"></label>
@@ -273,7 +275,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div id="sideB" class="sideB" hidden>
     <aside class="blist" id="bList" aria-label="Shots"></aside>
     <div>
-      <div id="bEmpty" class="bempty">Make or import a project on side A first. Each shot you cut there shows up here, ready to generate.</div>
+      <div id="bEmpty" class="bempty">Make or import a project on side A first. Each shot you cut there shows up here, ready to generate. Or <button type="button" class="linkbtn" data-example>open the example project</button>.</div>
       <section class="bmain" id="bMain" hidden>
         <div class="bbar">
           <div class="bshot"><span class="ed-n" id="bN">01</span><div><div class="btitle" id="bTitle"></div><div class="tc" id="bTime"></div></div></div>
@@ -428,7 +430,11 @@ function onProjects(list){
     if(r&&!dirty&&!saving&&r.updated!==cur.updated){cur=clone(r);if(!cur.sections.some(s=>s.id===selId))selId=cur.sections[0]&&cur.sections[0].id;lastKey="";renderAll()}}
   else if(projects.length){const last=ls(KEY_LAST);selectProject(projects.find(p=>p.id===last)||projects[0]);return}
   renderProjSelect();if(!cur)renderAll();
+  if(!firstList){firstList=true;if(!projects.length&&!cur)autoExample()}
 }
+/* first visit with no projects: open the example once, so both sides have something to show */
+let firstList=false;
+async function autoExample(){try{if(await getSetting("exampleOpened"))return;await putSetting("exampleOpened",true)}catch(e){return}openExample(true)}
 
 /* ---------- model helpers ---------- */
 const newSec=start=>({id:uid("s"),start,title:"",shot:"",notes:"",img:"",imgPrompt:"",vidPrompt:"",key:"",endKey:"",takes:[]});
@@ -492,7 +498,7 @@ function peaks(ab,n){
 function renderAll(){renderProjSelect();renderSongbar();renderTransport();renderTimeline();renderStrip();renderEditor();renderMonitor(true)}
 function renderProjSelect(){
   const sel=$("proj");
-  sel.innerHTML=projects.length?projects.map(p=>`<option value="${esc(p.id)}">${esc(p.title||"Untitled project")}</option>`).join(""):'<option value="">Sin proyectos</option>';
+  sel.innerHTML=projects.length?projects.map(p=>`<option value="${esc(p.id)}">${esc(p.title||"Untitled project")}</option>`).join(""):'<option value="">No projects</option>';
   if(cur&&!projects.some(p=>p.id===cur.id))sel.insertAdjacentHTML("afterbegin",`<option value="${esc(cur.id)}">${esc(cur.title)}</option>`);
   sel.value=cur?cur.id:"";
   const t=$("ptitle");if(document.activeElement!==t)t.value=cur?cur.title:"";
@@ -850,6 +856,17 @@ async function importFile(f){
   selectProject(p);toast(`Imported “${p.title}”`);
 }
 $("importf").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)importFile(f)};
+/* example project: example/example.js, loaded only when asked for (a <script> tag also works when the page is opened as a file) */
+async function openExample(quiet){
+  const have=projects.find(p=>p.id==="p-example");
+  if(have){if(!cur||cur.id!==have.id){if(dirty)flush();selectProject(have)}setSide("a");toast("Opened the example project");return}
+  if(!quiet)toast("Loading the example…");
+  if(!window.CUEBOARD_EXAMPLE)await new Promise(ok=>{const sc=document.createElement("script");sc.src="example/example.js";sc.onload=ok;sc.onerror=ok;document.head.appendChild(sc)});
+  const data=window.CUEBOARD_EXAMPLE;if(!data){if(!quiet)toast("Couldn't load the example (example/example.js is missing)");return}
+  await importFile(new File([JSON.stringify(data)],"example.cueboard.json",{type:"application/json"}));setSide("a");
+}
+$("examplep").onclick=openExample;
+document.addEventListener("click",e=>{if(e.target.closest("[data-example]"))openExample()});
 $("exportb").onclick=()=>{if(!cur){toast("Nothing to export yet");return}$("dlgExport").showModal()};
 $("expGo").onclick=async()=>{$("dlgExport").close();await exportProject($("expSong").checked)};
 $("expCancel").onclick=()=>$("dlgExport").close();

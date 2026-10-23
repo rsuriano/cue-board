@@ -9,7 +9,7 @@ Everything lives in your browser (IndexedDB): the song, keyframes, takes and you
 
 ## Run it
 
-**Online:** [cue.bedrocklabs.dev](https://cue.bedrocklabs.dev). Each person enters their own OpenRouter key in **Settings**; it stays in their browser and goes only to OpenRouter. To host it elsewhere, upload `index.html` to any static host; nothing else is needed.
+**Online:** [cue.bedrocklabs.dev](https://cue.bedrocklabs.dev). Each person enters their own OpenRouter key in **Settings**; it stays in their browser and goes only to OpenRouter. To host it elsewhere, upload `index.html` and the `example/` folder to any static host; nothing else is needed.
 
 **Option 1: just open it.** Double-click `index.html`. Works in current Chrome, Edge and Firefox, side B included: OpenRouter's API allows cross-origin requests, so the page can call it straight from a local file. Your API key is then stored in the browser.
 
@@ -49,6 +49,12 @@ Pick the image model and size in **Settings** (Nano Banana Pro at 1K by default)
 - **Continuity:** "Last frame → next shot" grabs the final frame of a take and makes it the next shot's start frame.
 - The duration picker defaults to the shortest clip that covers the shot's slot. A clip shorter than its slot freezes on its last frame in the animatic.
 
+## Example project
+
+The first time you open Cue Board it loads **The Mountain King (example)**: a 13-shot cut of Grieg's *In the Hall of the Mountain King*, with notes, frame prompts and motion prompts for every shot, so you can see both sides working before you load your own song. Open it again any time with **Example**.
+
+The recording is by the Musopen Symphony Orchestra and, like the composition, is in the public domain ([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Grieg_-_Peer_Gynt_Suite_No._1,_Op._46_-_IV._In_the_Hall_of_the_Mountain_King_(Musopen_Symphony).flac), [Musopen](https://musopen.org/music/777-peer-gynt-suite-no-1-op-46/)).
+
 ## Projects
 
 **Export** saves a project as one `.cueboard.json` file (cuts, notes, prompts, keyframes, takes; optionally the song). **Import** loads it on any computer, or drop the file on the page. Leave the song out if you share the file.
@@ -63,6 +69,7 @@ Side B shows an estimate before each generation, computed from OpenRouter's live
 |---|---|
 | `index.html` | The whole app. No build step. |
 | `server.mjs` | Optional local server + OpenRouter relay. |
+| `example/example.js` | The example project and its song, loaded only when needed. |
 
 ## License
 
