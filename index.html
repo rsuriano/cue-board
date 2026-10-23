@@ -881,7 +881,7 @@ const errText=e=>typeof e==="string"?e:e&&(e.message||e.code)?String(e.message||
 
 function apiFetch(path,o={}){const h={};if(o.auth!==false&&apiKey&&!(viaProxy&&proxyHasKey))h.Authorization="Bearer "+apiKey;if(o.body)h["Content-Type"]="application/json";
   return fetch(apiBase+path,{method:o.method||"GET",headers:h,body:o.body?JSON.stringify(o.body):undefined})}
-async function detectProxy(){if(!/^https?:$/.test(location.protocol))return;
+async function detectProxy(){if(!/^https?:$/.test(location.protocol)||!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))return;   /* server.mjs only listens locally */
   try{const r=await fetch("api/health",{cache:"no-store"});if(r.ok){const j=await r.json();if(j&&j.cueboard){viaProxy=true;proxyHasKey=!!j.hasKey;apiBase="api/openrouter"}}}catch(e){}}
 async function refreshCatalog(){try{const r=await apiFetch("/videos/models");if(!r.ok)return;const j=await r.json();
   if(Array.isArray(j.data)&&j.data.length)catalog=j.data.map(normModel).filter(m=>m.durations.length&&m.res.length)}catch(e){}}

@@ -9,6 +9,8 @@ Everything lives in your browser (IndexedDB): the song, keyframes, takes and you
 
 ## Run it
 
+**Online:** [cue.bedrocklabs.dev](https://cue.bedrocklabs.dev). Each person enters their own OpenRouter key in **Settings**; it stays in their browser and goes only to OpenRouter. To host it elsewhere, upload `index.html` to any static host; nothing else is needed.
+
 **Option 1: just open it.** Double-click `index.html`. Works in current Chrome, Edge and Firefox, side B included: OpenRouter's API allows cross-origin requests, so the page can call it straight from a local file. Your API key is then stored in the browser.
 
 **Option 2: local server.** Use it if you'd rather keep the API key out of the browser:
