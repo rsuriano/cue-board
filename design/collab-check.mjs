@@ -424,6 +424,59 @@ try {
   await A.page.click('#exportb'); await A.page.click('#expGo');
   const exp = await until(() => A.page.evaluate(() => window.__export || ''));
   check('export: a .cueboard.json without the token or room id', exp.includes('"format":"cueboard"') && !tokens.some(t => exp.includes(t)) && !exp.includes(room.room));
+
+  /* ---- the media reference check (mediaInUse), on its own: other projects count, the skipped one doesn't ---- */
+  {
+    // the three one-line functions, from index.html as served, run here with no app around them (projects, cur: the defaults)
+    const html = readFileSync(join(root, 'index.html'), 'utf8'), fn = n => new RegExp(`^function ${n}\\(.*$`, 'm').exec(html)?.[0] || '';
+    const mediaInUse = new Function(`const projects = [], cur = null; ${fn('sectionMediaIds')} ${fn('projectMediaIds')} ${fn('mediaInUse')} return typeof mediaInUse === 'function' ? mediaInUse : () => 'missing';`)();
+    const r = [
+      mediaInUse('m1', 'p1', [{ id: 'p1', refs: ['m1'] }]),
+      mediaInUse('m1', 'p1', [{ id: 'p1', refs: ['m1'] }, { id: 'p2', sections: [{ img: '', takes: [{ media: 'm1' }] }] }]),
+      mediaInUse('m2', null, [null, { id: 'p1', sections: [{ key: 'm2' }] }]),
+      mediaInUse('m2', null, [{ id: 'p1', sections: [{ endKey: 'm2' }] }]),
+      mediaInUse('m3', null, [{ id: 'p1', refs: ['m1'], sections: [{ img: 'm2', takes: [] }] }]),
+      mediaInUse('m-nobody-has', 'x'),
+    ];
+    check('mediaInUse: only the skipped project uses it -> no; another project\'s take, a key, an end frame -> yes; unused -> no', JSON.stringify(r) === '[false,true,true,true,false,false]', JSON.stringify(r));
+  }
+
+  /* ---- A leaves, joins again as a new project (same files, so the same local ids), deletes that one: the first keeps its media ---- */
+  {
+    const ids = p => [...new Set([...(p?.refs || []), ...(p?.sections || []).flatMap(s => [s.img, s.key, s.endKey, ...(s.takes || []).map(t => t.media)])])].filter(x => x && !x.startsWith('sha256-'));
+    const first = await stored(A.page), pIds = ids(first.project);
+    await menu(A.page, 'leave'); await sleep(400);
+    await menu(A.page, 'join'); await A.page.fill('#jLink', room.link); await A.page.click('#jGo');
+    await A.page.waitForSelector('#dlgJoin[open][data-step="choose"]', { timeout: 9000 }); await A.page.click('#jNew');
+    await until(async () => (await chip(A.page)) === 'Synced', 9000);
+    const second = await until(async () => { const s = await stored(A.page); return s.pid && s.pid !== first.pid && s.project ? s : null; }, 6000);
+    const shared = pIds.filter(id => ids(second?.project).includes(id));
+    await A.page.click('#delp'); await A.page.click('#delp');
+    const gone = await until(async () => !(await stored(A.page, second?.pid)).project, 6000); await sleep(800);
+    const lost = []; for (const id of pIds) if (!(await hasBlob(A.page, id))) lost.push(id);
+    const kept = !!(await stored(A.page, first.pid)).project;
+    check('leave, rejoin as a new project, delete it: the first project keeps every media file the two shared',
+      pIds.length > 0 && shared.length > 0 && gone && kept && !lost.length, `${pIds.length} files, ${shared.length} shared with the rejoined project, deleted ${!!gone}, first project kept ${kept}, files lost ${lost.length}`);
+  }
+
+  /* ---- a project imported mid-render from another device or origin (a foreign `dev`), no room: its take is still polled ---- */
+  {
+    const E = await newPage('E'); let polls = 0;
+    await E.page.goto(app); await E.page.waitForSelector('.card');
+    await E.page.evaluate(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); }); await new Promise(r => { const p = d.transaction('settings', 'readwrite').objectStore('settings').put('sk-or-v1-collab-check-not-a-key', 'apiKey'); p.onsuccess = r; }); });
+    await E.page.route(u => u.href.includes('/videos/job-foreign'), r => {
+      if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+      polls++; return r.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ id: 'job-foreign', status: 'in_progress' }) });
+    });
+    await E.page.reload(); await E.page.waitForSelector('.card'); await sleep(400);
+    const take = { id: 't-foreign', jobId: 'job-foreign', model: 'alibaba/wan-3.0', modelName: 'Wan 3.0', res: '480p', dur: 4, audio: false, seed: '', prompt: 'from elsewhere', start: false, end: false, est: 0.2, cost: null, status: 'pending', created: Date.now(), media: '', error: '', note: '', dev: 'd-another-device' };
+    const project = { id: 'p-foreign', title: 'Imported mid-render', created: Date.now(), updated: Date.now(), song: null, sections: [{ id: 's-foreign', start: 0, title: 'One', shot: '', notes: '', img: '', imgPrompt: '', vidPrompt: '', key: '', endKey: '', takes: [take] }] };
+    await E.page.setInputFiles('#importf', { name: 'foreign.cueboard.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'cueboard', version: 1, project, media: {} })) });
+    await until(() => polls > 0, 8000);
+    const st = await until(async () => (secOf((await stored(E.page, 'p-foreign')).project, 's-foreign')?.takes || [])[0]?.status, 3000);
+    check('imported take with another device\'s `dev`, project in no room: polled here, not left "Rendering" forever', polls > 0 && st && st !== 'failed', `polls ${polls}, status ${st}`);
+    await E.ctx.close();
+  }
   const leaks = [];
   for (const [n, P] of [['A', A], ['B', B], ['C', C]]) {
     if (tokens.some(t => P.page.url().includes(t))) leaks.push(n + ' url');
