@@ -9,11 +9,18 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as Y from 'yjs';
 
 export const ROOM_ID = /^[A-Za-z0-9_-]{16,64}$/;
+const SHA256_HEX = /^[0-9a-f]{64}$/i;
+/* A header claiming more than this is corruption, not a torn append (appends are bounded by maxMessageBytes) */
+const MAX_RECORD_BYTES = 256 * 1024 * 1024;
 const hashToken = (/** @type {string} */ t) => createHash('sha256').update(t).digest();
 
+/** updates.bin can't be read safely. The file is left as it is for an operator to inspect. */
+export class CorruptLogError extends Error {}
+
 export class ProjectStore {
-  /** @param {string} dir */
-  constructor(dir) { this.dir = path.resolve(dir); fs.mkdirSync(this.dir, { recursive: true }); }
+  #warnedHash = new Set();
+  /** @param {string} dir @param {{ warn: (msg: string, fields?: object) => void }} [log] */
+  constructor(dir, log = { warn: () => {} }) { this.dir = path.resolve(dir); this.log = log; fs.mkdirSync(this.dir, { recursive: true }); }
 
   /** @param {string} id */
   folder(id) { if (!ROOM_ID.test(id)) throw new Error('bad room id'); return path.join(this.dir, id); }
@@ -44,23 +51,43 @@ export class ProjectStore {
   /** Read on every join, so removing a token from project.json revokes it without a restart. */
   checkToken(/** @type {string} */ id, /** @type {string} */ token) {
     if (!token || token.length > 64 || !this.exists(id)) return false;
-    const h = hashToken(token);
-    return this.readProject(id).tokens.some((/** @type {any} */ t) => timingSafeEqual(Buffer.from(t.sha256, 'hex'), h));
+    const h = hashToken(token), tokens = this.readProject(id).tokens;
+    // a hand-edited hash that isn't 64 hex chars never matches (and must not throw in timingSafeEqual)
+    return Array.isArray(tokens) && tokens.some((/** @type {any} */ t) => {
+      if (typeof t?.sha256 === 'string' && SHA256_HEX.test(t.sha256)) return timingSafeEqual(Buffer.from(t.sha256, 'hex'), h);
+      if (!this.#warnedHash.has(id)) { this.#warnedHash.add(id); this.log.warn('ignoring malformed token hash in project.json', { room: id }); }
+      return false;
+    });
   }
 
-  /** Load a project's doc. A torn last record (crash mid-append) is cut off and reported. */
+  /** Load a project's doc. A torn last record (crash mid-append) is copied aside to updates.bin.torn-<time>, then cut off.
+      Anything else unreadable throws CorruptLogError and leaves the file untouched, so no later record is ever dropped. */
   loadDoc(/** @type {string} */ id) {
     const file = path.join(this.folder(id), 'updates.bin'), doc = new Y.Doc();
     const buf = fs.existsSync(file) ? fs.readFileSync(file) : Buffer.alloc(0);
     const updates = [];
-    let off = 0, torn = 0;
+    let off = 0;
     while (off + 4 <= buf.length) {
       const len = buf.readUInt32LE(off);
       if (off + 4 + len > buf.length) break;
       updates.push(buf.subarray(off + 4, off + 4 + len)); off += 4 + len;
     }
-    if (off < buf.length) { torn = buf.length - off; fs.truncateSync(file, off); }
-    if (updates.length) Y.applyUpdate(doc, Y.mergeUpdates(updates));
+    // what's left can only be a torn append if it's a partial header, or a header whose record runs past the end
+    const torn = buf.length - off;
+    if (torn >= 4 && buf.readUInt32LE(off) > MAX_RECORD_BYTES) {
+      doc.destroy();
+      throw new CorruptLogError(`bad record length at byte ${off} of ${buf.length}`);
+    }
+    try {
+      if (updates.length) Y.applyUpdate(doc, Y.mergeUpdates(updates));
+    } catch (err) {
+      doc.destroy();
+      throw new CorruptLogError(`undecodable update log (${updates.length} records, ${off} bytes): ${/** @type {Error} */ (err).message}`);
+    }
+    if (torn) {
+      fs.copyFileSync(file, `${file}.torn-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+      fs.truncateSync(file, off);
+    }
     return { doc, records: updates.length, bytes: off, torn };
   }
 

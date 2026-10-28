@@ -4,7 +4,7 @@
 
    Join:   ws://<host>/r/<roomId>?token=<invite token>
    Close codes: 4400 malformed message · 4401 bad token · 4404 unknown room · 4429 too many connections from this IP
-                1009 message too big (sent by ws) · 1001 server shutting down */
+                4500 room unavailable (unreadable project.json or updates.bin; see the error log) · 1009 message too big (sent by ws) · 1001 server shutting down */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,7 +15,7 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
-import { ProjectStore } from './store.mjs';
+import { ProjectStore, CorruptLogError } from './store.mjs';
 import { createLogger } from './log.mjs';
 
 const MSG_SYNC = 0, MSG_AWARENESS = 1, MSG_QUERY_AWARENESS = 3;
@@ -25,15 +25,15 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
 /**
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
- *   trustProxy?: boolean, serveDemo?: boolean, logLevel?: string }} [opts]
+ *   trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string }} [opts]
  */
 export async function startServer(opts = {}) {
   const o = {
     port: 3300, host: '127.0.0.1', dataDir: './data', maxMessageBytes: 2 * 1024 * 1024, maxConnsPerIp: 16,
     compactEvery: 500, compactIntervalMs: 60_000, unloadAfterMs: 30_000, pingMs: 30_000,
-    trustProxy: false, serveDemo: false, logLevel: 'info', ...opts,
+    trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info', ...opts,
   };
-  const log = createLogger(o.logLevel), store = new ProjectStore(o.dataDir);
+  const log = createLogger(o.logLevel), store = new ProjectStore(o.dataDir, log);
   /** @type {Map<string, Room>} */ const rooms = new Map();
   /** @type {Map<string, number>} */ const perIp = new Map();
   let closing = false;
@@ -45,7 +45,7 @@ export async function startServer(opts = {}) {
     let room = rooms.get(id);
     if (room) { if (room.unloadTimer) { clearTimeout(room.unloadTimer); room.unloadTimer = null; } return room; }
     const t0 = performance.now(), { doc, records, bytes, torn } = store.loadDoc(id);
-    if (torn) log.warn('dropped torn tail of update log', { room: id, bytes: torn });
+    if (torn) log.warn('dropped torn tail of update log (original kept as updates.bin.torn-*)', { room: id, bytes: torn });
     const awareness = new awarenessProtocol.Awareness(doc);
     awareness.setLocalState(null);
     const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, unloadTimer: null });
@@ -111,19 +111,38 @@ export async function startServer(opts = {}) {
     wss.handleUpgrade(req, socket, head, ws => onConnection(ws, req));
   });
 
+  /** Client IP. Behind our own proxies, the Nth X-Forwarded-For entry from the right (N = trustedProxyHops) is the
+      address the outermost one of them saw; anything left of it is whatever the client sent. @param {http.IncomingMessage} req */
+  function clientIp(req) {
+    if (o.trustProxy) {
+      const hops = String(req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (hops.length) return hops[Math.max(0, hops.length - Math.max(1, o.trustedProxyHops))];
+    }
+    return req.socket.remoteAddress || '?';
+  }
+
   /** @param {import('ws').WebSocket} ws @param {http.IncomingMessage} req */
   function onConnection(ws, req) {
-    const fwd = o.trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-    const ip = fwd || req.socket.remoteAddress || '?';
+    const ip = clientIp(req);
     ws.on('error', err => log.debug('socket error', { ip, err: err.message }));
     const n = (perIp.get(ip) || 0) + 1;
     if (n > o.maxConnsPerIp) { log.warn('rejected: too many connections', { ip }); ws.close(4429, 'too many connections'); return; }
     const url = new URL(req.url || '/', 'http://x'), m = /^\/r\/([^/]+)$/.exec(url.pathname), id = m ? m[1] : '';
-    if (!store.exists(id)) { log.warn('rejected: unknown room', { ip }); ws.close(4404, 'unknown room'); return; }
-    if (!store.checkToken(id, url.searchParams.get('token') || '')) { log.warn('rejected: bad token', { ip, room: id }); ws.close(4401, 'bad token'); return; }
+    /** @type {Room} */ let room;
+    try {
+      if (!store.exists(id)) { log.warn('rejected: unknown room', { ip }); ws.close(4404, 'unknown room'); return; }
+      if (!store.checkToken(id, url.searchParams.get('token') || '')) { log.warn('rejected: bad token', { ip, room: id }); ws.close(4401, 'bad token'); return; }
+      room = getRoom(id);
+    } catch (err) {
+      // a broken project.json or updates.bin: refuse this room, keep serving the rest. Only our own messages are logged,
+      // since a JSON.parse message can quote project.json (token hashes).
+      const e = /** @type {Error} */ (err);
+      log.error('rejected: room unavailable', { room: id, ip, err: e instanceof CorruptLogError ? e.message : e.name });
+      ws.close(4500, 'room unavailable');
+      return;
+    }
 
     perIp.set(ip, n);
-    const room = getRoom(id);
     room.conns.set(ws, new Set());
     /** @type {any} */ (ws).alive = true;
     ws.on('pong', () => { /** @type {any} */ (ws).alive = true; });

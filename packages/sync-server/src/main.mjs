@@ -1,7 +1,8 @@
 // @ts-check
 /* npm start. Settings come from the environment:
    PORT (3300) · HOST (127.0.0.1) · DATA_DIR (./data) · MAX_MESSAGE_BYTES (2 MiB) · MAX_CONNS_PER_IP (16)
-   TRUST_PROXY=1 (take the client IP from X-Forwarded-For; only behind your own reverse proxy)
+   TRUST_PROXY=1 (take the client IP from X-Forwarded-For; only behind your own reverse proxy, see SPIKE.md)
+   TRUSTED_PROXY_HOPS (1: how many of your own proxies append to X-Forwarded-For; the client IP is that many entries from the right)
    SERVE_DEMO=1 (serve demo/ at /demo/, dev only) · LOG_LEVEL (info) */
 import { startServer } from './server.mjs';
 import { createLogger } from './log.mjs';
@@ -11,7 +12,7 @@ const log = createLogger(env.LOG_LEVEL);
 const srv = await startServer({
   port: num(env.PORT, 3300), host: env.HOST || '127.0.0.1', dataDir: env.DATA_DIR || './data',
   maxMessageBytes: num(env.MAX_MESSAGE_BYTES, 2 * 1024 * 1024), maxConnsPerIp: num(env.MAX_CONNS_PER_IP, 16),
-  trustProxy: env.TRUST_PROXY === '1', serveDemo: env.SERVE_DEMO === '1', logLevel: env.LOG_LEVEL,
+  trustProxy: env.TRUST_PROXY === '1', trustedProxyHops: num(env.TRUSTED_PROXY_HOPS, 1), serveDemo: env.SERVE_DEMO === '1', logLevel: env.LOG_LEVEL,
 });
 for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, async () => {
   log.info('shutting down', { signal: sig });
