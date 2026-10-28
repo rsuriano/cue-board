@@ -115,7 +115,7 @@ Second round:
 
 ## Not done
 
-- Integration with `index.html` (the app still uses IndexedDB only). No `apps/web` move.
+- Integration with `index.html` (the app still uses IndexedDB only). No `apps/web` move. *Since done (collaboration v1): see `docs/collaboration.md` at the repo root. The app sends the token as a WebSocket subprotocol, which the server now accepts too (test s).*
 - Media of any kind: no P2P transfer, WebTorrent/WebRTC, seed or encryption. Refs are hashes only; nothing fetches media by hash.
 - Users, accounts, roles, read-only links, revoking a single person, token expiry, an admin UI. `--invite` adds tokens; revoking means editing `project.json` by hand.
 - Server-side schema validation of updates; history, snapshots or undo; backups.
