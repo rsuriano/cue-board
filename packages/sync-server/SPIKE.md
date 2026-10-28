@@ -42,7 +42,7 @@ Run it with `TRUST_PROXY=1` (`TRUSTED_PROXY_HOPS=1` is the default). Caddy keeps
 
 ## What was verified
 
-`npm test` (Node 22, `node:test`, throwaway temp data dirs, ports 3350-3358). 11/11 pass, 3 runs in a row:
+`npm test` (Node 22, `node:test`, throwaway temp data dirs, ports 3350-3358 and 3361-3367). 19/19 pass, 3 runs in a row:
 
 | | Test | Result |
 |---|---|---|
@@ -57,8 +57,16 @@ Run it with `TRUST_PROXY=1` (`TRUSTED_PROXY_HOPS=1` is the default). Caddy keeps
 | h | `updates.bin` with a garbage record between valid ones, and with a `0xffffffff` length header mid-file | 4500 on every join, both files byte-identical, no `.torn` copy, nothing loaded; other rooms keep serving; after an operator restores the file the room opens |
 | i | `TRUST_PROXY=1`, limit 1: `X-Forwarded-For: 10.0.0.1, 192.0.2.7`, then `10.0.0.2, 192.0.2.7`, then `10.0.0.1, 192.0.2.8`; also `TRUSTED_PROXY_HOPS=2` | joined, 4429, joined: the limit follows the proxy-added entry; same with two hops |
 | j | 3 rounds of: join, 5 edits, leave, wait for the unload (`unloadAfterMs` 50), rejoin | state intact every round; the log is the compacted record plus 5 appends while loaded and exactly 1 record after each unload and after shutdown |
+| k | Stubbed store: appends and compactions for room A throw `ENOSPC`; A has two clients, B one | A's sender closed 4500, the other A client keeps its socket and gets the edit; new joins to A 4500; no further append attempted; `/health` shows `degraded: 1`; B syncs and persists; one `append failed` and one `compaction failed` line over several ticks. Disk "freed": the next tick writes A as 1 record holding both clients' edits, joins and appends resume |
+| l | Real `EACCES`: the room folder made read-only (`0555`) while a client edits, then the client leaves | appends still land; the compaction tick and the unload fail, logged once; the room stays loaded, another room still serves. Folder writable again: the tick retries the unload, 1 record, text intact |
+| m | No `TRUST_PROXY`, limit 2, three different `X-Forwarded-For` values; then clean close, abrupt terminates | joined, joined, 4429 (header ignored); each close frees its slot; after all close, 2 join and the 3rd is refused again |
+| n | A raw socket sends a presence; a late joiner arrives; the raw socket is terminated without a goodbye | the other client sees it, the late joiner gets it in the greeting, both (and the server) drop it after the terminate |
+| o | `TRUST_PROXY=1`, `TRUSTED_PROXY_HOPS=2`, limit 1: XFF `1.1.1.1`, `2.2.2.2`, none, then `3.3.3.3, 192.0.2.9` | joined, 4429, 4429, joined: short headers fall back to the socket address; one warning |
+| p | `maxBufferedBytes` 256 KiB, a client that stops reading its socket, another one inserting 100 KB chunks | the slow reader is terminated (one `slow reader` warning), the other client is unaffected |
+| q | `pingMs` 40: a client that stops reading but sends its own pongs every 10 ms, next to a normal client | the pong spammer is terminated; the normal client is still connected 5 ping periods later |
+| r | Child processes with the safety net: one rejection + the same throw from a timer 2 times, then 3 times | 3 `UNCAUGHT` lines and the process keeps running; with 3 repeats it logs `UNCAUGHT: same error 3 times in 10 s, exiting` and exits 1 |
 
-(g), (h) and (i) were also run against the code before the review fixes: (g) and (h) killed the process (`RangeError` in `timingSafeEqual`, `Unexpected end of array` in `loadDoc`), and (i) let the spoofed address through.
+(g), (h) and (i) were also run against the code before the review fixes: (g) and (h) killed the process (`RangeError` in `timingSafeEqual`, `Unexpected end of array` in `loadDoc`), and (i) let the spoofed address through. Likewise (k), (l), (o), (p) and (q) fail against the code before the second round of fixes ((l) crashes the test process from the compaction timer); (m) and (n) cover behaviour that was already correct.
 
 Browser (`demo/browser-check.mjs`, testkit's playwright-core + `/snap/bin/chromium`, port 3360): 5/5 PASS. Both panes type into the same notes field with keystrokes interleaved: they converge and no keystroke is lost. Pane 2 goes offline and both panes edit: the edits stay local. Pane 2 comes back: both panes show `"Wide: The mountain at night"` and the same notes. Screenshot: `demo/shot.png`.
 
@@ -70,6 +78,15 @@ Also run by hand: `create-project` (plain, `--import example/example.js`, `--dat
 - **Malformed token hashes** in `project.json` (anything other than 64 hex chars, or a missing `sha256`) never match and never throw. Each room logs a warning about them once.
 - **`X-Forwarded-For` is read from the right**, with `TRUSTED_PROXY_HOPS` (see above), not from the client-controlled left.
 - **Torn tail vs corruption in `updates.bin`.** A tail is treated as torn only if it is a partial header, or a header (at most 256 MiB) whose record runs past the end of the file, *and* every record before it decodes. Then the whole file is first copied to `updates.bin.torn-<ISO time>` and only then truncated. Anything else (an undecodable record, or an impossible length) throws `CorruptLogError`: the file is not touched, and every join to that room gets 4500 until an operator fixes the file. No restart is needed, because each join retries the load.
+
+Second round:
+
+- **Disk errors outside the join path don't crash the server.** `compact()` never throws: on a failure (ENOSPC, EACCES, `DATA_DIR` gone) it logs one `error` line per failure burst, leaves the room loaded, and the compaction tick (`compactIntervalMs`, 60 s) retries. A failed unload keeps the room in memory and the tick retries it; a recovery is logged once at `info`.
+- **A failed append degrades the room.** The error is caught inside the Yjs `update` handler (so it never escapes the transaction or looks like a 4400 "malformed message"), logged as a server fault, and the sender is closed with 4500. The room is marked `degraded`: nothing more is appended (the log may now have a torn tail), new joins get 4500, existing clients stay and keep editing in memory, and the next successful compaction rewrites the log with the whole doc and clears the flag. `/health` reports the number of degraded rooms. If the process stops while a room is degraded and its last compaction fails, its unsaved changes are lost (logged), though the clients still hold them and resend them on reconnect.
+- **Slow readers are dropped** once their send queue would pass `MAX_BUFFERED_BYTES` (8 MiB). A message onto an empty queue always goes, so a large first sync isn't refused.
+- **Pings carry a random 8-byte nonce**; only a pong echoing the outstanding one counts, so unsolicited pongs don't keep a dead reader alive.
+- **A short `X-Forwarded-For`** (fewer entries than `TRUSTED_PROXY_HOPS`) is ignored entirely: the socket address is used, with one warning per process.
+- **Process-level safety net** (`src/safety-net.mjs`, installed by `main.mjs` only, not by `startServer()`). The timer and socket paths above have their own handlers, so whatever reaches `uncaughtException` / `unhandledRejection` is a bug. It is logged as one `error` line with the message prefix `UNCAUGHT` and the top 5 stack frames, and the process keeps serving. If the same error (name, message and throwing frame) comes 3 times within 10 s, it logs `UNCAUGHT: same error 3 times in 10 s, exiting`, closes the server (2 s grace) and exits 1, so a supervisor restarts it.
 
 ## Numbers (this machine, loopback)
 
@@ -107,7 +124,9 @@ Also run by hand: `create-project` (plain, `--import example/example.js`, `--dat
 - Rate limiting per message, metrics, TLS (expected from the reverse proxy), Docker/systemd, deploy. Not run on the VPS.
 - `fsync` per append (deliberately skipped; see Durability).
 - **Torn vs corrupt is a heuristic.** A mangled mid-file header that still claims a plausible length (≤ 256 MiB) running past EOF, with every earlier record decodable, looks like a torn tail and gets truncated. The `.torn-*` copy keeps the dropped bytes, but nothing re-applies them, and `.torn-*` files are never cleaned up. A record checksum per frame would make this exact.
-- Errors outside the join path are still uncaught: a disk error (full disk, permissions) in `append` during a sync message is caught as a 4400 for that client, but one in the periodic or unload-time `compact` would still kill the process.
+- A degraded room only recovers on a compaction tick (60 s by default). Until then new joins get 4500, and there's no alert beyond the error log line and `/health`. Nothing checks free disk space up front.
+- The safety net (`main.mjs`) is tested in a child process with its own fixture, not by crashing a real `npm start`. The 2 s close-and-exit grace isn't tested.
+- `maxBufferedBytes` is checked only when we send. A reader that stops while nothing is being broadcast is caught by the ping reaper instead, within two `pingMs` periods (60 s).
 - A room refused with 4500 re-reads its whole `updates.bin` on every join attempt. There's no backoff or cache of the failure, and y-websocket clients retry forever unless they stop on 4xxx (see above).
 - The hephaestus reverse proxy config hasn't been checked against `TRUST_PROXY` / `TRUSTED_PROXY_HOPS`.
 
