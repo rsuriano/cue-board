@@ -146,7 +146,8 @@ export async function startServer(opts = {}) {
 
   // A browser can't set headers on a WebSocket, so the app sends the token as the second subprotocol
   // (`cueboard, <token>`) instead of in the URL, where it would land in proxy access logs and in the browser console
-  // whenever a connect fails. Only `cueboard` is echoed back, never the token.
+  // whenever a connect fails. Only `cueboard` is echoed back, never the token. Neither the header nor the token is ever
+  // logged here; a proxy that logs request headers needs a filter (SPIKE.md, "Don't log the token").
   const wss = new WebSocketServer({ noServer: true, maxPayload: o.maxMessageBytes, handleProtocols: protocols => (protocols.has('cueboard') ? 'cueboard' : false) });
   server.on('upgrade', (req, socket, head) => {
     if (closing) { socket.destroy(); return; }

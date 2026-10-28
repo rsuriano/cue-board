@@ -47,6 +47,34 @@ Everything in the doc and in awareness came from another browser. `sanitizeProje
 
 The browser can't put headers on a WebSocket, and a token in the URL lands in reverse-proxy access logs and in the browser console whenever a connection fails. The server now also accepts the token as the second WebSocket subprotocol (`cueboard, <token>`) and only ever echoes `cueboard` back; the `?token=` query parameter still works. Test: `packages/sync-server/test/token-protocol.test.mjs`. `create-project` prints an app link (`#join=`, token in the fragment, which browsers don't send to the server) when `APP_URL` is set.
 
+So the token stays out of URLs, the browser console and the sync server's own log (it never logs request headers or the token; tested). **A reverse proxy's access log is another matter:** Caddy's JSON access log records every request header and by default redacts only `Cookie`, `Set-Cookie`, `Authorization` and `Proxy-Authorization`, so `Sec-WebSocket-Protocol` (and so the token) would be written as is. The sync site needs one of these:
+
+```caddyfile
+# a) no access log for the sync site: Caddy writes access logs only for sites with a `log` directive, so leave it out
+sync.example.dev {
+	reverse_proxy 127.0.0.1:3300
+}
+
+# b) an access log with the token taken out: the subprotocol header deleted, and ?token= deleted from the URI (older links)
+sync.example.dev {
+	log {
+		output file /var/log/caddy/sync-access.log
+		format filter {
+			wrap json
+			fields {
+				request>headers>Sec-Websocket-Protocol delete
+				request>uri query {
+					delete token
+				}
+			}
+		}
+	}
+	reverse_proxy 127.0.0.1:3300
+}
+```
+
+The header key is the canonical Go form Caddy logs it under (`Sec-Websocket-Protocol`, lowercase `s` in `Websocket`). Not checked against a running Caddy or the hephaestus config: after deploying, open a room once and grep the log for the token. Any other proxy or CDN in front needs the same treatment.
+
 ## Checks
 
 - `npm test -w @cue-board/collab-client`: conversion, equivalence with `cueboardToDoc()`, merge of concurrent edits, validation, `keepPending()`; `test/session.test.mjs` runs a session against a real server on port 3385 while another client types: media pending a hash (frame and take), a hash failure, two quick changes, a remote delete.
