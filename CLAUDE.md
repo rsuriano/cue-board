@@ -13,8 +13,10 @@ After changing `index.html`, `collab.js`, `example/` or `fonts/` here (`collab.j
 
 1. Commit and push this repo.
 2. Copy `index.html`, `collab.js`, `example/` and `fonts/` into `hephaestus/pages/cue/` (clone `rsuriano/hephaestus` if needed).
+   **Then set the sync URL in the copied file** (this repo's `index.html` has it empty, and copying it as is would silently turn collaboration off on the live site):
+   `sed -i 's|<meta name="cue-sync-url" content="[^"]*">|<meta name="cue-sync-url" content="wss://sync.bedrocklabs.dev">|' hephaestus/pages/cue/index.html`
 3. Commit in hephaestus, e.g. `cue: sync with rsuriano/cue-board <short sha>`, and push to `main`.
-4. A webhook deploys it on the VPS in about 30 s. Check that https://cue.bedrocklabs.dev serves the new version.
+4. A webhook deploys it on the VPS in about 30 s. Check that https://cue.bedrocklabs.dev serves the new version **and** that `curl -s https://cue.bedrocklabs.dev/ | grep cue-sync-url` shows `wss://sync.bedrocklabs.dev`.
 
 Only `index.html`, `collab.js`, `example/` and `fonts/` go to hephaestus (without `fonts/` the hosted copy falls back to system fonts; without `collab.js` joining a room fails, everything else works).
 
