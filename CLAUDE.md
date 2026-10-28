@@ -6,16 +6,16 @@ Single-file web app: everything is in `index.html`, with no build step and no de
 
 The live copy is at https://cue.bedrocklabs.dev. It's served by the
 [hephaestus](https://github.com/rsuriano/hephaestus) repo, as a copy of this
-repo's `index.html` and `example/` at `pages/cue/`. Pushing here does **not** update the live site.
+repo's `index.html`, `example/` and `fonts/` at `pages/cue/`. Pushing here does **not** update the live site.
 
-After changing `index.html` or `example/` here:
+After changing `index.html`, `example/` or `fonts/` here:
 
 1. Commit and push this repo.
-2. Copy `index.html` and `example/` into `hephaestus/pages/cue/` (clone `rsuriano/hephaestus` if needed).
+2. Copy `index.html`, `example/` and `fonts/` into `hephaestus/pages/cue/` (clone `rsuriano/hephaestus` if needed).
 3. Commit in hephaestus, e.g. `cue: sync with rsuriano/cue-board <short sha>`, and push to `main`.
 4. A webhook deploys it on the VPS in about 30 s. Check that https://cue.bedrocklabs.dev serves the new version.
 
-Only `index.html` and `example/` go to hephaestus. Never deploy `server.mjs` or `.env`: the hosted copy is static, and each visitor uses their own OpenRouter key, stored in their browser.
+Only `index.html`, `example/` and `fonts/` go to hephaestus (without `fonts/` the hosted copy falls back to system fonts). Never deploy `server.mjs` or `.env`: the hosted copy is static, and each visitor uses their own OpenRouter key, stored in their browser.
 
 ## Don't commit
 
