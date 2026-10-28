@@ -6,7 +6,7 @@
 import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, readFileSync, statSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { createServer as tcpServer } from 'node:net';
+import { createServer as tcpServer, connect } from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, extname, normalize } from 'node:path';
@@ -21,6 +21,15 @@ const check = (name, ok, ev = '') => { log.checks.push({ name, ok: !!ok }); cons
 
 // a socket that accepts and never answers the WebSocket handshake
 const hang = tcpServer(() => {}); await new Promise(ok => hang.listen(0, '127.0.0.1', ok));
+// a pass-through to the sync server that records each WebSocket handshake as the server receives it, and the answer
+const TAP_PORT = 3361, taps = [];
+const tap = tcpServer(c => {
+  const up = connect(SYNC_PORT, '127.0.0.1'), rec = { req: '', res: '' }; taps.push(rec);
+  c.on('data', d => { if (!rec.req.includes('\r\n\r\n')) rec.req += d.toString('latin1'); });
+  up.on('data', d => { if (!rec.res.includes('\r\n\r\n')) rec.res += d.toString('latin1'); });
+  c.pipe(up); up.pipe(c); c.on('error', () => up.destroy()); up.on('error', () => c.destroy());
+});
+await new Promise(ok => tap.listen(TAP_PORT, '127.0.0.1', ok));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.woff2': 'font/woff2', '.png': 'image/png' };
 const srv = createServer((q, r) => {
   const [path, qs = ''] = q.url.split('?');
@@ -28,7 +37,7 @@ const srv = createServer((q, r) => {
   try {
     if (!statSync(p).isFile()) throw 0;
     let body = readFileSync(p);
-    if (p.endsWith('index.html')) body = String(body).replace('<meta name="cue-sync-url" content="">', `<meta name="cue-sync-url" content="ws://127.0.0.1:${/sync=hang/.test(qs) ? hang.address().port : SYNC_PORT}">`);
+    if (p.endsWith('index.html')) body = String(body).replace('<meta name="cue-sync-url" content="">', `<meta name="cue-sync-url" content="ws://127.0.0.1:${/sync=hang/.test(qs) ? hang.address().port : /sync=tap/.test(qs) ? TAP_PORT : SYNC_PORT}">`);
     r.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' }); r.end(body);
   } catch { r.writeHead(404); r.end(); }
 });
@@ -52,6 +61,11 @@ const browser = await chromium.launch({ executablePath: '/snap/bin/chromium', he
 async function newPage(name) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, acceptDownloads: true });
   await ctx.route('**/*', r => (r.request().url().startsWith(origin) ? r.continue() : r.abort()));
+  // sessionStorage "slowHash" = ms: SHA-256 takes that long (a large file on a slow device), to widen the hashing window
+  await ctx.addInitScript(() => {
+    const digest = SubtleCrypto.prototype.digest;
+    SubtleCrypto.prototype.digest = async function (...a) { const ms = +sessionStorage.getItem('slowHash') || 0; if (ms) await new Promise(r => setTimeout(r, ms)); return digest.apply(this, a); };
+  });
   const page = await ctx.newPage();
   page.on('console', m => { log.console.push(`${name} ${m.type()}: ${m.text()}`); });
   page.on('pageerror', e => log.console.push(`${name} pageerror: ${e.message}`));
@@ -70,6 +84,18 @@ async function nameStep(page, name) {
   await page.fill('#jName', name); await page.click('#jGo');
 }
 const menu = async (page, act) => { await page.click('#proj'); await page.click(`#projmenu [data-act="${act}"]`); };
+const presence = page => page.evaluate(() => { const p = document.getElementById('presence'); return p.hidden ? '' : [...p.children].map(c => c.textContent).join(','); });
+/* this browser's room project as saved in IndexedDB (pid: the first bound one), whether the room's offline copy
+   ("cueboard-collab" docs) exists, and the device id. Never creates a database. */
+const stored = (page, pid) => page.evaluate(async pid => {
+  const open = n => new Promise(r => { const q = indexedDB.open(n); q.onupgradeneeded = () => q.transaction.abort(); q.onsuccess = () => r(q.result); q.onerror = () => r(null); });
+  const get = (d, st, k) => new Promise(r => { try { const g = d.transaction(st).objectStore(st).get(k); g.onsuccess = () => r(g.result); g.onerror = () => r(undefined); } catch { r(undefined); } });
+  const l = await open('cueboard-local'), cd = await open('cueboard-collab');
+  if (!pid) pid = Object.keys((await get(l, 'settings', 'collab'))?.rooms || {})[0];
+  const out = { pid, project: (await get(l, 'projects', pid)) || null, copy: !!(cd && await get(cd, 'docs', pid)), dev: await get(l, 'settings', 'deviceId') };
+  l.close(); if (cd) cd.close(); return out;
+}, pid);
+const secOf = (p, id) => (p && p.sections.find(s => s.id === id)) || null;
 
 let A, B, C;
 try {
@@ -158,6 +184,75 @@ try {
   const own = await B.page.evaluate(() => [...document.querySelectorAll('.pmark b,#presence .pchip')].map(e => e.textContent));
   check('B never sees itself (not even its pre-reload session) as someone else', !own.includes('BI') && own.includes('AT'), own.join(','));
 
+  /* ---- A sets a frame that takes a while to hash while B keeps typing: A's image stays and reaches B as its hash ---- */
+  const fId = await A.page.locator('.card').nth(2).getAttribute('data-id');
+  await A.page.locator('.card').nth(2).click();
+  await A.page.evaluate(() => sessionStorage.setItem('slowHash', '3000'));
+  const noise = await A.page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const g = c.getContext('2d'), im = g.createImageData(1280, 720);
+    for (let i = 0; i < im.data.length; i++) im.data[i] = (i * 2654435761 >>> 13) & 255; g.putImageData(im, 0, 0); return c.toDataURL('image/png').split(',')[1]; });
+  await B.page.locator('.card').nth(0).click(); await B.page.click('#f-notes'); await B.page.keyboard.press('Control+End');
+  const typingF = B.page.keyboard.type(' B types while A sets a frame'.repeat(2), { delay: 70 });
+  await sleep(300);
+  await A.page.setInputFiles('#f-img', { name: 'big-frame.png', mimeType: 'image/png', buffer: Buffer.from(noise, 'base64') });
+  const hasImg = () => A.page.evaluate(id => !!document.querySelector(`.card[data-id="${id}"] .thumb img`), fId);
+  await sleep(1500); const midF = await hasImg(); await typingF;
+  // saved once A's save timer (700 ms after the last change, B's keystrokes included) runs
+  const aF = await until(async () => secOf((await stored(A.page)).project, fId)?.img || '', 4000) || '';
+  check('A: a frame still being hashed is not undone by B\'s typing', midF && await hasImg() && /^m/.test(aF), `while hashing: ${midF}, saved: ${aF.slice(0, 12)}`);
+  const bF = await until(async () => { const v = secOf((await stored(B.page)).project, fId)?.img || ''; return v.startsWith('sha256-') ? v : ''; }, 9000);
+  check('the frame reaches B as sha256-…', /^sha256-[0-9a-f]{64}$/.test(bF), bF.slice(0, 20) || 'nothing');
+  await A.page.evaluate(() => sessionStorage.removeItem('slowHash'));
+
+  /* ---- a take finishes downloading on A (a fake OpenRouter job, nothing leaves the machine) while B types ---- */
+  const JOB = 'https://openrouter.ai/api/v1/videos/job-collab-check';
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
+  await A.page.route(u => u.href.startsWith(JOB), r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+    if (r.request().url().includes('/content')) return r.fulfill({ status: 200, headers: { ...cors, 'content-type': 'video/mp4' }, body: Buffer.alloc(65536, 7) });
+    return r.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ id: 'job-collab-check', status: 'completed', unsigned_urls: [JOB + '/content?index=0'] }) });
+  });
+  const tId = await A.page.locator('.card').nth(1).getAttribute('data-id');
+  await A.page.evaluate(() => document.activeElement && document.activeElement.blur()); await sleep(1200);
+  // a pending take this browser started, straight into its saved project (as after a reload mid-generation)
+  await A.page.evaluate(async sid => {
+    const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
+    const st = n => d.transaction(n, 'readwrite').objectStore(n), get = (n, k) => new Promise(r => { const g = st(n).get(k); g.onsuccess = () => r(g.result); });
+    const put = (n, v, k) => new Promise(r => { const p = st(n).put(v, k); p.onsuccess = r; });
+    const pid = Object.keys((await get('settings', 'collab')).rooms)[0], dev = await get('settings', 'deviceId'), p = await get('projects', pid);
+    const s = p.sections.find(x => x.id === sid);
+    s.takes = [{ id: 't-check', jobId: 'job-collab-check', model: 'alibaba/wan-3.0', modelName: 'Wan 3.0', res: '480p', dur: 4, audio: false, seed: '', prompt: 'check', start: true, end: false, est: 0.2, cost: null, status: 'pending', created: Date.now(), error: '', note: '', media: '', dev }, ...(s.takes || [])];
+    p.updated = Date.now(); await put('projects', p, pid); await put('settings', 'sk-or-v1-collab-check-not-a-key', 'apiKey');
+    sessionStorage.setItem('slowHash', '3000');
+  }, tId);
+  await A.page.reload(); await A.page.waitForSelector('.card');
+  await B.page.click('#f-notes'); await B.page.keyboard.press('Control+End');
+  await B.page.keyboard.type(' B types while A\'s take lands'.repeat(4), { delay: 70 });   // ~8 s: poll, download, hash all inside
+  const aT = () => stored(A.page).then(v => (secOf(v.project, tId)?.takes || []).find(t => t.id === 't-check') || {});
+  const aTake = await until(async () => { const t = await aT(); return t.status === 'completed' ? t : null; }, 6000) || {};
+  check('A: the landed take keeps its media through B\'s edits (status "completed" with a file)', aTake.status === 'completed' && /^m/.test(aTake.media || ''), `${aTake.status}/${(aTake.media || '""').slice(0, 10)}`);
+  const bT = await until(async () => { const t = (secOf((await stored(B.page)).project, tId)?.takes || []).find(t => t.id === 't-check'); return t && /^sha256-/.test(t.media || '') ? t : null; }, 9000);
+  check('the take reaches B as completed with sha256-… media', !!bT && bT.status === 'completed', bT ? bT.media.slice(0, 20) : 'no media');
+  await A.page.evaluate(() => sessionStorage.removeItem('slowHash')); await A.page.unroute(u => u.href.startsWith(JOB)).catch(() => {});
+  await until(async () => (await chip(A.page)) === 'Synced');
+
+  /* ---- the same browser in two tabs on one bound project: one person for the others, no duplicate, same state ---- */
+  const A2 = await A.ctx.newPage();
+  A2.on('console', m => { log.console.push(`A2 ${m.type()}: ${m.text()}`); }); A2.on('pageerror', e => log.console.push(`A2 pageerror: ${e.message}`));
+  await A2.goto(app); await A2.waitForSelector('.card'); await until(async () => (await chip(A2)) === 'Synced');
+  await A2.locator('.card').nth(3).click(); await A.page.locator('.card').nth(0).click(); await sleep(800);
+  const pB = await presence(B.page), pA2 = await presence(A2), pA = await presence(A.page);
+  check('two tabs of A: B lists A once; neither tab lists A itself', pB === 'AT' && pA2 === 'BI' && pA === 'BI', `B:${pB} A:${pA} A2:${pA2}`);
+  await A2.click('#f-title'); await A2.keyboard.press('End');
+  await A.page.click('#f-notes'); await A.page.keyboard.press('Control+End');
+  await Promise.all([A2.keyboard.type(' [tab 2]', { delay: 40 }), A.page.keyboard.type(' [tab 1]', { delay: 40 })]);
+  await A.page.evaluate(() => document.activeElement.blur()); await A2.evaluate(() => document.activeElement.blur());
+  const sameAll = await until(async () => { const l = await Promise.all([cards(A.page), cards(A2), cards(B.page)]).then(x => x.map(c => JSON.stringify(c)));
+    return l[0] === l[1] && l[1] === l[2] && l[0].includes(' [tab 2]'); });
+  await sleep(1500);
+  const [sA, sB] = [await stored(A.page), await stored(B.page)], strip = p => JSON.stringify(p.sections.map(s => [s.id, s.start, s.title, s.notes, (s.takes || []).length]));
+  check('two tabs of A: both tabs\' edits reach everyone, and A\'s saved project matches B\'s', !!sameAll && strip(sA.project) === strip(sB.project) && secOf(sA.project, await A.page.locator('.card').nth(0).getAttribute('data-id')).notes.endsWith(' [tab 1]'));
+  await A2.close();
+
   /* ---- C: has a local project; a wrong token first, then the right link as a new project ---- */
   C = await newPage('C');
   await C.page.goto(app); await C.page.waitForSelector('.card'); await sleep(400);
@@ -184,6 +279,13 @@ try {
   await setToken(C.page, room.token); await C.page.goto(app + '?sync=hang'); await C.page.waitForSelector('.card'); await sleep(800);
   check('server not answering yet: chip says Syncing…', (await chip(C.page)) === 'Syncing…', await chip(C.page));
   await shot(C.page, 'chip-syncing');
+  // the handshake as the server gets it: the token only in Sec-WebSocket-Protocol, never in the request line
+  await C.page.goto(app + '?sync=tap'); await until(async () => (await chip(C.page)) === 'Synced');
+  const hs = taps.find(t => t.req.startsWith(`GET /r/${room.room}`)) || { req: '', res: '' };
+  const reqLine = hs.req.split('\r\n')[0], proto = /^sec-websocket-protocol: *(.*)$/im.exec(hs.req)?.[1] || '', echoed = /^sec-websocket-protocol: *(.*)$/im.exec(hs.res)?.[1] || '';
+  check('Chromium sends the token as the second WebSocket subprotocol, not in the URL; the server echoes only "cueboard"',
+    proto.split(/, */).join(',') === `cueboard,${room.token}` && !reqLine.includes(room.token) && /^HTTP\/1\.1 101/.test(hs.res) && echoed.trim() === 'cueboard',
+    `${reqLine.replace(room.room, '<room>')} · protocols: ${proto.replace(room.token, '<token>')} · echoed: ${echoed.trim()}`);
   await C.page.goto(app); await until(async () => (await chip(C.page)) === 'Synced');
 
   /* ---- B leaves: keeps a local copy, stops syncing ---- */
@@ -197,10 +299,10 @@ try {
   /* ---- layout with the chip and presence: 1920 to 820 ---- */
   const widths = [1920, 1440, 1280, 1100, 900, 820], over = [];
   // every chip state's label, longest included (the chip's text is set directly here; the states themselves are checked above)
-  const states = [['synced', 'Synced', 'ok'], ['offline', 'Offline, changes will sync', 'off'], ['rejected', "Can't reach the room", 'err']];
-  for (const [st, label, cls] of states) for (const w of widths) {
+  const states = [['synced', 'Synced', 'ok'], ['offline', 'Offline, changes will sync', 'off'], ['rejected', "Can't reach the room", 'err'], ['synced', 'Synced, 2 files not shared', 'ok', 1]];
+  for (const [st, label, cls, un] of states) for (const w of widths) {
     await A.page.setViewportSize({ width: w, height: 900 });
-    await A.page.evaluate(([st, label, cls]) => { const c = document.getElementById('cstat'); c.dataset.state = st; c.textContent = label; c.className = 'status cchip ' + cls; }, [st, label, cls]);
+    await A.page.evaluate(([st, label, cls, un]) => { const c = document.getElementById('cstat'); c.dataset.state = st; c.textContent = label; c.className = 'status cchip ' + cls; if (un) c.dataset.unshared = ''; else delete c.dataset.unshared; }, [st, label, cls, un]);
     await sleep(120); const o = await A.page.evaluate(() => document.documentElement.scrollWidth - innerWidth); if (o > 0) over.push(`${st}@${w}:${o}`);
   }
   await A.page.setViewportSize({ width: 1440, height: 900 });
@@ -226,10 +328,21 @@ try {
   // expected noise, as in shoot.mjs: the api/health probe (404 without server.mjs) and the aborted OpenRouter model list
   const errs = log.console.filter(l => / (error|pageerror):/.test(l) && !/Failed to load resource/.test(l));
   check('no console errors (besides blocked/404 probes); no WebSocket errors', !errs.length, errs.slice(0, 3).join(' / '));
+
+  /* ---- leaving from a tab that never loaded collab.js still deletes the room's offline copy ---- */
+  const cBefore = await stored(C.page);
+  await C.page.close();
+  const C2 = await C.ctx.newPage(); let blocked = 0;
+  await C2.route(u => u.pathname.endsWith('/collab.js'), r => { blocked++; return r.abort(); });
+  await C2.goto(app); await C2.waitForSelector('.card');
+  await until(async () => (await chip(C2)) === "Can't reach the room");
+  await menu(C2, 'leave'); await sleep(600);
+  const cAfter = await stored(C2, cBefore.pid);
+  check('leave without collab.js loaded: the room\'s offline copy is gone, the project stays', blocked > 0 && cBefore.copy && !cAfter.copy && !!cAfter.project && (await chip(C2)) === '', `copy before ${cBefore.copy}, after ${cAfter.copy}; collab.js requests blocked: ${blocked}`);
 } catch (e) {
   check('run completed', false, e.stack.split('\n').slice(0, 3).join(' '));
 } finally {
-  await browser.close(); server.kill('SIGTERM'); srv.close(); hang.close();
+  await browser.close(); server.kill('SIGTERM'); srv.close(); hang.close(); tap.close();
   rmSync(dataDir, { recursive: true, force: true });
   const fails = log.checks.filter(c => !c.ok).length;
   console.log(`\n${log.checks.length - fails}/${log.checks.length} passed`);
