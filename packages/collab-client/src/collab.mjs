@@ -271,13 +271,20 @@ export function createCollab(app, syncUrl) {
     function peers() {
       /** @type {Peer[]} */ const out = [];
       if (!prov) return out;
-      for (const [id, st] of prov.awareness.getStates()) {
+      const a = prov.awareness, at = (/** @type {number} */ id) => a.meta.get(id)?.lastUpdated || 0;
+      /** @type {Map<string, number>} */ const byDev = new Map();   // someone else's browser -> its index in `out`
+      for (const [id, st] of a.getStates()) {
         if (id === doc.clientID || !st || typeof st !== 'object') continue;
         // this browser in another tab, or this tab before a reload (its state lingers until it times out): not someone else
         if (binding.dev && st.user && st.user.dev === binding.dev) continue;
         const name = sanitizeName(st.user && st.user.name); if (!name) continue;
-        out.push({ id, name, initials: initials(name), sel: typeof st.sel === 'string' && SHOT_ID.test(st.sel) ? st.sel : null });
-        if (out.length >= 24) break;
+        const p = { id, name, initials: initials(name), sel: typeof st.sel === 'string' && SHOT_ID.test(st.sel) ? st.sel : null };
+        // one person per browser: two tabs, or a tab and its pre-reload session, show once (the most recently active)
+        const dev = st.user && typeof st.user.dev === 'string' && st.user.dev ? st.user.dev : '', i = dev ? byDev.get(dev) : undefined;
+        if (i !== undefined) { if (at(id) > at(out[i].id)) out[i] = p; continue; }
+        if (out.length >= 24) continue;
+        if (dev) byDev.set(dev, out.length);
+        out.push(p);
       }
       return out;
     }
