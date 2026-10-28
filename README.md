@@ -74,3 +74,13 @@ Side B shows an estimate before each generation, computed from OpenRouter's live
 ## License
 
 MIT. See `LICENSE`.
+
+## Monorepo
+
+The repo is also an npm workspaces monorepo (Node 20+), for the multi-user version in progress. The app above is unaffected: `index.html` still needs no build and no `npm install`.
+
+| Path | What it is |
+|---|---|
+| `packages/sync-server` | Real-time sync server for shared cue boards (Yjs over WebSocket, one room per project, invite links). A spike: see its `SPIKE.md`. |
+
+`npm install` at the root installs all packages; `npm test` runs their tests. The app itself will move to `apps/web` later.
