@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "npm test --workspaces --if-present"
+    "test": "npm test --workspaces --if-present",
+    "build:collab": "npm run build -w @cue-board/collab-client"
   }
 }
