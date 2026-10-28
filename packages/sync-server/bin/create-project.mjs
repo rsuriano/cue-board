@@ -14,7 +14,11 @@ import { cueboardToDoc, parseExampleJS } from '../src/import-cueboard.mjs';
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { import: { type: 'string' }, invite: { type: 'string' }, 'data-dir': { type: 'string' } } });
 const store = new ProjectStore(values['data-dir'] || process.env.DATA_DIR || './data');
 const base = process.env.PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3300}/demo/`;
-const link = (/** @type {string} */ id, /** @type {string} */ token) => `${base}?room=${id}&token=${token}`;
+// APP_URL (e.g. https://cue.bedrocklabs.dev/): also print a link that opens the app and joins. The token sits in the
+// #fragment, which browsers never send to the server; the app strips it from the address bar on load.
+const appUrl = process.env.APP_URL || '';
+const link = (/** @type {string} */ id, /** @type {string} */ token) =>
+  `${base}?room=${id}&token=${token}` + (appUrl ? `\napp:    ${appUrl.replace(/#.*$/, '')}#join=${id}.${token}` : '');
 
 if (values.invite) {
   if (!store.exists(values.invite)) { console.error(`no room ${values.invite}`); process.exit(1); }
