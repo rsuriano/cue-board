@@ -45,9 +45,11 @@ async function op(name, mode, fn) {
 /** @type {Map<string, { sha256: string, bytes: number, mime: string }>} */ const hashes = new Map();
 /** @type {Map<string, string>} */ const bySha = new Map();
 /** @type {Set<string>} */ const noFile = new Set();
+/** a hash's local id, unless that one is gone: then the newest copy wins */
+const noteHash = (/** @type {string} */ hex, /** @type {string} */ id) => { const was = bySha.get(hex); if (!was || noFile.has(was)) bySha.set(hex, id); };
 const hashesLoaded = (async () => {
   const [keys, vals] = await Promise.all([op('hashes', 'readonly', st => st.getAllKeys()), op('hashes', 'readonly', st => st.getAll())]);
-  (keys || []).forEach((/** @type {any} */ k, /** @type {number} */ i) => { const v = vals && vals[i]; if (typeof k === 'string' && v && typeof v.sha256 === 'string') { hashes.set(k, v); if (!bySha.has(v.sha256)) bySha.set(v.sha256, k); } });
+  (keys || []).forEach((/** @type {any} */ k, /** @type {number} */ i) => { const v = vals && vals[i]; if (typeof k === 'string' && v && typeof v.sha256 === 'string') { hashes.set(k, v); noteHash(v.sha256, k); } });
 })();
 const canHash = () => !!(globalThis.crypto && crypto.subtle);
 async function sha256(/** @type {Blob} */ b) {
@@ -55,6 +57,17 @@ async function sha256(/** @type {Blob} */ b) {
   return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 const localIdFor = (/** @type {string} */ hex) => { const id = bySha.get(hex); return id && !noFile.has(id) ? id : undefined; };
+/** The app deleted media file `id`: forget its hash, so a remote ref to the same content finds another local copy
+    (or a later one) instead of the dead id. Ids are never reused. */
+async function dropMedia(/** @type {string} */ id) {
+  await hashesLoaded;
+  const h = hashes.get(id); hashes.delete(id); noFile.add(id);
+  if (h && bySha.get(h.sha256) === id) {
+    bySha.delete(h.sha256);
+    for (const [k, v] of hashes) if (v.sha256 === h.sha256 && !noFile.has(k)) { bySha.set(h.sha256, k); break; }
+  }
+  return op('hashes', 'readwrite', st => st.delete(id));
+}
 
 /**
  * @typedef {{ roomId: string, token: string, name: string, dev?: string }} Binding   dev: this browser's id
@@ -167,7 +180,8 @@ export function createCollab(app, syncUrl) {
           const b = await app.mediaBlob(id);
           if (!b) { noFile.add(id); continue; }
           const ref = { sha256: await sha256(b), bytes: b.size, mime: b.type || '' };
-          hashes.set(id, ref); if (!bySha.has(ref.sha256)) bySha.set(ref.sha256, id);
+          if (noFile.has(id)) continue;          // deleted (dropMedia) while it was being hashed
+          hashes.set(id, ref); noteHash(ref.sha256, id);
           op('hashes', 'readwrite', st => st.put(ref, id));
         } catch { failed.add(id); }            // read or hash failed or was aborted: the file stays here, unshared
       }
@@ -340,5 +354,5 @@ export function createCollab(app, syncUrl) {
     };
   }
 
-  return { probe, open, seed, forget };
+  return { probe, open, seed, forget, dropMedia };
 }

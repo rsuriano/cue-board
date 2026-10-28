@@ -63,7 +63,7 @@ async function setup() {
   }
   const aShot = () => app.cur.sections.find(s => s.id === sid);
   const done = () => { sess.stop(); pb.destroy(); b.destroy(); };
-  return { app, sess, media, reads, b, sid, bShot, aShot, bTypes, done };
+  return { app, collab, sess, media, reads, b, sid, bShot, aShot, bTypes, done };
 }
 
 test('a frame image waiting for its hash survives remote edits, then reaches the room as its hash', async () => {
@@ -139,6 +139,30 @@ test('two quick changes to the same field while the first hashes: the last one w
     await sleep(200);
     assert.equal(t.bShot().get('img').sha256, hex('second'));
     assert.equal(t.aShot().img, 'm-b');
+  } finally { t.done(); }
+});
+
+test('a file deleted here and added again under a new id: a remote ref to its hash resolves to the new id', async () => {
+  const t = await setup();
+  try {
+    const h = hex('re-added'), ref = { sha256: h, bytes: 8, mime: 'image/png' };
+    t.media.set('m-old', async () => blob('re-added'));
+    Object.assign(t.aShot(), { img: 'm-old', kind: 'image' }); t.sess.changed(true);
+    await until(() => t.bShot().get('img')?.sha256 === h, 'first copy reaches the room');
+    // the app releases it (nothing uses it anymore) and deletes the blob
+    Object.assign(t.aShot(), { img: '', kind: '' }); t.sess.changed(true);
+    await until(() => !t.bShot().get('img'), 'the room drops it');
+    t.media.delete('m-old'); await t.collab.dropMedia('m-old');
+    t.bShot().set('endKey', { ...ref });
+    await until(() => t.aShot().endKey === 'sha256-' + h, 'with no local copy the ref stays a hash, not the dead id');
+    // the same file, added again: a new id
+    t.media.set('m-new', async () => blob('re-added'));
+    Object.assign(t.aShot(), { img: 'm-new', kind: 'image' }); t.sess.changed(true);
+    await until(() => t.bShot().get('img')?.sha256 === h, 'the new copy reaches the room');
+    t.bShot().set('key', { ...ref });
+    await until(() => t.aShot().key === 'm-new' || t.aShot().key === 'm-old', 'B\'s ref reaches A');
+    assert.equal(t.aShot().key, 'm-new', 'resolved to the file this device has');
+    assert.equal(t.aShot().img, 'm-new');
   } finally { t.done(); }
 });
 
