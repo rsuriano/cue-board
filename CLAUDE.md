@@ -1,6 +1,7 @@
 # Cue Board
 
 Single-file web app: everything is in `index.html`, with no build step and no dependencies. `server.mjs` is an optional local relay that only listens on `127.0.0.1`. See `README.md` for what the app does.
+The app (`index.html`) still has no build step and no dependencies; the repo now also has a root `package.json` with npm workspaces for `packages/`, which are never deployed to hephaestus.
 
 ## Deploying
 
