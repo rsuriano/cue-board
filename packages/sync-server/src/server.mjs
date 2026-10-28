@@ -6,6 +6,7 @@
    Close codes: 4400 malformed message · 4401 bad token · 4404 unknown room · 4429 too many connections from this IP
                 4500 room unavailable (unreadable project.json or updates.bin, or the room is degraded: an append to its log
                 failed and it refuses joins until a compaction gets its state on disk; see the error log)
+                Message type 10 is media signaling and relay (media-relay.mjs, docs/media-p2p.md).
                 1009 message too big (sent by ws) · 1001 server shutting down · 1006 terminated (no pong, or a slow reader) */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -20,6 +21,7 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { ProjectStore, CorruptLogError } from './store.mjs';
 import { createLogger } from './log.mjs';
+import { createMediaRelay, MSG_MEDIA } from './media-relay.mjs';
 
 const MSG_SYNC = 0, MSG_AWARENESS = 1, MSG_QUERY_AWARENESS = 3;
 const DEMO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../demo');
@@ -29,7 +31,7 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
- *   log?: ReturnType<typeof createLogger> }} [opts]
+ *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
 export async function startServer(opts = {}) {
   const o = {
@@ -41,6 +43,7 @@ export async function startServer(opts = {}) {
   /** @type {Map<string, Room>} */ const rooms = new Map();
   /** @type {Map<string, number>} */ const perIp = new Map();
   let closing = false, warnedShortXff = false;
+  const relay = createMediaRelay(o.media || {}, log, (ws, msg) => send(ws, msg));
 
   /** failing: compaction is failing (logged once per burst). degraded: an append failed, so the log on disk is behind the
       doc (maybe with a torn tail); nothing more is appended until a compaction rewrites it, and new joins get 4500.
@@ -206,6 +209,7 @@ export async function startServer(opts = {}) {
     w.ip = ip; w.pingNonce = null;
     ws.on('pong', data => { if (w.pingNonce && w.pingNonce.equals(data)) w.pingNonce = null; });
     log.debug('joined', { room: id, ip, conns: room.conns.size });
+    relay.attach(room, ws, ip);
 
     ws.on('message', (data, isBinary) => {
       try {
@@ -221,6 +225,8 @@ export async function startServer(opts = {}) {
           awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(dec), ws);
         } else if (type === MSG_QUERY_AWARENESS) {
           sendAwareness(ws, room);
+        } else if (type === MSG_MEDIA) {
+          relay.handle(room, ws, dec);
         } else throw new Error('unknown message type ' + type);
       } catch (err) {
         log.warn('closing: malformed message', { room: id, ip, err: /** @type {Error} */ (err).message });
@@ -231,6 +237,7 @@ export async function startServer(opts = {}) {
     ws.on('close', code => {
       const ids = room.conns.get(ws);
       room.conns.delete(ws);
+      relay.detach(room, ws);
       const left = (perIp.get(ip) || 1) - 1;
       if (left) perIp.set(ip, left); else perIp.delete(ip);
       if (ids && ids.size) awarenessProtocol.removeAwarenessStates(room.awareness, [...ids], null);
@@ -283,5 +290,5 @@ export async function startServer(opts = {}) {
     log.info('stopped');
   }
 
-  return { port: addr.port, url: `ws://${o.host}:${addr.port}/r`, rooms, store, close };
+  return { port: addr.port, url: `ws://${o.host}:${addr.port}/r`, rooms, store, close, mediaStats: relay.stats };
 }
