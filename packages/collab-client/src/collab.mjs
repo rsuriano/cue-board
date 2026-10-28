@@ -4,7 +4,8 @@
    nothing here touches the app's own storage.
 
    Storage (IndexedDB "cueboard-collab", separate from the app's "cueboard-local"):
-     docs   : projectId -> Y.Doc state (offline edits survive a reload and merge on reconnect)
+     docs   : projectId -> { u: Y.Doc state, base: the push base that goes with the app's saved project } (offline
+              edits survive a reload and merge on reconnect). A bare Uint8Array (seed(), older copies) has no base.
      hashes : mediaId   -> { sha256, bytes, mime } (this device's media files, by content hash)
    The invite token only ever goes into the WebSocket subprotocol list, never into a URL, a log line or the doc. */
 import * as Y from 'yjs';
@@ -99,7 +100,8 @@ export function createCollab(app, syncUrl) {
 
   /** Keep a room's state for a local project before its session opens (so "open as a new project" starts offline-ready). */
   const seed = (/** @type {string} */ pid, /** @type {Uint8Array} */ update) => op('docs', 'readwrite', st => st.put(update, pid));
-  const forget = (/** @type {string} */ pid) => op('docs', 'readwrite', st => st.delete(pid));
+  /** @type {Map<string, Set<() => void>>} */ const live = new Map();   // pid -> its open sessions' "never write the copy again"
+  const forget = (/** @type {string} */ pid) => { for (const f of live.get(pid) || []) f(); return op('docs', 'readwrite', st => st.delete(pid)); };
 
   /**
    * Bind the open project `pid` to its room.
@@ -110,6 +112,12 @@ export function createCollab(app, syncUrl) {
     const doc = new Y.Doc();
     /** @type {WebsocketProvider | null} */ let prov = null;
     /** @type {any} */ let last = null;           // the project as the doc held it after our last push or pull
+    /* `last` as it was when the app last saved its project (mark/saved), stored with the offline copy so a reopen pushes
+       only what changed since. Never ahead of the app's saved project: a remote change pulled here but not yet in the
+       app's storage when the page dies is in the doc and not in the base, so the reopen pulls it instead of undoing it. */
+    /** @type {any} */ let savedBase = null;
+    let dropped = false;                          // forget(pid): the offline copy is gone and is never written again
+    /** @type {Uint8Array | null} */ let finalState = null;
     let ready = false, stopped = false, rejected = false, failing = false, pullQueued = false;
     /** @type {any} */ let caret = null;
     /** @type {any} */ let refs = new Map(), songFile = null, songLocal = null, songFor = null;
@@ -225,14 +233,16 @@ export function createCollab(app, syncUrl) {
     /** First look at the doc: from here on edits flow both ways. */
     function start() {
       const v = docToProject(doc, localIdFor); if (!v) return;
-      refs = v.refs; songFile = v.songFile; last = v.project; ready = true;
+      refs = v.refs; songFile = v.songFile; last = savedBase || v.project; ready = true;
       push();                                    // local edits the doc never got (saved here, page closed before sending)
+      if (!savedBase) savedBase = last;          // a copy without a base (seeded, or older): the app's project is what we just synced
+      queuePull();                               // and what the doc has that the app's saved project doesn't
     }
     function firstSync() {
       if (ready || stopped) return;
       if (mode === 'share') {
         if (!isEmptyRoom(doc)) { app.onEvent(pid, 'not-empty'); return; }
-        clearShots(doc, LOCAL); last = null; ready = true; push();
+        clearShots(doc, LOCAL); last = null; ready = true; push(); savedBase = last;
         app.onEvent(pid, 'shared');
         return;
       }
@@ -241,8 +251,20 @@ export function createCollab(app, syncUrl) {
 
     doc.on('beforeTransaction', tr => { if (ready && tr.origin !== LOCAL && !caret) caret = captureCaret(); });
     doc.on('afterTransaction', tr => { if (ready && tr.origin !== LOCAL && (tr.changed.size || tr.deleteSet.clients.size)) queuePull(); });
-    const saveDoc = () => op('docs', 'readwrite', st => st.put(Y.encodeStateAsUpdate(doc), pid));
+    const saveDoc = () => {
+      saveTimer = 0; if (dropped) return;
+      const u = finalState || Y.encodeStateAsUpdate(doc), base = savedBase;
+      op('docs', 'readwrite', st => st.put({ u, base }, pid));
+    };
     doc.on('update', () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveDoc, 300); });
+    const onHide = () => { if (saveTimer && !stopped) { clearTimeout(saveTimer); saveDoc(); } };
+    const onVis = () => { if (document.visibilityState === 'hidden') onHide(); };
+    window.addEventListener('pagehide', onHide); globalThis.document?.addEventListener('visibilitychange', onVis);
+    const drop = () => { dropped = true; clearTimeout(saveTimer); };
+    if (!live.has(pid)) live.set(pid, new Set());
+    /** @type {Set<() => void>} */ (live.get(pid)).add(drop);
+    const unlist = () => { const l = live.get(pid); if (l) { l.delete(drop); if (!l.size) live.delete(pid); } };
+    let marks = 0;                                // app saves begun (mark) and not finished (saved)
 
     const onOnline = () => { if (prov && !rejected && !stopped) prov.connect(); report(); };
     const onOffline = () => { if (prov) prov.disconnect(); report(); };
@@ -252,7 +274,9 @@ export function createCollab(app, syncUrl) {
       await hashesLoaded;
       const saved = await op('docs', 'readonly', st => st.get(pid));
       if (stopped) return;
-      if (saved) { try { Y.applyUpdate(doc, new Uint8Array(saved), 'idb'); } catch { /* a damaged local copy: the server's state fills in */ } }
+      const u = saved && saved.u ? saved.u : saved, b = saved && saved.u && saved.base;
+      const base = b && typeof b === 'object' && Array.isArray(b.sections) ? b : null;   // written by us, like the app's own copy
+      if (u) { try { Y.applyUpdate(doc, new Uint8Array(u), 'idb'); savedBase = base; } catch { /* a damaged local copy: the server's state fills in */ } }
       if (mode === 'normal' && shotsMap(doc).size) start();   // offline-first: editable before the server answers
       prov = connect(binding.roomId, binding.token, doc, navigator.onLine);
       prov.awareness.setLocalState({ user: { name: binding.name, dev: binding.dev || '' }, sel: null });
@@ -292,14 +316,24 @@ export function createCollab(app, syncUrl) {
     return {
       /** the app changed something; text edits go out at once, the rest batched */
       changed(/** @type {boolean} */ now) { clearTimeout(pushTimer); if (now) push(); else pushTimer = setTimeout(push, 150); },
+      /** the app is about to save its project: send what's unsent, and return the base that goes with that save */
+      mark() { if (!ready || stopped) return undefined; clearTimeout(pushTimer); push(); marks++; return { base: last }; },
+      /** that save is done (ok: it went through): the offline copy gets its base now, also after stop() unless the room was left */
+      saved(/** @type {any} */ m, /** @type {boolean} */ ok) {
+        if (!m) return;
+        if (!--marks && stopped) unlist();
+        if (ok && !dropped) { savedBase = m.base; clearTimeout(saveTimer); saveDoc(); }
+      },
       select(/** @type {string | null} */ id) { const a = prov && prov.awareness; if (a && a.getLocalState()?.sel !== id) a.setLocalStateField('sel', id); },
       status,
       peers,
       stop() {
         if (stopped) return;
         clearTimeout(pushTimer); push(); stopped = true;
-        clearTimeout(saveTimer); saveDoc();
+        clearTimeout(saveTimer); finalState = Y.encodeStateAsUpdate(doc); saveDoc();
         window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline);
+        window.removeEventListener('pagehide', onHide); globalThis.document?.removeEventListener('visibilitychange', onVis);
+        if (!marks) unlist();
         if (prov) { prov.awareness.setLocalState(null); prov.destroy(); }
         setTimeout(() => doc.destroy(), 0);
       },

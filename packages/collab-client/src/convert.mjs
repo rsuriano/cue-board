@@ -148,7 +148,9 @@ export function isEmptyRoom(/** @type {Y.Doc} */ doc) {
 /* ---------- app -> doc ---------- */
 /** Apply the edit that turned `from` into `to` to a Y.Text that may have moved on since (someone else typed). */
 function editText(/** @type {Y.Text} */ yt, /** @type {string} */ from, /** @type {string} */ to) {
-  if (yt.toString() === from) { setText(yt, to); return; }
+  const now = yt.toString();
+  if (now === to) return;                       // already there (e.g. the same edit, pushed again after a reopen)
+  if (now === from) { setText(yt, to); return; }
   let a = 0; while (a < from.length && a < to.length && from[a] === to[a]) a++;
   let b = 0; while (b < from.length - a && b < to.length - a && from[from.length - 1 - b] === to[to.length - 1 - b]) b++;
   const at = Math.min(a, yt.length), del = Math.min(from.length - a - b, yt.length - at), ins = to.slice(a, to.length - b);
