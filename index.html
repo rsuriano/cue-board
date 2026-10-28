@@ -713,15 +713,18 @@ assets={
   upload:async(blob,o)=>{const id=uid("m");const type=(o&&o.type)||blob.type||"application/octet-stream";const b=blob.type===type?blob:new Blob([blob],{type});
     const r=await idbS("media","readwrite",st=>st.put({blob:b,type},id));if(r===null)throw{code:"quota_or_state"};
     mediaCache.set(id,URL.createObjectURL(b));return{id,url:mediaCache.get(id)}},
-  delete:async id=>{await idbS("media","readwrite",st=>st.delete(id));const u=mediaCache.get(id);if(u){URL.revokeObjectURL(u);mediaCache.delete(id)}return{deleted:true}}
+  delete:async id=>{await idbS("media","readwrite",st=>st.delete(id));const u=mediaCache.get(id);if(u){URL.revokeObjectURL(u);mediaCache.delete(id)}forgetHash(id);return{deleted:true}}
 };
+/* a media id that a project other than `skip` still uses (of `ps`: every saved project and the open one). A room maps
+   a file's hash to whichever local copy this browser has, so two projects may point at the same id; a room's offline
+   copy belongs to one of these projects. The one check before any media file is deleted. */
+function mediaInUse(id,skip,ps=[...projects,cur]){return ps.some(q=>q&&q.id!==skip&&projectMediaIds(q).includes(id))}
 /* delete a media blob only once nothing in the project points at it anymore, and only after the project that stopped
    pointing at it has been saved: until then the saved copy (and a room still sending the old value) may need it */
 const toRelease=new Map();
 function releaseMedia(id){if(id&&cur)toRelease.set(id,cur.id)}
-/* (a room maps a file's hash to whichever local copy this browser has, so another project may point at the same id) */
 function releaseSaved(p){for(const [id,pid] of toRelease)if(pid===p.id){toRelease.delete(id);
-  if(![p,...projects,...(cur?[cur]:[])].some(q=>projectMediaIds(q).includes(id)))assets.delete(id).catch(()=>{})}}
+  if(!mediaInUse(id,null,[p,...projects,cur]))assets.delete(id).catch(()=>{})}}
 
 /* now=true for typing in a shared text field: it goes to the room at once, so remote edits merge around the caret */
 function scheduleSave(now){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);if(csess)csess.changed(!!now)}
@@ -1058,7 +1061,7 @@ twoTap($("delp"),"Delete","Tap again to delete",async()=>{
   if(!cur||!store)return;const id=cur.id,imgs=projectMediaIds(cur);
   clearTimeout(timer);timer=null;dirty=false;stop();
   try{await store.del(id)}catch(e){toast("Couldn't delete");return}
-  idbDo("readwrite",st=>st.delete(id));if(assets)imgs.forEach(x=>assets.delete(x).catch(()=>{}));
+  idbDo("readwrite",st=>st.delete(id));if(assets)imgs.forEach(x=>{if(!mediaInUse(x,id))assets.delete(x).catch(()=>{})});
   if(cset.rooms[id])leaveRoom(id,true);
   projects=projects.filter(p=>p.id!==id);cur=null;selId=null;hasAudio=false;lastKey="";
   if(projects.length)selectProject(projects[0]);else renderAll();toast("Project deleted");
@@ -1471,9 +1474,10 @@ $("gGo").onclick=()=>{
 };
 
 /* ---------- polling: OpenRouter jobs are async; resumes after a reload ---------- */
-/* only jobs sent from this browser: a collaborator's job belongs to their OpenRouter key, and their device fetches it.
-   A take without `dev` (older, or imported) is ours only in a project that isn't in a room */
-const ownJob=t=>t.dev?t.dev===deviceId:!(cur&&cset.rooms[cur.id]);
+/* in a room, only jobs sent from this browser: a collaborator's job belongs to their OpenRouter key, and their device
+   fetches it (a take without `dev` there is someone else's, or older). Outside a room every job is ours, whatever its
+   `dev` (a project imported from another device or origin) */
+const ownJob=t=>cur&&cset.rooms[cur.id]?!!t.dev&&t.dev===deviceId:true;
 function ensurePolling(){if(pollTimer)return;pollTimer=setInterval(pollOnce,10000);setTimeout(pollOnce,2500)}
 async function pollOnce(){
   if(polling||!cur)return;const pid=cur.id,pend=[];
@@ -1757,9 +1761,12 @@ async function collabFor(p){
 }
 /* the room's offline copy (collab.js' "cueboard-collab" database), also from a tab that never loaded collab.js.
    Never creates the database: collab.js makes its stores on first open, which an empty one here would skip */
-function forgetRoomCopy(pid){if(cmod){cmod.forget(pid);return}
+function collabDel(name,key){
   try{const q=indexedDB.open("cueboard-collab");q.onupgradeneeded=()=>q.transaction.abort();
-    q.onsuccess=()=>{const d=q.result;try{if(d.objectStoreNames.contains("docs")){const tx=d.transaction("docs","readwrite");tx.objectStore("docs").delete(pid);tx.oncomplete=tx.onabort=()=>d.close()}else d.close()}catch(e){d.close()}};q.onerror=e=>e.preventDefault()}catch(e){}}
+    q.onsuccess=()=>{const d=q.result;try{if(d.objectStoreNames.contains(name)){const tx=d.transaction(name,"readwrite");tx.objectStore(name).delete(key);tx.oncomplete=tx.onabort=()=>d.close()}else d.close()}catch(e){d.close()}};q.onerror=e=>e.preventDefault()}catch(e){}}
+function forgetRoomCopy(pid){if(cmod)cmod.forget(pid);else collabDel("docs",pid)}
+/* a deleted media file's hash: a room's ref to the same content then finds the next copy added, not the dead id */
+function forgetHash(id){if(cmod)cmod.dropMedia(id);else collabDel("hashes",id)}
 function leaveRoom(pid,quiet){
   pid=pid||(cur&&cur.id);if(!pid||!cset.rooms[pid])return;
   if(csess&&csessPid===pid){csess.stop();csess=null;csessPid=null;peers=[]}
