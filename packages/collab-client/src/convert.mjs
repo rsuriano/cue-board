@@ -167,10 +167,11 @@ function put(m, k, v) {
  * @param {Y.Doc} doc
  * @param {any} base the project as the doc had it, or null to write everything
  * @param {any} cur the app's project
- * @param {{ refOf: (id: string) => any, songRef: (song: any) => any, origin?: any }} o
+ * @param {{ refOf: (id: string) => any, songRef: (song: any) => any, origin?: any, pending?: (h: Hold) => void }} o
  *   refOf: media id -> MediaRef, or undefined if its hash isn't known yet
+ *   pending: told about every field left out for that reason (see keepPending)
  */
-export function pushProject(doc, base, cur, { refOf, songRef, origin = null }) {
+export function pushProject(doc, base, cur, { refOf, songRef, origin = null, pending = () => {} }) {
   const next = base ? clone(base) : { sections: [] };
   const ref = (/** @type {string} */ id) => (id ? refOf(id) : null);
   doc.transact(() => {
@@ -184,6 +185,7 @@ export function pushProject(doc, base, cur, { refOf, songRef, origin = null }) {
     if (!base || !same(cur.song, base.song)) {
       const sr = cur.song ? songRef(cur.song) : null;   // undefined: the song file is still being hashed, retried later
       if (sr !== undefined) { put(meta, 'song', sr); next.song = clone(cur.song ?? null); changed = true; }
+      else pending({ field: 'song', value: clone(cur.song), base: base ? base.song : undefined });
     }
     if ((!base && cur.refs) || (base && !same(cur.refs, base.refs))) {
       const rs = (cur.refs || []).map(ref);
@@ -191,7 +193,7 @@ export function pushProject(doc, base, cur, { refOf, songRef, origin = null }) {
         const ra = refsArray(doc);
         if (!same(ra.toArray(), rs)) { ra.delete(0, ra.length); ra.push(rs.filter(Boolean)); }
         meta.set('hasRefs', true); next.refs = clone(cur.refs); changed = true;
-      }
+      } else pending({ field: 'refs', value: clone(cur.refs), base: base ? base.refs : undefined });
     }
 
     const shots = shotsMap(doc);
@@ -217,13 +219,16 @@ export function pushProject(doc, base, cur, { refOf, songRef, origin = null }) {
           else ys.set(k, new Y.Text(v));
         } else if (SHOT_MEDIA_FIELDS.includes(k)) {
           const r = ref(v);
-          if (r === undefined) continue;      // hash not known yet: retried on the next push
+          if (r === undefined) {              // hash not known yet: retried on the next push
+            pending({ shot: s.id, field: k, value: v, base: b ? b[k] : undefined, ...(k === 'img' ? { also: { kind: s.kind, clipDur: s.clipDur } } : {}) });
+            continue;
+          }
           put(ys, k, r);
         } else put(ys, k, v);
         if (v === undefined) delete n[k]; else n[k] = clone(v);
         changed = true;
       }
-      n.takes = pushTakes(ys, b ? b.takes || [] : [], s.takes || [], ref);
+      n.takes = pushTakes(ys, b ? b.takes || [] : [], s.takes || [], ref, h => pending({ shot: s.id, ...h }));
       if (!same(n.takes, b ? b.takes : undefined)) changed = true;
       nextShots.push(n);
     }
@@ -234,7 +239,7 @@ export function pushProject(doc, base, cur, { refOf, songRef, origin = null }) {
 }
 
 /** Takes: matched by id, newest first. Returns what the doc now holds for them (as app takes). */
-function pushTakes(/** @type {Y.Map<any>} */ ys, /** @type {any[]} */ from, /** @type {any[]} */ to, /** @type {(id: string) => any} */ ref) {
+function pushTakes(/** @type {Y.Map<any>} */ ys, /** @type {any[]} */ from, /** @type {any[]} */ to, /** @type {(id: string) => any} */ ref, /** @type {(h: any) => void} */ pending) {
   if (same(from, to) && ys.get('takes') instanceof Y.Array) return clone(to);
   let ya = ys.get('takes');
   if (!(ya instanceof Y.Array)) { ya = new Y.Array(); ys.set('takes', ya); }
@@ -251,13 +256,40 @@ function pushTakes(/** @type {Y.Map<any>} */ ys, /** @type {any[]} */ from, /** 
     }
     for (const k of new Set([...Object.keys(t), ...Object.keys(b || {})])) {
       if (k === 'id' || k === 'useInCut' || same(t[k], b ? b[k] : undefined)) continue;
-      if (k === 'media') { const r = ref(t[k]); if (r === undefined) { n.media = b ? b.media : ''; continue; } put(ym, k, r); }
+      if (k === 'media') {
+        const r = ref(t[k]);
+        if (r === undefined) { n.media = b ? b.media : ''; pending({ take: t.id, field: k, value: t[k], base: b ? b.media : undefined }); continue; }
+        put(ym, k, r);
+      }
       else put(ym, k, t[k]);
       if (t[k] === undefined) delete n[k]; else n[k] = clone(t[k]);
     }
     out.push(n);
   });
   return out;
+}
+
+/**
+ * A field pushProject() had to leave out because its media file is still being hashed here: the doc still has the old
+ * value (`base`), this device has the new one (`value`). `also`: fields that go with it (an image's kind and clip
+ * length, which sanitizeShot() resets while the doc has no image).
+ * @typedef {{ shot?: string, take?: string, field: string, value: any, base: any, also?: any }} Hold
+ */
+/**
+ * The doc's project `p` (from docToProject) with this device's value kept for every held field, so a pull doesn't put
+ * the doc's old value back over a change that hasn't been written yet. A shot or take the doc no longer has stays gone.
+ * Changes `p` in place and returns it.
+ * @param {any} p @param {Iterable<Hold>} holds
+ */
+export function keepPending(p, holds) {
+  for (const h of holds) {
+    if (!h.shot) { p[h.field] = clone(h.value); continue; }
+    const s = p.sections.find((/** @type {any} */ x) => x.id === h.shot); if (!s) continue;
+    const o = h.take ? s.takes.find((/** @type {any} */ t) => t.id === h.take) : s; if (!o) continue;
+    o[h.field] = h.value;
+    if (h.also) for (const [k, v] of Object.entries(h.also)) { if (v === undefined) delete o[k]; else o[k] = v; }
+  }
+  return p;
 }
 
 /** Drop every shot and reference from the doc (before sharing a project into an empty room). */

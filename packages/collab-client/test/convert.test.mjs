@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import * as Y from 'yjs';
 import { cueboardToDoc, docToCueboard, parseExampleJS } from '@cue-board/sync-server/import-cueboard';
 import { shotsMap, metaMap } from '@cue-board/sync-server/schema';
-import { pushProject, docToProject, sanitizeProject, isEmptyRoom, clearShots, initials, sanitizeName, LIMITS } from '../src/convert.mjs';
+import { pushProject, keepPending, docToProject, sanitizeProject, isEmptyRoom, clearShots, initials, sanitizeName, LIMITS } from '../src/convert.mjs';
 
 const example = parseExampleJS(fs.readFileSync(new URL('../../../example/example.js', import.meta.url), 'utf8'));
 // the example has no keyframes or takes: give it some, so media refs, takes and refs are covered too
@@ -72,6 +72,24 @@ test('a media file whose hash is not known yet is left out and retried on the ne
   known = true;
   last = pushProject(doc, last, p, { refOf: ro, songRef: s => s });
   assert.equal(shotsMap(doc).get('s1').get('img').sha256, 'a'.repeat(64));
+});
+
+test('fields left out for a hash are reported, and keepPending puts them over the doc\'s state (not over a deleted shot or take)', () => {
+  const doc = new Y.Doc(), p = { title: 'x', song: null, refs: ['m-r'], sections: [
+    { id: 's1', start: 0, title: '', notes: '', img: 'm-i', kind: 'video', clipDur: 3, takes: [{ id: 't1', status: 'completed', media: 'm-t' }] },
+    { id: 's2', start: 5, title: '', notes: '', img: 'm-j', kind: 'image', takes: [] }] };
+  const holds = [];
+  const last = pushProject(doc, null, p, { refOf: () => undefined, songRef: s => s, pending: h => holds.push(h) });
+  assert.deepEqual(holds.map(h => [h.shot, h.take, h.field, h.value]).sort(), [
+    [undefined, undefined, 'refs', ['m-r']], ['s1', 't1', 'media', 'm-t'], ['s1', undefined, 'img', 'm-i'], ['s2', undefined, 'img', 'm-j']].sort());
+  assert.equal(last.sections[0].img, undefined, 'the base keeps the old value, so the next push retries');
+  const v = docToProject(doc).project;
+  assert.deepEqual([v.sections[0].img, v.sections[0].kind, v.sections[0].takes[0].media ?? ''], ['', '', ''], 'the doc has no media yet');
+  shotsMap(doc).delete('s2');
+  const mine = keepPending(docToProject(doc).project, holds);
+  assert.deepEqual([mine.sections[0].img, mine.sections[0].kind, mine.sections[0].clipDur, mine.sections[0].takes[0].media, mine.sections[0].takes[0].status], ['m-i', 'video', 3, 'm-t', 'completed']);
+  assert.deepEqual(mine.refs, ['m-r']);
+  assert.equal(mine.sections.length, 1, 'the deleted shot is not brought back');
 });
 
 test('remote data is validated: wrong types, oversize values and junk are dropped, never thrown', () => {

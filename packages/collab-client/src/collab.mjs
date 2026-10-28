@@ -10,7 +10,7 @@
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { shotsMap } from '@cue-board/sync-server/schema';
-import { docToProject, pushProject, isEmptyRoom, clearShots, sanitizeName, initials, same } from './convert.mjs';
+import { docToProject, pushProject, keepPending, isEmptyRoom, clearShots, sanitizeName, initials, same } from './convert.mjs';
 
 const LOCAL = 'cueboard-app';                      // transaction origin of our own writes
 const REJECTED = new Set([4400, 4401, 4404]);       // the server won't take us: stop retrying
@@ -69,6 +69,7 @@ const localIdFor = (/** @type {string} */ hex) => { const id = bySha.get(hex); r
  *   onStatus(pid: string, s: Status): void,
  *   onPeers(pid: string, peers: Peer[]): void,
  *   onEvent(pid: string, type: 'shared' | 'not-empty'): void,
+ *   onUnshared?(pid: string, n: number): void, n media fields whose file couldn't be read or hashed: kept here, not in the room
  * }} App
  */
 
@@ -114,7 +115,14 @@ export function createCollab(app, syncUrl) {
     /** @type {any} */ let refs = new Map(), songFile = null, songLocal = null, songFor = null;
     /** @type {any} */ let pushTimer = 0, saveTimer = 0;
     /** @type {Set<string>} */ const needHash = new Set();
+    /** @type {Set<string>} */ const failed = new Set();   // media ids that couldn't be read or hashed: not retried this session
     let hashing = false;
+    /* Fields the last push had to leave out because their file isn't hashed yet (or can't be): the doc still has the
+       old value, the app the new one. Pulls keep the app's value for them (keepPending), so a remote change arriving
+       meanwhile doesn't undo a local one. Rebuilt on every push, so a field changed again, written, or deleted
+       elsewhere drops out by itself. */
+    /** @type {Map<string, import('./convert.mjs').Hold>} */ let held = new Map();
+    let unshared = 0;
 
     const status = () => /** @type {Status} */ (rejected ? 'rejected' : !navigator.onLine ? 'offline' : prov && prov.wsconnected ? (prov.synced ? 'synced' : 'syncing') : failing ? 'unreachable' : 'syncing');
     let shown = '';
@@ -127,7 +135,7 @@ export function createCollab(app, syncUrl) {
       const h = hashes.get(id);
       if (h) return { ...h };
       if (noFile.has(id)) return null;
-      if (canHash()) needHash.add(id);
+      if (canHash() && !failed.has(id)) needHash.add(id);
       return undefined;
     }
     function songRef(/** @type {any} */ song) {
@@ -144,17 +152,17 @@ export function createCollab(app, syncUrl) {
     }
     async function hashQueued() {
       if (hashing) return; hashing = true;
-      try {
-        while (needHash.size) {
-          const [id] = needHash; needHash.delete(id);
-          if (hashes.has(id) || noFile.has(id)) continue;
-          const b = await app.mediaBlob(id).catch(() => null);
+      while (needHash.size && !stopped) {
+        const [id] = needHash; needHash.delete(id);
+        if (hashes.has(id) || noFile.has(id) || failed.has(id)) continue;
+        try {
+          const b = await app.mediaBlob(id);
           if (!b) { noFile.add(id); continue; }
           const ref = { sha256: await sha256(b), bytes: b.size, mime: b.type || '' };
           hashes.set(id, ref); if (!bySha.has(ref.sha256)) bySha.set(ref.sha256, id);
           op('hashes', 'readwrite', st => st.put(ref, id));
-        }
-      } catch { /* a file we can't read stays unsynced; retried on the next change */ }
+        } catch { failed.add(id); }            // read or hash failed or was aborted: the file stays here, unshared
+      }
       hashing = false;
       if (!stopped) push();
     }
@@ -162,8 +170,21 @@ export function createCollab(app, syncUrl) {
       if (!ready || stopped) return;
       const cur = app.project(pid); if (!cur) return;
       if (cur.song && cur.song.name !== songFor) checkSong(cur.song.name);
-      last = pushProject(doc, last, cur, { refOf, songRef, origin: LOCAL });
+      /** @type {Map<string, import('./convert.mjs').Hold>} */ const now = new Map();
+      last = pushProject(doc, last, cur, { refOf, songRef, origin: LOCAL, pending: h => now.set([h.shot, h.take, h.field].join('/'), h) });
+      held = now; reportUnshared();
       if (needHash.size) hashQueued();
+    }
+    const isFailed = (/** @type {import('./convert.mjs').Hold} */ h) => [h.value].flat().some(id => failed.has(id));
+    function reportUnshared() {
+      const n = [...held.values()].filter(isFailed).length;
+      if (n !== unshared) { unshared = n; if (app.onUnshared) app.onUnshared(pid, n); }
+    }
+    /** a held field's value in a project, or undefined if its shot or take is gone */
+    function valueAt(/** @type {any} */ p, /** @type {import('./convert.mjs').Hold} */ h) {
+      if (!h.shot) return p[h.field];
+      const s = p.sections.find((/** @type {any} */ x) => x.id === h.shot), o = s && (h.take ? s.takes.find((/** @type {any} */ t) => t.id === h.take) : s);
+      return o ? o[h.field] : undefined;
     }
 
     /* ----- doc -> app ----- */
@@ -192,7 +213,11 @@ export function createCollab(app, syncUrl) {
       const v = docToProject(doc, localIdFor);
       if (!v) return;                            // malformed remote data: ignored, the last good state stays
       refs = v.refs; songFile = v.songFile; last = v.project;
-      if (!same(v.project, stripLocal(app.project(pid)))) app.applyRemote(pid, structuredClone(v.project));
+      // a file that can't be hashed is never written: once someone else changes that field, their value wins
+      for (const [k, h] of held) if (isFailed(h) && !same(valueAt(v.project, h) ?? '', h.base ?? '')) held.delete(k);
+      const mine = keepPending(structuredClone(v.project), held.values());
+      if (!same(mine, stripLocal(app.project(pid)))) app.applyRemote(pid, mine);
+      reportUnshared();
       restoreCaret(c);
     }
     const stripLocal = (/** @type {any} */ p) => { if (!p) return p; const { id, updated, ...rest } = p; return rest; };
