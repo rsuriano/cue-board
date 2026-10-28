@@ -37,6 +37,26 @@ export async function until(fn, ms = 3000, label = 'condition') {
   }
 }
 
+/** Raw socket: resolves with 'joined' once the server greets it (the socket stays open; it's returned as `ws`), or with
+    the close code if the server refuses it. */
+export function join(url, headers = {}) {
+  return new Promise(ok => {
+    const ws = new WebSocket(url, { headers });
+    ws.on('error', () => {});
+    ws.once('message', () => ok({ result: 'joined', ws }));
+    ws.on('close', code => ok({ result: code, ws }));
+  });
+}
+
+/** Number of framed records in a room's updates.bin. */
+export function records(file) {
+  const buf = fs.readFileSync(file);
+  let off = 0, n = 0;
+  while (off + 4 <= buf.length) { off += 4 + buf.readUInt32LE(off); n++; }
+  if (off !== buf.length) throw new Error(`${file}: framing doesn't end at EOF`);
+  return n;
+}
+
 /** Raw socket: resolves with the close code the server sends. */
 export function closeCode(url, onOpen = () => {}) {
   return new Promise(ok => {

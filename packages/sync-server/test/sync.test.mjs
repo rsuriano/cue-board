@@ -2,7 +2,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as Y from 'yjs';
-import { tmpDir, server, makeRoom, client, synced, until, closeCode } from './helpers.mjs';
+import { tmpDir, server, makeRoom, client, synced, until, closeCode, join, records } from './helpers.mjs';
 import { orderedShots, shotsMap } from '../src/schema.mjs';
 import { ProjectStore } from '../src/store.mjs';
 
@@ -77,11 +77,18 @@ test('(c) restart the server and the state is intact', async () => {
   stop(b); await srv.close();
 
   // and a log with a torn last record still loads everything before it
-  fs.appendFileSync(`${dir}/${id}/updates.bin`, Buffer.from([200, 0, 0, 0, 1, 2]));
+  const file = `${dir}/${id}/updates.bin`;
+  fs.appendFileSync(file, Buffer.from([200, 0, 0, 0, 1, 2]));
+  const withTail = fs.readFileSync(file);
   srv = await server(dir, 3352);
   const c = client(srv, id, token);
   await synced(c.provider);
   assert.equal(notes(c.doc).toString(), text);
+  // the original, tail included, was copied aside before the cut
+  const aside = fs.readdirSync(`${dir}/${id}`).filter(f => f.startsWith('updates.bin.torn-'));
+  assert.equal(aside.length, 1);
+  assert.deepEqual(fs.readFileSync(`${dir}/${id}/${aside[0]}`), withTail);
+  assert.equal(fs.statSync(file).size, withTail.length - 6);
   stop(c); await srv.close();
 });
 
@@ -112,4 +119,93 @@ test('(e) oversized message is rejected without crashing the server', async () =
   await synced(c.provider);
   assert.equal(await closeCode(`${srv.url}/${id}?token=${token}`), 4429);
   stop(a, b, c); await srv.close();
+});
+
+test('(g) a malformed token hash or project.json refuses that room only, and the server keeps serving', async () => {
+  const dir = fresh(), good = makeRoom(dir), typo = makeRoom(dir), only = makeRoom(dir), broken = makeRoom(dir);
+  const pj = id => `${dir}/${id}/project.json`, edit = (id, f) => { const p = JSON.parse(fs.readFileSync(pj(id), 'utf8')); f(p); fs.writeFileSync(pj(id), JSON.stringify(p)); };
+  edit(typo.id, p => p.tokens.unshift({ sha256: 'abc' }, { sha256: 'z'.repeat(64) }, { nope: 1 }));   // hand-edit typos before the real hash
+  edit(only.id, p => { p.tokens[0].sha256 = p.tokens[0].sha256.slice(1); });                      // 63 chars
+  fs.writeFileSync(pj(broken.id), '{"tokens": [');
+  const srv = await server(dir, 3355, { maxConnsPerIp: 2 });
+  const url = r => `${srv.url}/${r.id}?token=${r.token}`;
+
+  assert.equal(await closeCode(`${srv.url}/${typo.id}?token=AAAAAAAAAAAAAAAAAAAAAA`), 4401);
+  assert.equal(await closeCode(url(only)), 4401);                 // never matches, never throws
+  for (let i = 0; i < 3; i++) assert.equal(await closeCode(url(broken)), 4500);
+  // still serving, the malformed entries are skipped, and the refusals didn't leak per-IP slots (limit 2)
+  const a = client(srv, typo.id, typo.token), b = client(srv, good.id, good.token);
+  await Promise.all([synced(a.provider), synced(b.provider)]);
+  assert.equal(await closeCode(url(good)), 4429);
+  stop(a, b); await srv.close();
+});
+
+test('(h) a corrupt (not torn) update log refuses the room with 4500 and is left untouched', async () => {
+  const dir = fresh(), midRec = makeRoom(dir), midHead = makeRoom(dir), ok = makeRoom(dir);
+  const file = r => `${dir}/${r.id}/updates.bin`, orig = fs.readFileSync(file(midRec));
+  const frame = b => { const h = Buffer.alloc(4); h.writeUInt32LE(b.length); return Buffer.concat([h, b]); };
+  // a garbage record between two valid ones; and a mangled length header with valid records after it
+  fs.writeFileSync(file(midRec), Buffer.concat([orig, frame(Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9])), orig]));
+  fs.writeFileSync(file(midHead), Buffer.concat([orig, Buffer.from([0xff, 0xff, 0xff, 0xff]), orig, orig]));
+  const before = [fs.readFileSync(file(midRec)), fs.readFileSync(file(midHead))];
+  const srv = await server(dir, 3356);
+  const url = r => `${srv.url}/${r.id}?token=${r.token}`;
+
+  for (let i = 0; i < 2; i++) {             // every join is refused, not just the first
+    assert.equal(await closeCode(url(midRec)), 4500);
+    assert.equal(await closeCode(url(midHead)), 4500);
+  }
+  assert.deepEqual(fs.readFileSync(file(midRec)), before[0]);
+  assert.deepEqual(fs.readFileSync(file(midHead)), before[1]);
+  for (const r of [midRec, midHead]) assert.deepEqual(fs.readdirSync(`${dir}/${r.id}`).filter(f => f.includes('torn')), []);
+  assert.equal(srv.rooms.size, 0);
+
+  const c = client(srv, ok.id, ok.token);                           // other rooms still work
+  await synced(c.provider);
+  fs.writeFileSync(file(midRec), orig);                             // an operator repairs the file: the room opens again
+  const d = client(srv, midRec.id, midRec.token);
+  await synced(d.provider);
+  assert.equal(orderedShots(d.doc).length, 1);
+  stop(c, d); await srv.close();
+});
+
+test('(i) TRUST_PROXY: the per-IP limit uses the address our proxy appended, not the client-sent X-Forwarded-For', async () => {
+  const dir = fresh(), { id, token } = makeRoom(dir);
+  let srv = await server(dir, 3357, { trustProxy: true, maxConnsPerIp: 1 });
+  const at = xff => join(`${srv.url}/${id}?token=${token}`, { 'x-forwarded-for': xff });
+  const first = await at('10.0.0.1, 192.0.2.7');
+  const spoofed = await at('10.0.0.2, 192.0.2.7');      // rotating the client-controlled left side
+  const other = await at('10.0.0.1, 192.0.2.8');        // a different real client
+  assert.deepEqual([first.result, spoofed.result, other.result], ['joined', 4429, 'joined']);
+  [first, spoofed, other].forEach(j => j.ws.close()); await srv.close();
+
+  // two proxies of ours: the client is the second entry from the right
+  srv = await server(dir, 3357, { trustProxy: true, trustedProxyHops: 2, maxConnsPerIp: 1 });
+  const x = await at('1.1.1.1, 192.0.2.7, 10.9.9.9'), y = await at('2.2.2.2, 192.0.2.7, 10.9.9.9'), z = await at('192.0.2.8, 10.9.9.9');
+  assert.deepEqual([x.result, y.result, z.result], ['joined', 4429, 'joined']);
+  [x, y, z].forEach(j => j.ws.close()); await srv.close();
+});
+
+test('(j) a room unloaded after unloadAfterMs and rejoined keeps its state, as one compacted record', async () => {
+  const dir = fresh(), { id, token } = makeRoom(dir), file = `${dir}/${id}/updates.bin`;
+  const srv = await server(dir, 3358, { unloadAfterMs: 50 });
+  let text = '';
+  for (let round = 0; round < 3; round++) {
+    const a = client(srv, id, token);
+    await synced(a.provider);
+    assert.equal(notes(a.doc).toString(), text);
+    for (let i = 0; i < 5; i++) notes(a.doc).insert(notes(a.doc).length, `r${round}.${i} `);
+    text = notes(a.doc).toString();
+    const sv = Buffer.from(Y.encodeStateVector(a.doc));
+    await until(() => Buffer.compare(Buffer.from(Y.encodeStateVector(srv.rooms.get(id).doc)), sv) === 0, 3000, 'server caught up');
+    assert.equal(records(file), 6);                     // the compacted state plus this round's 5 appends
+    stop(a);
+    await until(() => !srv.rooms.has(id), 3000, 'unload');
+    assert.equal(records(file), 1);
+    const disk = new ProjectStore(dir).loadDoc(id).doc;
+    assert.equal(notes(disk).toString(), text);
+    assert.equal(orderedShots(disk).length, 1);
+  }
+  await srv.close();
+  assert.equal(records(file), 1);
 });
