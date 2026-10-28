@@ -1,0 +1,32 @@
+{
+  "name": "@cue-board/sync-server",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./src/server.mjs",
+    "./schema": "./src/schema.mjs",
+    "./import-cueboard": "./src/import-cueboard.mjs"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "create-project": "node bin/create-project.mjs",
+    "build:demo": "esbuild demo/client.mjs --bundle --format=esm --outfile=demo/dist/client.js --log-level=warning",
+    "demo": "npm run build:demo && SERVE_DEMO=1 node src/main.mjs",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "lib0": "^0.2.119",
+    "ws": "^8.22.0",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "y-websocket": "^3.1.0"
+  }
+}

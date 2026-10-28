@@ -1,0 +1,14 @@
+{
+  "name": "cue-board",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "npm test --workspaces --if-present"
+  }
+}
