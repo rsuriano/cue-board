@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Cue Board: plan an AI music video against the song (side A) and generate each shot through OpenRouter (side B).">
+<!-- Collaboration: the sync server's WebSocket URL (e.g. wss://sync.example.dev). Empty = off: no network, collab.js never loads. -->
+<meta name="cue-sync-url" content="">
 <title>Cue Board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141317'/%3E%3Cg fill='%23a8702a'%3E%3Crect x='2' y='18' width='4' height='8' rx='2'/%3E%3Crect x='8' y='14' width='4' height='16' rx='2'/%3E%3C/g%3E%3Cg fill='%238b8896'%3E%3Crect x='20' y='12' width='4' height='18' rx='2'/%3E%3Crect x='26' y='17' width='4' height='10' rx='2'/%3E%3C/g%3E%3Crect x='14' y='8' width='4' height='22' rx='2' fill='%23f0a33a'/%3E%3Cpath d='M6 2h20L16 13z' fill='%23f0a33a'/%3E%3C/svg%3E">
 <style>
@@ -398,9 +400,38 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .take .btn.primary:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .incut-badge{position:absolute;right:var(--sp-2);top:var(--sp-2);padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--ok);color:var(--ok-ink);font:var(--w-semibold) var(--text-sm)/var(--h-xs) var(--font-ui)}
 
+/* ---------- collaboration: status chip, who else is here, their selections, the join dialog ---------- */
+.cchip{height:var(--h-sm);padding:0 var(--sp-2);border:var(--hairline) solid var(--border);border-radius:var(--r-sm)}
+/* in a shared project the chip speaks for saving too; the header status only shows up to report a local save error */
+.top:has(#cstat:not([hidden])) #status:not(.err){display:none}
+/* the long states don't fit one header row below 1600px: the groups wrap whole, as they already do below 1360px */
+@media (max-width:1599px){.top:has(#cstat[data-state="offline"]:not([hidden]),#cstat[data-state="unreachable"]:not([hidden]),#cstat[data-state="rejected"]:not([hidden]),#cstat[data-unshared]:not([hidden])){flex-wrap:wrap}}
+.status.sync::before{background:var(--ink-3)}
+.status.off::before{background:transparent;box-shadow:inset 0 0 0 var(--hairline) var(--ink-3)}
+.presence{display:flex;align-items:center;gap:var(--sp-0-5)}
+.pchip{display:inline-grid;place-items:center;width:var(--h-sm);height:var(--h-sm);border-radius:var(--r-round);background:var(--surface-3);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui)}
+.pchip.more{background:transparent;color:var(--ink-3);font-weight:var(--w-medium)}
+/* someone else has this shot selected: their initials on the thumbnail, neutral (orange stays "yours") */
+.pmark{position:absolute;right:var(--sp-2);top:var(--sp-2);display:flex;gap:var(--sp-0-5)}
+.bitem .bt{position:relative}
+.bitem .pmark{right:var(--sp-0-5);top:var(--sp-0-5)}
+.pmark b{display:inline-grid;place-items:center;min-width:var(--h-xs);height:var(--h-xs);padding:0 var(--sp-1);border-radius:var(--r-xs);background:var(--on-media);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui)}
+/* a media file another device has and this one doesn't (yet): quiet, never an error */
+.thumb .tn.miss{padding:0 var(--sp-3);font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);text-align:center}
+.slate .miss{font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-3)}
+.opts{display:grid;gap:var(--sp-2)}
+.opt{all:unset;box-sizing:border-box;display:grid;gap:var(--sp-0-5);padding:var(--inset-card) var(--inset-panel);background:var(--surface-2);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-md);cursor:pointer}
+.opt b{font-weight:var(--w-semibold);color:var(--ink)}
+.opt span{font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-2)}
+.opt:hover{background:var(--surface-3);border-color:var(--border-control)}
+.opt:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
+.opt:disabled,.opt:disabled:hover{opacity:var(--o-disabled);cursor:not-allowed;background:var(--surface-2);border-color:var(--border-strong)}
+.jmsg{margin:0;color:var(--error);font-size:var(--text-sm);line-height:var(--lh-sm)}
+.jmsg:empty{display:none}
+
 /* ---------- motion (opt-in) ---------- */
 @media (prefers-reduced-motion:no-preference){
-  .btn,.chip,.sidetab,.card,.bitem,input,select,textarea,.linkbtn{transition:background-color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out)}
+  .btn,.chip,.sidetab,.card,.bitem,.opt,input,select,textarea,.linkbtn{transition:background-color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out)}
   details.prompts summary::before{transition:transform var(--dur-fast) var(--ease-out)}
   .toast:not([hidden]){animation:rise var(--dur-base) var(--ease-out)}
   dialog[open]{animation:rise var(--dur-base) var(--ease-out)}
@@ -444,6 +475,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
         <input id="ptitle" aria-label="Project name" placeholder="Project name" hidden>
         <div id="projmenu" class="menu" role="menu" aria-label="Projects" hidden></div>
       </div>
+      <span id="cstat" class="status cchip" role="status" hidden></span>
+      <span id="presence" class="presence" role="group" hidden></span>
       <button type="button" id="newp" class="btn ghost">New</button>
       <button type="button" id="delp" class="btn ghost">Delete</button>
     </div>
@@ -610,6 +643,18 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <label class="chk"><input type="checkbox" id="expSong"> Include the song (leave it out if you'll share the file)</label>
   <div class="row"><span class="grow"></span><button type="button" id="expCancel" class="btn ghost">Cancel</button><button type="button" id="expGo" class="btn primary">Download</button></div>
 </div></dialog>
+<dialog id="dlgJoin"><form class="dlg" id="joinForm">
+  <h3 id="jTitle">Join collaboration</h3>
+  <p class="muted" id="jLead"></p>
+  <div class="field" id="jLinkF"><label for="jLink">Invite link</label><input id="jLink" autocomplete="off" spellcheck="false" placeholder="https://…/#join=…"></div>
+  <div class="field" id="jNameF"><label for="jName">Your name</label><input id="jName" autocomplete="nickname" maxlength="40" placeholder="e.g. Ana" aria-describedby="jNameHint"><p class="hint" id="jNameHint">Stored only in this browser.</p></div>
+  <div class="opts" id="jOpts">
+    <button type="button" class="opt" id="jNew"><b>Open the room as a new project</b><span>Your project stays exactly as it is. The room opens as a separate project next to it.</span></button>
+    <button type="button" class="opt" id="jShare"><b>Share this project into the room</b><span id="jShareHint"></span></button>
+  </div>
+  <p class="jmsg" id="jMsg" role="alert"></p>
+  <div class="row"><span class="grow"></span><button type="button" id="jCancel" class="btn ghost">Cancel</button><button type="submit" id="jGo" class="btn primary">Join</button></div>
+</form></dialog>
 <audio id="audio" preload="auto"></audio>
 <div class="toast" id="toast" hidden></div>
 
@@ -656,8 +701,11 @@ function setStatus(kind,text){const s=$("status");s.className="status "+kind;s.t
 const mediaCache=new Map();
 function mediaURL(id){return id&&mediaCache.has(id)?mediaCache.get(id):""}
 async function mediaBlob(id){const rec=await idbS("media","readonly",st=>st.get(id));return rec&&rec.blob||null}
-async function ensureMedia(ids){const need=[...new Set(ids.filter(x=>x&&!mediaCache.has(x)))];
-  await Promise.all(need.map(async id=>{const b=await mediaBlob(id);if(b)mediaCache.set(id,URL.createObjectURL(b))}))}
+/* ids this device has no file for (e.g. a collaborator's take): shown as "not on this device yet", never as an error */
+const mediaMissing=new Set();
+const isMissing=id=>!!id&&mediaMissing.has(id);
+async function ensureMedia(ids){const need=[...new Set(ids.filter(x=>x&&!mediaCache.has(x)&&!mediaMissing.has(x)))];let n=0;
+  await Promise.all(need.map(async id=>{const b=await mediaBlob(id);if(b)mediaCache.set(id,URL.createObjectURL(b));else mediaMissing.add(id);n++}));return n}
 function sectionMediaIds(s){return [s.img,s.key,s.endKey,...(s.takes||[]).map(t=>t.media)].filter(Boolean)}
 function projectMediaIds(p){return [...new Set([...((p&&p.refs)||[]),...((p&&p.sections)||[]).flatMap(sectionMediaIds)])]}
 const loadProjectMedia=p=>ensureMedia(projectMediaIds(p));
@@ -665,29 +713,45 @@ assets={
   upload:async(blob,o)=>{const id=uid("m");const type=(o&&o.type)||blob.type||"application/octet-stream";const b=blob.type===type?blob:new Blob([blob],{type});
     const r=await idbS("media","readwrite",st=>st.put({blob:b,type},id));if(r===null)throw{code:"quota_or_state"};
     mediaCache.set(id,URL.createObjectURL(b));return{id,url:mediaCache.get(id)}},
-  delete:async id=>{await idbS("media","readwrite",st=>st.delete(id));const u=mediaCache.get(id);if(u){URL.revokeObjectURL(u);mediaCache.delete(id)}return{deleted:true}}
+  delete:async id=>{await idbS("media","readwrite",st=>st.delete(id));const u=mediaCache.get(id);if(u){URL.revokeObjectURL(u);mediaCache.delete(id)}forgetHash(id);return{deleted:true}}
 };
-/* delete a media blob only once nothing in the project points at it anymore */
-function releaseMedia(id){if(id&&cur&&!projectMediaIds(cur).includes(id))assets.delete(id).catch(()=>{})}
+/* a media id that a project other than `skip` still uses (of `ps`: every saved project and the open one). A room maps
+   a file's hash to whichever local copy this browser has, so two projects may point at the same id; a room's offline
+   copy belongs to one of these projects. The one check before any media file is deleted. */
+function mediaInUse(id,skip,ps=[...projects,cur]){return ps.some(q=>q&&q.id!==skip&&projectMediaIds(q).includes(id))}
+/* delete a media blob only once nothing in the project points at it anymore, and only after the project that stopped
+   pointing at it has been saved: until then the saved copy (and a room still sending the old value) may need it */
+const toRelease=new Map();
+function releaseMedia(id){if(id&&cur)toRelease.set(id,cur.id)}
+function releaseSaved(p){for(const [id,pid] of toRelease)if(pid===p.id){toRelease.delete(id);
+  if(!mediaInUse(id,null,[p,...projects,cur]))assets.delete(id).catch(()=>{})}}
 
-function scheduleSave(){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700)}
+/* now=true for typing in a shared text field: it goes to the room at once, so remote edits merge around the caret */
+function scheduleSave(now){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);if(csess)csess.changed(!!now)}
 async function flush(){
   if(!cur||!store)return;
   if(saving){again=true;return}
+  /* a room project: the room's offline copy is written right after this save, with the push base that matches it */
+  const cs=csess&&csessPid===cur.id?csess:null,mk=cs?cs.mark():undefined;
   saving=true;cur.updated=Date.now();const snap=clone(cur);
   const i=projects.findIndex(p=>p.id===snap.id);if(i<0)projects.unshift(snap);else projects[i]=snap;renderProjSelect();
-  try{await store.set(snap);setStatus("ok","Saved locally")}
-  catch(e){const c=e&&e.code;setStatus("err",c==="quota_exceeded"?"Out of storage space":c==="invalid_argument"?"Read only":"Couldn't save")}
+  try{await store.set(snap);setStatus("ok","Saved locally");if(cs)cs.saved(mk,true);releaseSaved(snap)}
+  catch(e){if(cs)cs.saved(mk,false);const c=e&&e.code;setStatus("err",c==="quota_exceeded"?"Out of storage space":c==="invalid_argument"?"Read only":"Couldn't save")}
   saving=false;if(again){again=false;flush();return}
   if(!timer)dirty=false;
 }
+/* leaving or hiding the page: a save still waiting on its timer goes now */
+function flushNow(){if(timer){clearTimeout(timer);timer=null;flush()}}
+window.addEventListener("pagehide",flushNow);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushNow()});
 function onProjects(list){
   projects=list.sort((a,b)=>(b.updated||0)-(a.updated||0));
+  if(pendingInvite){const inv=pendingInvite;pendingInvite=null;setTimeout(()=>joinFlow(inv).finally(()=>{joining=false;if(!projects.length&&!cur)autoExample()}),0)}
   if(cur){const r=projects.find(p=>p.id===cur.id);
     if(r&&!dirty&&!saving&&r.updated!==cur.updated){cur=clone(r);if(!cur.sections.some(s=>s.id===selId))selId=cur.sections[0]&&cur.sections[0].id;lastKey="";renderAll()}}
   else if(projects.length){const last=ls(KEY_LAST);selectProject(projects.find(p=>p.id===last)||projects[0]);return}
   renderProjSelect();if(!cur)renderAll();
-  if(!firstList){firstList=true;if(!projects.length&&!cur)autoExample()}
+  if(!firstList){firstList=true;if(!projects.length&&!cur&&!joining)autoExample()}
 }
 /* first visit with no projects: open the example once, so both sides have something to show */
 let firstList=false;
@@ -711,6 +775,7 @@ function selectProject(p){
   stop();cur=clone(p);selId=cur.sections[0]&&cur.sections[0].id;ls(KEY_LAST,cur.id);vt=0;pps=null;lastKey="";
   loadAudio();renderAll();
   const pid=cur.id;loadProjectMedia(cur).then(()=>{if(!cur||cur.id!==pid)return;lastKey="";renderAll();renderB();ensurePolling();refreshCredits()});
+  collabFor(cur);
 }
 function loadAudio(){
   hasAudio=false;if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}
@@ -808,12 +873,19 @@ function tlLabel(g,num,title,room){
   return g.measureText(num).width<=room?num:"";
 }
 function placePlayhead(){ph.style.transform=`translateX(${now()*P}px)`;$("tc").textContent=fmt(now())}
+/* cards are patched in place when the order is unchanged, so a collaborator's keystroke doesn't reload every thumbnail */
 function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
-  el.innerHTML=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
-    const media=!mediaURL(s.img)?`<span class="tn"></span>`:vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${mediaURL(s.img)}" alt="">`;
-    return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${esc(s.shot||clipHint(d))}</div>${clipLine(s,d)}</div></button>`}).join("");
-  el.querySelectorAll("img,video").forEach(im=>im.onerror=()=>{const sp=document.createElement("span");sp.className="tn";sp.textContent="?";im.replaceWith(sp)});
+  const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
+  const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
+    const media=!mediaURL(s.img)?(isMissing(s.img)?`<span class="tn miss">Not on this device yet</span>`:`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${mediaURL(s.img)}" alt="">`;
+    return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${esc(s.shot||clipHint(d))}</div>${clipLine(s,d)}</div></button>`});
+  const cards=[...el.children],fresh=[];
+  if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
+  else{el.innerHTML=html.join("");[...el.children].forEach((c,i)=>{c._h=html[i];fresh.push(c)})}
+  fresh.forEach(c=>c.querySelectorAll("img,video").forEach(im=>im.onerror=()=>{const sp=document.createElement("span");sp.className="tn";sp.textContent="?";im.replaceWith(sp)}));
+  if(fid&&document.activeElement!==ae){const c=el.querySelector(`.card[data-id="${CSS.escape(fid)}"]`);if(c)c.focus({preventScroll:true})}
+  renderMarks();if(csess)csess.select(selId);
 }
 function clipLine(s,d){
   if(!(s.img&&s.kind==="video"&&s.clipDur))return "";
@@ -841,11 +913,12 @@ function renderMonitor(force){
     if(lastKey!=="empty"){lastKey="empty";sl.className="slate";sl.innerHTML=`<div class="shot">Animatic</div><div class="t">Load a song to start</div><p>Hit play, press M at every change in the music, and each stretch becomes a shot with its own notes and keyframe.</p>`}return}
   const i=secAt(t),s=S()[i],a=s.start,b=secEnd(i);
   $("mprog").style.width=Math.min(100,Math.max(0,(t-a)/Math.max(.01,b-a)*100))+"%";
-  const key=[s.id,i,s.img,s.kind,s.title,s.shot,s.notes].join("|");
+  const miss=isMissing(s.img),key=[s.id,i,s.img,s.kind,s.title,s.shot,s.notes,miss].join("|");
   if(force||key!==lastKey){lastKey=key;
     const vd=$("mvid");
-    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}`;
-    if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
+    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?`<div class="miss">${s.kind==="video"?"Clip":"Image"} not on this device yet</div>`:""}`;
+    if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
+    else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
     else{vd.hidden=true;try{vd.pause()}catch(e){}
       if(s.img){im.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&im.getAttribute("src")!==u)im.src=u}}
       else{im.hidden=true;sl.className="slate"}}
@@ -938,7 +1011,9 @@ function renderProjMenu(){
   const list=projects.map(p=>cur&&p.id===cur.id?cur:p);if(cur&&!list.includes(cur))list.unshift(cur);
   $("projmenu").innerHTML=list.map(p=>{const t=p.title||"Untitled project";
     return `<button type="button" class="mi" role="menuitemradio" tabindex="-1" aria-checked="${p===cur}" data-pid="${esc(p.id)}" title="${esc(t)}">${ico("check")}<span>${esc(t)}</span></button>`}).join("")
-    +(cur?`<hr role="separator"><button type="button" class="mi" role="menuitem" tabindex="-1" data-act="rename">${ico("check")}<span>Rename…</span></button>`:"");
+    +(cur||SYNC_URL?`<hr role="separator">`:"")
+    +[cur&&["rename","Rename…"],SYNC_URL&&["join","Join collaboration…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["leave","Leave collaboration"]].filter(Boolean)
+      .map(([a,t])=>`<button type="button" class="mi" role="menuitem" tabindex="-1" data-act="${a}">${ico("check")}<span>${t}</span></button>`).join("");
 }
 const menuItems=()=>[...$("projmenu").querySelectorAll(".mi")];
 function openProjMenu(focus){
@@ -961,6 +1036,8 @@ $("projmenu").addEventListener("keydown",e=>{
 $("projmenu").onclick=e=>{
   const b=e.target.closest(".mi");if(!b)return;
   if(b.dataset.act==="rename"){closeProjMenu(false);startRename();return}
+  if(b.dataset.act==="join"){closeProjMenu(false);joinFlow(null);return}
+  if(b.dataset.act==="leave"){closeProjMenu(true);leaveRoom();return}
   closeProjMenu(true);const p=projects.find(x=>x.id===b.dataset.pid);
   if(p&&(!cur||p.id!==cur.id)){if(dirty)flush();selectProject(p)}
 };
@@ -973,7 +1050,7 @@ function startRename(){
 }
 function endRename(save){
   if(!renaming)return;renaming=false;const t=$("ptitle"),had=document.activeElement===t;
-  if(save&&cur){const v=t.value.trim()||"Untitled project";if(v!==cur.title){cur.title=v;dirty=true;clearTimeout(timer);timer=null;flush()}}
+  if(save&&cur){const v=t.value.trim()||"Untitled project";if(v!==cur.title){cur.title=v;dirty=true;clearTimeout(timer);timer=null;flush();if(csess)csess.changed(true)}}
   t.hidden=true;$("proj").parentNode.classList.remove("renaming");renderProjSelect();if(had)$("proj").focus();
 }
 $("ptitle").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key==="Escape"){e.preventDefault();e.stopPropagation();endRename(e.key==="Enter")}});
@@ -984,7 +1061,8 @@ twoTap($("delp"),"Delete","Tap again to delete",async()=>{
   if(!cur||!store)return;const id=cur.id,imgs=projectMediaIds(cur);
   clearTimeout(timer);timer=null;dirty=false;stop();
   try{await store.del(id)}catch(e){toast("Couldn't delete");return}
-  idbDo("readwrite",st=>st.delete(id));if(assets)imgs.forEach(x=>assets.delete(x).catch(()=>{}));
+  idbDo("readwrite",st=>st.delete(id));if(assets)imgs.forEach(x=>{if(!mediaInUse(x,id))assets.delete(x).catch(()=>{})});
+  if(cset.rooms[id])leaveRoom(id,true);
   projects=projects.filter(p=>p.id!==id);cur=null;selId=null;hasAudio=false;lastKey="";
   if(projects.length)selectProject(projects[0]);else renderAll();toast("Project deleted");
 });
@@ -1000,7 +1078,7 @@ const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",()=>{
   scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);
 });
 [["f-title","title"],["f-shot","shot"],["f-notes","notes"],["f-imgp","imgPrompt"],["f-vidp","vidPrompt"]].forEach(([id,f])=>{
-  $(id).addEventListener("input",e=>{const s=selSec();if(!s)return;s[f]=e.target.value;scheduleSave();
+  $(id).addEventListener("input",e=>{const s=selSec();if(!s)return;s[f]=e.target.value;scheduleSave(true);
     if(f==="title"||f==="shot"){const c=$("strip").querySelector(`.card[data-id="${CSS.escape(s.id)}"]`);if(c){const i=S().indexOf(s);c.querySelector(".ct").innerHTML=s.title?esc(s.title):"<em>Untitled</em>";c.querySelector(".cs").textContent=s.shot||clipHint(secEnd(i)-s.start)}}
     if(f==="title")renderTimeline();if(f!=="imgPrompt"&&f!=="vidPrompt")renderMonitor()})});
 /* ---------- reorder shots by dragging cards ----------
@@ -1256,6 +1334,7 @@ function renderBList(){
   $("bList").innerHTML=S().map((s,i)=>{const d=slotDur(s),st=startFrameId(s),tk=s.takes||[],busy=tk.some(isBusy),cut=s.img&&s.kind==="video";
     const th=cut&&mediaURL(s.img)?`<video src="${mediaURL(s.img)}#t=0.1" muted preload="metadata"></video>`:st&&mediaURL(st)?`<img src="${mediaURL(st)}" alt="">`:"";
     return `<button type="button" class="bitem${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><span class="bt">${th}</span><span class="bi"><span class="tc">${pad(i+1)} · ${d.toFixed(1)} s</span><span class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="cv">${tk.length?tk.length+(tk.length>1?" takes":" take"):"no takes"}${busy?" · rendering":""}${cut?" · in cut":""}</span></span></button>`}).join("");
+  renderMarks();if(csess)csess.select(selId);
 }
 function renderBShot(){
   const s=selSec();if(!s)return;const i=S().indexOf(s),d=slotDur(s);
@@ -1266,7 +1345,7 @@ function renderBShot(){
 }
 function fillFrame(pre,id,note,enabled,clearLabel){
   const box=$(pre),img=$(pre+"Img");box.classList.toggle("has",!!id);box.classList.toggle("off",!enabled);
-  img.innerHTML=id&&mediaURL(id)?`<img src="${mediaURL(id)}" alt="">`:`<span>${enabled?"Drop an image here":"This model can't take an end frame"}</span>`;
+  img.innerHTML=id&&mediaURL(id)?`<img src="${mediaURL(id)}" alt="">`:`<span>${isMissing(id)?"Not on this device yet":enabled?"Drop an image here":"This model can't take an end frame"}</span>`;
   $(pre+"Note").textContent=note;$(pre+"Clr").hidden=!id;$(pre+"Clr").textContent=clearLabel||"Clear";$(pre+"Warn").textContent="";
   const im=img.querySelector("img");if(im)im.onload=()=>{const r=im.naturalWidth/im.naturalHeight;$(pre+"Warn").textContent=Math.abs(r-16/9)>.06?`${im.naturalWidth}×${im.naturalHeight}, not 16:9: it may get cropped`:""};
 }
@@ -1300,6 +1379,7 @@ function takeSig(s,t){return [t.status,t.media,t.cost,t.error,t.note,s.img===t.m
 function takeHTML(s,t,num){
   const incut=!!t.media&&s.img===t.media,busy=isBusy(t);
   const vis=t.media&&mediaURL(t.media)?`<video src="${mediaURL(t.media)}" muted loop playsinline preload="metadata" controls></video>`:
+    isMissing(t.media)?`<div class="tbusy">Video not on this device yet</div>`:
     busy?`<div class="tbusy"><span class="spin"></span><span>${statusLabel(t)}</span><span class="tc" data-since="${t.created}"></span></div>`:
     `<div class="tbusy err">${esc(statusLabel(t))}</div>`;
   const cost=t.cost!=null?fmtUSD(+t.cost):t.est!=null?"≈ "+fmtUSD(t.est):"—";
@@ -1332,7 +1412,7 @@ setInterval(()=>{if(side==="b")tickElapsed()},1000);
 
 /* ---------- B interactions ---------- */
 $("bList").addEventListener("click",e=>{const b=e.target.closest(".bitem");if(!b)return;selId=b.dataset.id;renderBList();renderBShot()});
-$("bPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;s.vidPrompt=e.target.value;scheduleSave();updateEst()});
+$("bPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;s.vidPrompt=e.target.value;scheduleSave(true);updateEst()});
 $("bChips").addEventListener("click",e=>{const c=e.target.closest("[data-add]");if(!c)return;const ta=$("bPrompt"),add=c.dataset.add;
   ta.value=ta.value.trim()?ta.value.replace(/\s*$/,"")+" "+add:add;ta.dispatchEvent(new Event("input"));ta.focus()});
 const saveGen=()=>putSetting("gen",{model:gen.model,res:gen.res,audio:gen.audio,count:gen.count});
@@ -1370,7 +1450,7 @@ async function submitTake(s,o){
   const body={model:m.id,prompt:o.prompt,duration:o.dur,resolution:o.res,aspect_ratio:"16:9"};
   if(m.audio)body.generate_audio=!!o.audio;
   if(o.seed!==""&&o.seed!=null&&m.seed)body.seed=+o.seed;
-  const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:""};
+  const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:"",dev:deviceId};
   (s.takes=s.takes||[]).unshift(t);if(selSec()===s)renderBTakes();renderBList();
   try{
     const fr=[];
@@ -1394,10 +1474,14 @@ $("gGo").onclick=()=>{
 };
 
 /* ---------- polling: OpenRouter jobs are async; resumes after a reload ---------- */
+/* in a room, only jobs sent from this browser: a collaborator's job belongs to their OpenRouter key, and their device
+   fetches it (a take without `dev` there is someone else's, or older). Outside a room every job is ours, whatever its
+   `dev` (a project imported from another device or origin) */
+const ownJob=t=>cur&&cset.rooms[cur.id]?!!t.dev&&t.dev===deviceId:true;
 function ensurePolling(){if(pollTimer)return;pollTimer=setInterval(pollOnce,10000);setTimeout(pollOnce,2500)}
 async function pollOnce(){
   if(polling||!cur)return;const pid=cur.id,pend=[];
-  S().forEach(s=>(s.takes||[]).forEach(t=>{if(t.jobId&&["pending","in_progress","downloading"].includes(t.status))pend.push([s,t])}));
+  S().forEach(s=>(s.takes||[]).forEach(t=>{if(t.jobId&&ownJob(t)&&["pending","in_progress","downloading"].includes(t.status))pend.push([s,t])}));
   if(!pend.length){clearInterval(pollTimer);pollTimer=null;return}
   polling=true;
   for(const [s,t] of pend){if(!cur||cur.id!==pid)break;try{await pollTake(s,t,pid)}catch(e){t.note="Can't reach OpenRouter, retrying…"}
@@ -1413,7 +1497,7 @@ async function downloadJob(id,j){
 }
 async function pollTake(s,t,pid){
   const r=await apiFetch("/videos/"+encodeURIComponent(t.jobId));
-  if(!r.ok){if(r.status===404){t.status="failed";t.error="OpenRouter doesn't know this job anymore";scheduleSave()}else t.note="Status check failed (HTTP "+r.status+"), retrying…";return}
+  if(!r.ok){if(r.status===404){if(!ownJob(t))return;t.status="failed";t.error="OpenRouter doesn't know this job anymore";scheduleSave()}else t.note="Status check failed (HTTP "+r.status+"), retrying…";return}
   const j=await r.json();if(!cur||cur.id!==pid)return;t.note="";
   if(j.usage&&j.usage.cost!=null)t.cost=+j.usage.cost;
   if(j.status==="completed"){
@@ -1559,7 +1643,7 @@ async function runPanel(){
   $(pre+"Go").onclick=runPanel;
   $(pre+"Cancel").onclick=closePanel;
   $(pre+"Prompt").addEventListener("input",e=>{const s=selSec();if(!s||!fpanel)return;
-    if(slot==="key"){s.imgPrompt=e.target.value}else if(fpanel.mode==="from"){s.endChange=e.target.value}else{s.endPrompt=e.target.value}scheduleSave()});
+    if(slot==="key"){s.imgPrompt=e.target.value}else if(fpanel.mode==="from"){s.endChange=e.target.value}else{s.endPrompt=e.target.value}scheduleSave(true)});
   $(pre+"Vars").addEventListener("click",async e=>{const b=e.target.closest("[data-vi]");if(!b||!fpanel)return;const v=fpanel.vars[+b.dataset.vi];const s=selSec();if(!v||!v.blob||!s)return;
     const r=await assets.upload(v.blob,{type:v.blob.type||"image/png"});const old=s[slot];s[slot]=r.id;if(slot==="key")s.keyOff=false;
     scheduleSave();releaseMedia(old);closePanel();renderFrames();renderBList();updateEst();toast(slot==="key"?"Start frame set":"End frame set")});
@@ -1587,6 +1671,153 @@ $("setTest").onclick=async()=>{
   catch(e){$("setMsg").textContent=corsHint(e)}
 };
 
+/* ================= COLLABORATION (opt-in per project; README "Collaboration v1") =================
+   A project bound to a room syncs its cue board data (not media) through the server in <meta name="cue-sync-url">.
+   Bindings: settings "collab" = {name, rooms:{projectId:{roomId,token,name}}}, in this browser only. collab.js is
+   imported only when a room is joined or already bound; with no binding nothing here touches the network. */
+const SYNC_URL=((document.querySelector('meta[name="cue-sync-url"]')||{}).content||"").trim();
+const INVITE=/^([A-Za-z0-9_-]{16,64})\.([A-Za-z0-9_-]{16,128})$/;
+let cset={name:"",rooms:{}},cmod=null,csess=null,csessPid=null,peers=[],deviceId="",cunshared=0;
+/* an invite link: https://host/#join=<room>.<token>, the server CLI's ?room=…&token=… link, or just <room>.<token> */
+function parseInvite(t){t=String(t||"").trim();let m=/[#&]join=([A-Za-z0-9_.-]+)/.exec(t);
+  if(m)t=m[1];else{const r=/[?&]room=([A-Za-z0-9_-]+)/.exec(t),k=/[?&]token=([A-Za-z0-9_-]+)/.exec(t);if(r&&k)t=r[1]+"."+k[1]}
+  m=INVITE.exec(t);return m?{roomId:m[1],token:m[2]}:null}
+/* read the invite and take it out of the address bar (and history) before anything else runs */
+function takeInvite(){if(!/[#&]join=/.test(location.hash))return null;const inv=parseInvite(location.hash);
+  try{history.replaceState(null,"",location.pathname+location.search)}catch(e){}return inv||{bad:true}}
+let pendingInvite=takeInvite(),joining=!!pendingInvite;
+/* an invite pasted into the address bar of an open tab only changes the hash */
+window.addEventListener("hashchange",()=>{const inv=takeInvite();if(inv&&store)joinFlow(inv)});
+const saveCset=()=>putSetting("collab",cset);
+async function loadCollab(){if(cmod)return cmod;try{const m=await import("./collab.js");cmod=m.createCollab(collabApp,SYNC_URL)}catch(e){cmod=null}return cmod}
+const collabApp={
+  project:pid=>cur&&cur.id===pid?cur:null,
+  applyRemote,
+  busy:()=>!!(drag||scrub||(sd&&sd.on)),
+  focusedText(){const a=document.activeElement,s=selSec();if(!a||!s)return null;
+    const f={"f-title":"title","f-notes":"notes","f-imgp":"imgPrompt","f-vidp":"vidPrompt","bPrompt":"vidPrompt"}[a.id]||(a.id==="fStartPrompt"&&fpanel&&fpanel.slot==="key"?"imgPrompt":"");
+    return f?{el:a,shotId:s.id,field:f}:null},
+  mediaBlob,
+  songBlob:async pid=>{const r=await idbDo("readonly",st=>st.get(pid));return r&&r.blob?{blob:r.blob,name:r.name||""}:null},
+  onStatus:(pid,s)=>{if(cur&&cur.id===pid&&csessPid===pid)renderCollab(s)},
+  onPeers:(pid,l)=>{if(cur&&cur.id===pid&&csessPid===pid){peers=l;renderPresence();renderMarks()}},
+  onUnshared:(pid,n)=>{if(cur&&cur.id===pid&&csessPid===pid){cunshared=n;renderCollab(csess.status())}},
+  onEvent:(pid,t)=>{const b=cset.rooms[pid];if(!b)return;
+    if(t==="shared"){delete b.share;saveCset();toast("Shared into the room")}
+    else{leaveRoom(pid,true);toast("Someone started working in that room meanwhile, so nothing was shared")}}
+};
+/* the room's state, already validated by collab.js, into the open project. Section and take objects keep their
+   identity (a running generation or poll holds them), focus and caret stay where they are, nothing is sent back. */
+function applyRemote(pid,p){
+  if(!cur||cur.id!==pid)return;
+  const had=projectMediaIds(cur);
+  const old=new Map(S().map(s=>[s.id,s])),swap=(o,n)=>{for(const k of Object.keys(o))if(!(k in n))delete o[k];return Object.assign(o,n)};
+  for(const k of Object.keys(cur))if(!["id","updated","sections"].includes(k)&&!(k in p))delete cur[k];
+  for(const [k,v] of Object.entries(p))if(!["id","updated","sections"].includes(k))cur[k]=v;
+  cur.sections=p.sections.map(n=>{const o=old.get(n.id);if(!o)return n;const ot=new Map((o.takes||[]).map(t=>[t.id,t]));
+    n.takes=(n.takes||[]).map(t=>ot.has(t.id)?swap(ot.get(t.id),t):t);return swap(o,n)});
+  if(!S().length)S().push(newSec(0));
+  if(!S().some(s=>s.id===selId))selId=S()[0].id;
+  /* files a remote change stopped using (a deleted take or shot, a replaced frame): freed after the save, if unused */
+  const has=new Set(projectMediaIds(cur));had.forEach(id=>{if(!has.has(id)&&!id.startsWith("sha256-"))releaseMedia(id)});
+  /* saved sooner than a local edit: the room's offline copy (saved 300 ms after a change) gets its base with this save */
+  dirty=true;clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},300);
+  const draw=()=>{lastKey="";renderAll();if(side==="b")renderB()};draw();
+  loadProjectMedia(cur).then(n=>{if(n&&cur&&cur.id===pid)draw()});
+}
+const CST={synced:["ok","Synced",""],syncing:["sync","Syncing…",""],offline:["off","Offline, changes will sync","Your edits are kept in this browser and go to the room when you're back online."],
+  unreachable:["err","Can't reach the room","Retrying. Your edits are kept in this browser."],rejected:["err","Can't reach the room","The room didn't accept this invite link. Your project is still here."]};
+function renderCollab(s){const el=$("cstat");
+  if(!s){el.hidden=true;el.textContent="";delete el.dataset.unshared;peers=[];renderPresence();return}
+  const [k,t,tip]=CST[s]||CST.syncing;el.hidden=false;el.className="status cchip "+k;el.textContent=t;el.title=tip;el.dataset.state=s;
+  /* a file this browser couldn't read or hash: it stays here, the others keep the previous one. Said quietly, on the chip */
+  const n=s==="synced"&&csess?cunshared:0;if(n){el.textContent=`Synced, ${n} file${n>1?"s":""} not shared`;el.title="This browser couldn't prepare "+(n>1?"these files":"this file")+" for the room, so the others still see the previous one. Choosing the file again retries.";el.dataset.unshared=""}else delete el.dataset.unshared;
+  if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}}
+function renderPresence(){const el=$("presence"),l=csess?peers:[];
+  const chip=(t,title,cls)=>{const c=document.createElement("span");c.className="pchip"+(cls||"");c.textContent=t;c.title=title;return c};
+  el.replaceChildren(...l.slice(0,4).map(p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return chip(p.initials,p.name+(i>=0?" · on shot "+pad(i+1):""))}));
+  if(l.length>4)el.append(chip("+"+(l.length-4),l.slice(4).map(p=>p.name).join(", ")," more"));
+  el.hidden=!l.length;el.setAttribute("aria-label",l.length?"Also in this project: "+l.map(p=>p.name).join(", "):"");
+}
+/* who else has which shot selected: their initials on the card / list thumbnail */
+function renderMarks(){
+  document.querySelectorAll(".pmark").forEach(x=>x.remove());if(!csess||!peers.length)return;
+  const by=new Map();peers.forEach(p=>{if(p.sel)by.set(p.sel,[...(by.get(p.sel)||[]),p])});
+  by.forEach((l,id)=>document.querySelectorAll(`.card[data-id="${CSS.escape(id)}"] .thumb,.bitem[data-id="${CSS.escape(id)}"] .bt`).forEach(t=>{
+    const m=document.createElement("span");m.className="pmark";m.title=l.map(p=>p.name).join(", ")+" "+(l.length>1?"are":"is")+" on this shot";
+    l.slice(0,2).forEach(p=>{const b=document.createElement("b");b.textContent=p.initials;m.append(b)});t.append(m)}));
+}
+/* start or stop the room session for the open project */
+async function collabFor(p){
+  const b=p&&SYNC_URL?cset.rooms[p.id]:null;
+  if(csess&&csessPid!==(b&&p.id)){csess.stop();csess=null;csessPid=null;cunshared=0;peers=[];renderMarks()}
+  if(!b){renderCollab(null);return}
+  if(csessPid===p.id)return;
+  renderCollab("syncing");
+  const m=await loadCollab();
+  if(!cur||cur.id!==p.id||csessPid===p.id||!cset.rooms[p.id])return;
+  if(!m){renderCollab("unreachable");return}
+  csessPid=p.id;cunshared=0;csess=m.open(p.id,{roomId:b.roomId,token:b.token,name:cset.name,dev:deviceId},{mode:b.share?"share":"normal"});csess.select(selId);
+}
+/* the room's offline copy (collab.js' "cueboard-collab" database), also from a tab that never loaded collab.js.
+   Never creates the database: collab.js makes its stores on first open, which an empty one here would skip */
+function collabDel(name,key){
+  try{const q=indexedDB.open("cueboard-collab");q.onupgradeneeded=()=>q.transaction.abort();
+    q.onsuccess=()=>{const d=q.result;try{if(d.objectStoreNames.contains(name)){const tx=d.transaction(name,"readwrite");tx.objectStore(name).delete(key);tx.oncomplete=tx.onabort=()=>d.close()}else d.close()}catch(e){d.close()}};q.onerror=e=>e.preventDefault()}catch(e){}}
+function forgetRoomCopy(pid){if(cmod)cmod.forget(pid);else collabDel("docs",pid)}
+/* a deleted media file's hash: a room's ref to the same content then finds the next copy added, not the dead id */
+function forgetHash(id){if(cmod)cmod.dropMedia(id);else collabDel("hashes",id)}
+function leaveRoom(pid,quiet){
+  pid=pid||(cur&&cur.id);if(!pid||!cset.rooms[pid])return;
+  if(csess&&csessPid===pid){csess.stop();csess=null;csessPid=null;peers=[]}
+  delete cset.rooms[pid];saveCset();forgetRoomCopy(pid);
+  if(cur&&cur.id===pid){renderCollab(null);renderMarks();renderProjSelect()}
+  if(!quiet)toast("Left the room. This project stays here as a local copy");
+}
+/* the join dialog: one step at a time, each answered through jDone */
+let jRes=null;const jDone=v=>{const r=jRes;jRes=null;if(r)r(v)};
+function joinStep(step,title,lead){const d=$("dlgJoin");
+  $("jTitle").textContent=title;$("jLead").textContent=lead||"";$("jMsg").textContent="";
+  $("jLinkF").hidden=step!=="link";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";
+  $("jGo").hidden=step!=="link"&&step!=="name";$("jGo").textContent=step==="name"?"Continue":"Join";$("jCancel").textContent=step==="err"?"Close":"Cancel";
+  d.dataset.step=step;if(!d.open)d.showModal();
+  setTimeout(()=>{const f=step==="link"?$("jLink"):step==="name"?$("jName"):step==="choose"?$("jNew"):$("jCancel");f.focus()},30)}
+const joinAsk=(step,title,lead)=>{joinStep(step,title,lead);return new Promise(r=>{jRes=r})};
+$("joinForm").onsubmit=e=>{e.preventDefault();const st=$("dlgJoin").dataset.step;
+  if(st==="link"){const inv=parseInvite($("jLink").value);if(!inv){$("jMsg").textContent="That isn't an invite link. It ends in #join= and a long code.";return}jDone(inv)}
+  else if(st==="name"){const n=$("jName").value.replace(/\s+/g," ").trim().slice(0,40);if(!n){$("jMsg").textContent="Type a name first.";return}jDone(n)}};
+$("jCancel").onclick=()=>$("dlgJoin").close();
+$("dlgJoin").addEventListener("close",()=>jDone(null));
+$("jNew").onclick=()=>jDone("new");$("jShare").onclick=()=>jDone("share");
+async function joinFlow(inv){
+  if(inv&&inv.bad){toast("That invite link is incomplete. Ask for a new one");return}
+  if(!SYNC_URL){toast("Collaboration isn't set up on this copy of Cue Board");return}
+  if(!inv){$("jLink").value="";inv=await joinAsk("link","Join collaboration","Paste the invite link you were sent. Everyone with the link can edit the project with you.");if(!inv)return}
+  const have=Object.entries(cset.rooms).find(([,b])=>b.roomId===inv.roomId),hp=have&&projects.find(x=>x.id===have[0]);
+  if(hp){$("dlgJoin").close();
+    if(have[1].token!==inv.token){have[1].token=inv.token;await saveCset();if(csessPid===hp.id){csess.stop();csess=null;csessPid=null}}
+    if(!cur||cur.id!==hp.id){if(dirty)flush();selectProject(hp)}else collabFor(cur);
+    toast("You're already in this room: it's “"+(hp.title||"Untitled project")+"”");return}
+  if(!cset.name){$("jName").value="";const n=await joinAsk("name","Your name in the room","The others see it next to the shots you have selected.");if(!n)return;cset.name=n;await saveCset()}
+  joinStep("busy","Joining the room","Connecting to the room…");
+  const m=await loadCollab(),r=m?await m.probe(inv.roomId,inv.token):{ok:false};
+  if(!$("dlgJoin").open)return;
+  if(!r.ok){joinStep("err","Can't reach the room",r.reason==="rejected"?"The room didn't accept this invite link: it may be incomplete, or it was replaced. Ask for a new one. Your projects are untouched.":"The sync server didn't answer. Check your connection and try again. Your projects are untouched.");return}
+  let how="new";
+  if(cur){const bound=!!cset.rooms[cur.id];$("jShare").disabled=bound||!r.empty;
+    $("jShareHint").textContent=bound?"This project is already in another room.":r.empty?"The room is empty, so your cuts, notes, prompts and takes go into it. Media files stay on this device.":`Only while the room is empty, and this one has ${r.shots} shot${r.shots===1?"":"s"} already.`;
+    how=await joinAsk("choose","Join “"+r.title+"”","You have “"+(cur.title||"Untitled project")+"” open. Nothing in it is overwritten either way.");if(!how)return}
+  $("dlgJoin").close();
+  /* this project's takes were all sent from here: say so, so only this browser ever polls them */
+  if(how==="share"){S().forEach(s=>(s.takes||[]).forEach(t=>{if(!t.dev)t.dev=deviceId}));flush();cset.rooms[cur.id]={roomId:inv.roomId,token:inv.token,name:cset.name,share:true};await saveCset();collabFor(cur);renderProjSelect();return}
+  const p={...r.project,id:uid("p"),updated:Date.now()};if(!p.sections.length)p.sections.push(newSec(0));
+  await m.seed(p.id,r.update);
+  cset.rooms[p.id]={roomId:inv.roomId,token:inv.token,name:cset.name};await saveCset();
+  if(dirty)flush();
+  try{await store.set(p)}catch(e){delete cset.rooms[p.id];saveCset();toast("Couldn't save the project here");return}
+  selectProject(p);toast("Joined “"+p.title+"”");
+}
+
 /* ---------- toast / boot ---------- */
 let tt=null;function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,1800)}
 let rz=0;try{new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(renderTimeline)}).observe(scroller)}catch(e){window.addEventListener("resize",renderTimeline)}
@@ -1597,6 +1828,8 @@ renderAll();
   if(!(await idb())){setStatus("err","Browser storage unavailable");toast("This browser blocks local storage, so nothing will be saved")}
   else setStatus("ok","Saved locally");
   try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im)}catch(e){}
+  try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms};
+    deviceId=(await getSetting("deviceId"))||"";if(!deviceId){deviceId=uid("d");await putSetting("deviceId",deviceId)}}catch(e){}
   await detectProxy();
   side=ls("cueboard-side")==="b"?"b":"a";setSide(side);
   store.subscribe(onProjects);

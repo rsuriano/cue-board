@@ -70,6 +70,7 @@ Side B shows an estimate before each generation, computed from OpenRouter's live
 | `index.html` | The whole app. No build step. |
 | `server.mjs` | Optional local server + OpenRouter relay. |
 | `example/example.js` | The example project and its song, loaded only when needed. |
+| `collab.js` | The collaboration client, built from `packages/collab-client`. Loaded only when a project is in a room. |
 
 ## License
 
@@ -82,5 +83,35 @@ The repo is also an npm workspaces monorepo (Node 20+), for the multi-user versi
 | Path | What it is |
 |---|---|
 | `packages/sync-server` | Real-time sync server for shared cue boards (Yjs over WebSocket, one room per project, invite links). A spike: see its `SPIKE.md`. |
+| `packages/collab-client` | The app side of collaboration: Yjs client, the project ⇄ doc binding, validation of remote data. `npm run build:collab` bundles it into `collab.js` (committed). |
 
 `npm install` at the root installs all packages; `npm test` runs their tests. The app itself will move to `apps/web` later.
+
+## Collaboration v1
+
+A project can be shared with friends and edited live: shots and cuts, titles, notes, prompts, takes (their details, not their files), which take is in the cut, and the song reference. It's opt-in per project. Projects that aren't in a room work exactly as before, with no network at all, and `collab.js` is never loaded for them.
+
+**Turn it on.** The copy of the app has to know a sync server: set `<meta name="cue-sync-url" content="wss://sync.example.dev">` in `index.html`. Empty (the default) means collaboration is off and the menu doesn't offer it. Run the server from `packages/sync-server` (see its `SPIKE.md`).
+
+**Create a room** (the operator, on the server):
+
+```bash
+APP_URL=https://cue.example.dev/ npm run create-project -w @cue-board/sync-server -- "Our video"
+# room:   …
+# invite: http://127.0.0.1:3300/demo/?room=…&token=…    (the dev demo)
+# app:    https://cue.example.dev/#join=<room>.<token>    (send this one)
+```
+
+`--import file.cueboard.json` seeds the room from an export; `--invite <room>` prints another link for the same room.
+
+**Join.** Open the `#join=` link, or paste it into **Join collaboration…** in the project menu. The first time, the app asks for your name (kept in this browser; the others see it next to the shot you have selected). On a device with no projects the room opens as a new project. With a project open you choose: **Open the room as a new project** (your project is untouched) or **Share this project into the room** (only while the room is still empty). Nothing is overwritten without asking, and the link leaves the address bar as soon as it's read.
+
+**While you work.** The chip next to the project picker says *Synced*, *Syncing…*, *Offline, changes will sync* or *Can't reach the room*. The initials next to it are the others in the project; theirs also show on the shot each of them has selected. Offline edits stay in the browser (across reloads too) and merge when you're back. Two people typing in the same note both keep their text. **Leave collaboration** in the project menu stops syncing and keeps the project here as a local copy.
+
+**Limits.**
+- **Media isn't synced yet.** Images, clips, take videos and the song stay on the device that made them; the room holds only their content hashes, and other devices show "not on this device yet". Someone with the same song file can load it themselves. Media will travel peer to peer in a later version.
+- **One shared link per room, with full edit access.** Anyone with the link can read and change everything, including deleting shots. No accounts, roles, read-only links or per-person revoke: revoking means removing the token's hash from the room's `project.json` on the server, which cuts off everyone using that link (hand the others a new one with `--invite`).
+- A generation runs on the key of whoever started it. The others see the take's details; the video stays on that person's device.
+- The token is kept in this browser's IndexedDB, never in exports, `localStorage` or the address bar, and travels to the server as a WebSocket subprotocol rather than in a URL.
+
+How it works: [`docs/collaboration.md`](docs/collaboration.md).

@@ -144,7 +144,11 @@ export async function startServer(opts = {}) {
     res.writeHead(404); res.end();
   });
 
-  const wss = new WebSocketServer({ noServer: true, maxPayload: o.maxMessageBytes });
+  // A browser can't set headers on a WebSocket, so the app sends the token as the second subprotocol
+  // (`cueboard, <token>`) instead of in the URL, where it would land in proxy access logs and in the browser console
+  // whenever a connect fails. Only `cueboard` is echoed back, never the token. Neither the header nor the token is ever
+  // logged here; a proxy that logs request headers needs a filter (SPIKE.md, "Don't log the token").
+  const wss = new WebSocketServer({ noServer: true, maxPayload: o.maxMessageBytes, handleProtocols: protocols => (protocols.has('cueboard') ? 'cueboard' : false) });
   server.on('upgrade', (req, socket, head) => {
     if (closing) { socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, ws => onConnection(ws, req));
@@ -167,6 +171,12 @@ export async function startServer(opts = {}) {
     return req.socket.remoteAddress || '?';
   }
 
+  /** Token from `Sec-WebSocket-Protocol: cueboard, <token>`, or ''. @param {http.IncomingMessage} req */
+  function protocolToken(req) {
+    const p = String(req.headers['sec-websocket-protocol'] || '').split(',').map(s => s.trim());
+    return p[0] === 'cueboard' && p[1] ? p[1] : '';
+  }
+
   /** @param {import('ws').WebSocket} ws @param {http.IncomingMessage} req */
   function onConnection(ws, req) {
     const ip = clientIp(req);
@@ -177,7 +187,7 @@ export async function startServer(opts = {}) {
     /** @type {Room} */ let room;
     try {
       if (!store.exists(id)) { log.warn('rejected: unknown room', { ip }); ws.close(4404, 'unknown room'); return; }
-      if (!store.checkToken(id, url.searchParams.get('token') || '')) { log.warn('rejected: bad token', { ip, room: id }); ws.close(4401, 'bad token'); return; }
+      if (!store.checkToken(id, url.searchParams.get('token') || protocolToken(req))) { log.warn('rejected: bad token', { ip, room: id }); ws.close(4401, 'bad token'); return; }
       if (rooms.get(id)?.degraded) { log.warn('rejected: room degraded', { ip, room: id }); ws.close(4500, 'room unavailable'); return; }
       room = getRoom(id);
     } catch (err) {

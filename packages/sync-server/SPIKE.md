@@ -26,6 +26,28 @@ sync.example.dev {                  # placeholder host
 }
 ```
 
+**Don't log the token.** The app sends it in `Sec-WebSocket-Protocol` (older links: `?token=` in the URL). The server never logs either, but Caddy's JSON access log records all request headers and redacts only cookies and `Authorization` by default. Either leave `log` out of the sync site (Caddy then writes no access log for it, as above), or filter both out:
+
+```caddyfile
+sync.example.dev {
+	log {
+		output file /var/log/caddy/sync-access.log
+		format filter {
+			wrap json
+			fields {
+				request>headers>Sec-Websocket-Protocol delete
+				request>uri query {
+					delete token
+				}
+			}
+		}
+	}
+	reverse_proxy 127.0.0.1:3300
+}
+```
+
+Not checked against a running Caddy: after deploying, open a room once and grep the log for the token.
+
 Run it with `TRUST_PROXY=1` (`TRUSTED_PROXY_HOPS=1` is the default). Caddy keeps an incoming `X-Forwarded-For` and appends to it only when the peer is listed in `trusted_proxies`. Otherwise it replaces the header. In both cases the rightmost entry is the address Caddy saw, so leave `trusted_proxies` unset. If you add a CDN or a second proxy of your own in front, set `TRUSTED_PROXY_HOPS=2`. The hephaestus proxy config hasn't been checked against this yet.
 
 ## Layout
@@ -107,7 +129,7 @@ Second round:
 ## Risks
 
 - **Doc growth and GC.** Yjs keeps a small tombstone per deleted run forever, and GC can't drop deleted items while anyone could still need them. In the measurement above, a note with 13 K visible characters cost about 160 KB of doc after 20 K keystrokes, because each typing session with backspaces fragments the text. That's fine at cue-board scale. If it ever matters: periodically snapshot into a fresh doc for a new room epoch (clients reload).
-- **Auth model.** A bearer invite token is all-or-nothing: anyone with the link can read and write, forever, until the hash is removed from `project.json` (which revokes all holders at once if they share one token). There are no users, no roles (viewer/editor) and no per-person revocation or audit. Tokens travel in the URL, so they end up in proxy logs and browser history. Fine for friends; not for strangers.
+- **Auth model.** A bearer invite token is all-or-nothing: anyone with the link can read and write, forever, until the hash is removed from `project.json` (which revokes all holders at once if they share one token). There are no users, no roles (viewer/editor) and no per-person revocation or audit. Tokens travelled in the URL, so they ended up in proxy logs and browser history; the app now sends them as a subprotocol, which proxy access logs still record unless filtered (see "Don't log the token"). Fine for friends; not for strangers.
 - **Durability.** Appends are synchronous writes but not fsynced, so a clean restart or a process crash loses nothing, while a power loss can lose the last seconds. Compaction itself is fsync + rename. One process owns the files: there is no locking, so running two servers on one `DATA_DIR`, or running `create-project --invite` against a room the server has loaded, races.
 - **Reconnect storms.** After a deploy every client reconnects within ~2.5 s, each loads its room from disk and does a full state-vector sync. 100 rooms took 0.7 s here. Thousands would need jittered backoff and maybe a loading queue. Nothing stops a valid token holder from opening 16 sockets or sending 2 MB updates in a loop: there's no rate limit per message, only per size.
 - **Malicious clients with a valid token** can write anything the schema allows, or things it doesn't: the server doesn't validate doc structure. They can also delete everything, and the CRDT will faithfully sync the deletion. Backups and snapshots are the defence (see next steps).
@@ -115,7 +137,7 @@ Second round:
 
 ## Not done
 
-- Integration with `index.html` (the app still uses IndexedDB only). No `apps/web` move.
+- Integration with `index.html` (the app still uses IndexedDB only). No `apps/web` move. *Since done (collaboration v1): see `docs/collaboration.md` at the repo root. The app sends the token as a WebSocket subprotocol, which the server now accepts too (test s).*
 - Media of any kind: no P2P transfer, WebTorrent/WebRTC, seed or encryption. Refs are hashes only; nothing fetches media by hash.
 - Users, accounts, roles, read-only links, revoking a single person, token expiry, an admin UI. `--invite` adds tokens; revoking means editing `project.json` by hand.
 - Server-side schema validation of updates; history, snapshots or undo; backups.
