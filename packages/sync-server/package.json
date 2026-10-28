@@ -17,7 +17,7 @@
     "create-project": "node bin/create-project.mjs",
     "build:demo": "esbuild demo/client.mjs --bundle --format=esm --outfile=demo/dist/client.js --log-level=warning",
     "demo": "npm run build:demo && SERVE_DEMO=1 node src/main.mjs",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "lib0": "^0.2.119",
