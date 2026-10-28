@@ -405,7 +405,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 /* in a shared project the chip speaks for saving too; the header status only shows up to report a local save error */
 .top:has(#cstat:not([hidden])) #status:not(.err){display:none}
 /* the long states don't fit one header row below 1600px: the groups wrap whole, as they already do below 1360px */
-@media (max-width:1599px){.top:has(#cstat[data-state="offline"]:not([hidden]),#cstat[data-state="unreachable"]:not([hidden]),#cstat[data-state="rejected"]:not([hidden])){flex-wrap:wrap}}
+@media (max-width:1599px){.top:has(#cstat[data-state="offline"]:not([hidden]),#cstat[data-state="unreachable"]:not([hidden]),#cstat[data-state="rejected"]:not([hidden]),#cstat[data-unshared]:not([hidden])){flex-wrap:wrap}}
 .status.sync::before{background:var(--ink-3)}
 .status.off::before{background:transparent;box-shadow:inset 0 0 0 var(--hairline) var(--ink-3)}
 .presence{display:flex;align-items:center;gap:var(--sp-0-5)}
@@ -715,8 +715,12 @@ assets={
     mediaCache.set(id,URL.createObjectURL(b));return{id,url:mediaCache.get(id)}},
   delete:async id=>{await idbS("media","readwrite",st=>st.delete(id));const u=mediaCache.get(id);if(u){URL.revokeObjectURL(u);mediaCache.delete(id)}return{deleted:true}}
 };
-/* delete a media blob only once nothing in the project points at it anymore */
-function releaseMedia(id){if(id&&cur&&!projectMediaIds(cur).includes(id))assets.delete(id).catch(()=>{})}
+/* delete a media blob only once nothing in the project points at it anymore, and only after the project that stopped
+   pointing at it has been saved: until then the saved copy (and a room still sending the old value) may need it */
+const toRelease=new Map();
+function releaseMedia(id){if(id&&cur)toRelease.set(id,cur.id)}
+function releaseSaved(p){for(const [id,pid] of toRelease)if(pid===p.id){toRelease.delete(id);
+  if(!projectMediaIds(p).includes(id)&&!(cur&&cur.id===pid&&projectMediaIds(cur).includes(id)))assets.delete(id).catch(()=>{})}}
 
 /* now=true for typing in a shared text field: it goes to the room at once, so remote edits merge around the caret */
 function scheduleSave(now){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);if(csess)csess.changed(!!now)}
@@ -725,7 +729,7 @@ async function flush(){
   if(saving){again=true;return}
   saving=true;cur.updated=Date.now();const snap=clone(cur);
   const i=projects.findIndex(p=>p.id===snap.id);if(i<0)projects.unshift(snap);else projects[i]=snap;renderProjSelect();
-  try{await store.set(snap);setStatus("ok","Saved locally")}
+  try{await store.set(snap);setStatus("ok","Saved locally");releaseSaved(snap)}
   catch(e){const c=e&&e.code;setStatus("err",c==="quota_exceeded"?"Out of storage space":c==="invalid_argument"?"Read only":"Couldn't save")}
   saving=false;if(again){again=false;flush();return}
   if(!timer)dirty=false;
@@ -1660,7 +1664,7 @@ $("setTest").onclick=async()=>{
    imported only when a room is joined or already bound; with no binding nothing here touches the network. */
 const SYNC_URL=((document.querySelector('meta[name="cue-sync-url"]')||{}).content||"").trim();
 const INVITE=/^([A-Za-z0-9_-]{16,64})\.([A-Za-z0-9_-]{16,128})$/;
-let cset={name:"",rooms:{}},cmod=null,csess=null,csessPid=null,peers=[],deviceId="";
+let cset={name:"",rooms:{}},cmod=null,csess=null,csessPid=null,peers=[],deviceId="",cunshared=0;
 /* an invite link: https://host/#join=<room>.<token>, the server CLI's ?room=…&token=… link, or just <room>.<token> */
 function parseInvite(t){t=String(t||"").trim();let m=/[#&]join=([A-Za-z0-9_.-]+)/.exec(t);
   if(m)t=m[1];else{const r=/[?&]room=([A-Za-z0-9_-]+)/.exec(t),k=/[?&]token=([A-Za-z0-9_-]+)/.exec(t);if(r&&k)t=r[1]+"."+k[1]}
@@ -1684,6 +1688,7 @@ const collabApp={
   songBlob:async pid=>{const r=await idbDo("readonly",st=>st.get(pid));return r&&r.blob?{blob:r.blob,name:r.name||""}:null},
   onStatus:(pid,s)=>{if(cur&&cur.id===pid&&csessPid===pid)renderCollab(s)},
   onPeers:(pid,l)=>{if(cur&&cur.id===pid&&csessPid===pid){peers=l;renderPresence();renderMarks()}},
+  onUnshared:(pid,n)=>{if(cur&&cur.id===pid&&csessPid===pid){cunshared=n;renderCollab(csess.status())}},
   onEvent:(pid,t)=>{const b=cset.rooms[pid];if(!b)return;
     if(t==="shared"){delete b.share;saveCset();toast("Shared into the room")}
     else{leaveRoom(pid,true);toast("Someone started working in that room meanwhile, so nothing was shared")}}
@@ -1706,8 +1711,10 @@ function applyRemote(pid,p){
 const CST={synced:["ok","Synced",""],syncing:["sync","Syncing…",""],offline:["off","Offline, changes will sync","Your edits are kept in this browser and go to the room when you're back online."],
   unreachable:["err","Can't reach the room","Retrying. Your edits are kept in this browser."],rejected:["err","Can't reach the room","The room didn't accept this invite link. Your project is still here."]};
 function renderCollab(s){const el=$("cstat");
-  if(!s){el.hidden=true;el.textContent="";peers=[];renderPresence();return}
+  if(!s){el.hidden=true;el.textContent="";delete el.dataset.unshared;peers=[];renderPresence();return}
   const [k,t,tip]=CST[s]||CST.syncing;el.hidden=false;el.className="status cchip "+k;el.textContent=t;el.title=tip;el.dataset.state=s;
+  /* a file this browser couldn't read or hash: it stays here, the others keep the previous one. Said quietly, on the chip */
+  const n=s==="synced"&&csess?cunshared:0;if(n){el.textContent=`Synced, ${n} file${n>1?"s":""} not shared`;el.title="This browser couldn't prepare "+(n>1?"these files":"this file")+" for the room, so the others still see the previous one. Choosing the file again retries.";el.dataset.unshared=""}else delete el.dataset.unshared;
   if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}}
 function renderPresence(){const el=$("presence"),l=csess?peers:[];
   const chip=(t,title,cls)=>{const c=document.createElement("span");c.className="pchip"+(cls||"");c.textContent=t;c.title=title;return c};
@@ -1726,19 +1733,24 @@ function renderMarks(){
 /* start or stop the room session for the open project */
 async function collabFor(p){
   const b=p&&SYNC_URL?cset.rooms[p.id]:null;
-  if(csess&&csessPid!==(b&&p.id)){csess.stop();csess=null;csessPid=null;peers=[];renderMarks()}
+  if(csess&&csessPid!==(b&&p.id)){csess.stop();csess=null;csessPid=null;cunshared=0;peers=[];renderMarks()}
   if(!b){renderCollab(null);return}
   if(csessPid===p.id)return;
   renderCollab("syncing");
   const m=await loadCollab();
   if(!cur||cur.id!==p.id||csessPid===p.id||!cset.rooms[p.id])return;
   if(!m){renderCollab("unreachable");return}
-  csessPid=p.id;csess=m.open(p.id,{roomId:b.roomId,token:b.token,name:cset.name,dev:deviceId},{mode:b.share?"share":"normal"});csess.select(selId);
+  csessPid=p.id;cunshared=0;csess=m.open(p.id,{roomId:b.roomId,token:b.token,name:cset.name,dev:deviceId},{mode:b.share?"share":"normal"});csess.select(selId);
 }
+/* the room's offline copy (collab.js' "cueboard-collab" database), also from a tab that never loaded collab.js.
+   Never creates the database: collab.js makes its stores on first open, which an empty one here would skip */
+function forgetRoomCopy(pid){if(cmod){cmod.forget(pid);return}
+  try{const q=indexedDB.open("cueboard-collab");q.onupgradeneeded=()=>q.transaction.abort();
+    q.onsuccess=()=>{const d=q.result;try{if(d.objectStoreNames.contains("docs")){const tx=d.transaction("docs","readwrite");tx.objectStore("docs").delete(pid);tx.oncomplete=tx.onabort=()=>d.close()}else d.close()}catch(e){d.close()}};q.onerror=e=>e.preventDefault()}catch(e){}}
 function leaveRoom(pid,quiet){
   pid=pid||(cur&&cur.id);if(!pid||!cset.rooms[pid])return;
   if(csess&&csessPid===pid){csess.stop();csess=null;csessPid=null;peers=[]}
-  delete cset.rooms[pid];saveCset();if(cmod)cmod.forget(pid);
+  delete cset.rooms[pid];saveCset();forgetRoomCopy(pid);
   if(cur&&cur.id===pid){renderCollab(null);renderMarks();renderProjSelect()}
   if(!quiet)toast("Left the room. This project stays here as a local copy");
 }
