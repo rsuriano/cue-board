@@ -33,6 +33,7 @@ await new Promise(ok => tap.listen(TAP_PORT, '127.0.0.1', ok));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.woff2': 'font/woff2', '.png': 'image/png' };
 const srv = createServer((q, r) => {
   const [path, qs = ''] = q.url.split('?');
+  if (path === '/blank.html') { r.writeHead(200, { 'content-type': 'text/html' }); r.end('<!doctype html><title>blank</title>'); return; }   // same origin, no app
   const p = join(root, normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, ''));
   try {
     if (!statSync(p).isFile()) throw 0;
@@ -96,6 +97,28 @@ const stored = (page, pid) => page.evaluate(async pid => {
   l.close(); if (cd) cd.close(); return out;
 }, pid);
 const secOf = (p, id) => (p && p.sections.find(s => s.id === id)) || null;
+/* the room's offline copy for `pid` contains the string `s` (a single insert is stored as one run of UTF-8) */
+const copyHas = (page, pid, s) => page.evaluate(async ([pid, s]) => {
+  const d = await new Promise(r => { const q = indexedDB.open('cueboard-collab'); q.onupgradeneeded = () => q.transaction.abort(); q.onsuccess = () => r(q.result); q.onerror = () => r(null); });
+  if (!d) return false;
+  const rec = await new Promise(r => { try { const g = d.transaction('docs').objectStore('docs').get(pid); g.onsuccess = () => r(g.result); g.onerror = () => r(null); } catch { r(null); } });
+  d.close(); const u = rec && (rec.u || rec);
+  return !!u && new TextDecoder().decode(u).includes(s);
+}, [pid, s]);
+/* this browser has a media file with this id */
+const hasBlob = (page, id) => page.evaluate(async id => {
+  const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
+  return new Promise(r => { const g = d.transaction('media').objectStore('media').get(id); g.onsuccess = () => r(!!g.result); g.onerror = () => r(false); });
+}, id);
+const watch = (page, name) => { page.on('console', m => { log.console.push(`${name} ${m.type()}: ${m.text()}`); }); page.on('pageerror', e => log.console.push(`${name} pageerror: ${e.message}`)); };
+/* a plain Yjs client in the room (someone else's browser, as the server sees it) */
+const Y = await import('yjs'), { WebsocketProvider } = await import('y-websocket'), { shotsMap } = await import('@cue-board/sync-server/schema');
+async function roomClient() {
+  const doc = new Y.Doc(), p = new WebsocketProvider(`ws://127.0.0.1:${SYNC_PORT}/r`, room.room, doc, { protocols: ['cueboard', room.token], disableBc: true });
+  await until(() => p.synced, 6000);
+  return { doc, shot: id => shotsMap(doc).get(id), done: () => { p.destroy(); doc.destroy(); } };
+}
+const takeIn = (ys, id) => (ys.get('takes')?.toArray() || []).find(t => t.get('id') === id);
 
 let A, B, C;
 try {
@@ -104,6 +127,23 @@ try {
   await A.page.goto(app); await A.page.waitForSelector('.card'); await sleep(500);
   check('no room bound: collab.js is not loaded, no socket opened', !(await A.page.evaluate(() => performance.getEntriesByType('resource').some(e => /collab\.js|:3360/.test(e.name)))));
   const exampleBefore = await A.page.evaluate(() => document.querySelectorAll('.card').length);
+  // a take from before collaboration (no `dev`) in the project A is about to share, written once A has nothing left to save
+  await until(() => A.page.evaluate(() => document.getElementById('status').textContent === 'Saved locally')); await sleep(1000);
+  // (a save still pending when the page goes is flushed on pagehide, over this write: reload, then check it held)
+  const hasLegacy = async () => !!(await stored(A.page, 'p-example')).project?.sections.some(s => (s.takes || []).some(t => t.id === 't-legacy'));
+  let injected = false;
+  for (let i = 0; i < 3 && !injected; i++) {
+  await until(() => A.page.evaluate(async () => {
+    const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
+    const st = () => d.transaction('projects', 'readwrite').objectStore('projects');
+    const p = await new Promise(r => { const g = st().get('p-example'); g.onsuccess = () => r(g.result); });
+    if (!p) return false;
+    p.sections[0].takes = [{ id: 't-legacy', jobId: 'job-legacy', model: 'alibaba/wan-3.0', modelName: 'Wan 3.0', res: '480p', dur: 4, audio: false, seed: '', prompt: 'legacy', start: false, end: false, est: 0.2, cost: null, status: 'completed', created: Date.now(), media: '', error: '', note: '' }];
+    await new Promise(r => { const q = st().put(p, 'p-example'); q.onsuccess = r; }); return true;
+  }), 6000);
+  await A.page.reload(); await A.page.waitForSelector('.card'); await sleep(1500);
+  injected = await hasLegacy();
+  }
   await A.page.goto(room.link); await A.page.waitForSelector('.card');
   check('the token is out of the address bar right after load', !A.page.url().includes(room.token) && !A.page.url().includes('#join'), A.page.url());
   await A.page.waitForSelector('#dlgJoin[open][data-step="name"]'); await A.page.fill('#jName', 'Ana Torres'); await shot(A.page, 'name-prompt');
@@ -122,6 +162,8 @@ try {
   check('B: new device opens the room as a project with every shot', (await cards(B.page)).length === exampleBefore, `${(await cards(B.page)).length}/${exampleBefore}`);
   check('B: example was not auto-opened next to it', (await B.page.evaluate(() => document.querySelectorAll('#projmenu').length)) === 1 && !(await B.page.evaluate(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); }); return new Promise(r => { const g = d.transaction('projects').objectStore('projects').get('p-example'); g.onsuccess = () => r(!!g.result); }); })));
   await until(async () => (await chip(B.page)) === 'Synced');
+  const aDev = (await stored(A.page)).dev, legacy = await until(async () => (await stored(B.page)).project?.sections.flatMap(s => s.takes || []).find(t => t.id === 't-legacy'));
+  check('sharing stamps this browser\'s id on the project\'s older takes (so only A ever polls them)', !!legacy && !!aDev && legacy.dev === aDev, legacy ? `dev ${legacy.dev === aDev ? 'A' : legacy.dev || 'none'}` : `take not in B (written into A's project: ${injected}; in A's saved project: ${(await stored(A.page)).project?.sections.some(s => (s.takes || []).some(t => t.id === 't-legacy'))})`);
 
   /* ---- A edits title and notes, B edits the same notes at the same time ---- */
   await A.page.click('#f-title'); await A.page.keyboard.press('End'); await A.page.keyboard.type(' (A)', { delay: 20 });
@@ -172,6 +214,25 @@ try {
   const bBefore = await cards(B.page);
   await B.page.reload(); await B.page.waitForSelector('.card');
   check('B reload: same shots, still bound, Synced', await until(async () => (await chip(B.page)) === 'Synced' && JSON.stringify(await cards(B.page)) === JSON.stringify(bBefore)), await chip(B.page));
+
+  /* ---- B's renderer dies right after its offline copy took A's change (copy saved, project maybe not): the reopen keeps it ---- */
+  {
+    const bPid = (await stored(B.page)).pid, sid0 = await A.page.locator('.card').nth(0).getAttribute('data-id'), R = ' [R from A before B crashed]';
+    await A.page.locator('.card').nth(0).click();
+    await A.page.fill('#f-notes', (await val(A.page, 'f-notes')) + R); await A.page.evaluate(() => document.activeElement.blur());
+    const inCopy = await until(() => copyHas(B.page, bPid, R), 4000);
+    const cdp = await B.ctx.newCDPSession(B.page); cdp.send('Page.crash').catch(() => {});
+    await B.page.waitForEvent('crash', { timeout: 4000 }).catch(() => {});
+    B.page = await B.ctx.newPage(); watch(B.page, 'B');
+    await B.page.goto(origin + '/blank.html');   // what the crash left in storage, read without the app running
+    const inProject = !!secOf((await stored(B.page, bPid)).project, sid0)?.notes.includes(R);
+    await B.page.goto(app); await B.page.waitForSelector('.card'); await until(async () => (await chip(B.page)) === 'Synced');
+    await sleep(1500);
+    const aNow = await val(A.page, 'f-notes');   // A still has shot 01 selected
+    const bNow = secOf((await stored(B.page, bPid)).project, sid0)?.notes || '';
+    check('B crashes after its offline copy has A\'s change: after reopening, A\'s change is still in the room and reaches B',
+      inCopy && aNow.endsWith(R) && bNow.endsWith(R), `in B's copy ${!!inCopy}, in B's saved project at the crash ${inProject}; A ${aNow.endsWith(R)}, B ${bNow.endsWith(R)}`);
+  }
 
   /* ---- media: A uploads a frame for shot 01; B doesn't have the file ---- */
   await A.page.locator('.card').nth(0).click();
@@ -235,6 +296,20 @@ try {
   await A.page.evaluate(() => sessionStorage.removeItem('slowHash')); await A.page.unroute(u => u.href.startsWith(JOB)).catch(() => {});
   await until(async () => (await chip(A.page)) === 'Synced');
 
+  /* ---- someone else deletes A's take while the shot still uses its file, then clears the shot: A frees the file only then ---- */
+  {
+    const rc = await roomClient(), ys = rc.shot(tId), ref = takeIn(ys, 't-check')?.get('media'), mId = aTake.media || '';
+    rc.doc.transact(() => { ys.set('img', { ...ref }); ys.set('kind', 'video'); });
+    const used = await until(async () => secOf((await stored(A.page)).project, tId)?.img === mId, 6000);
+    rc.doc.transact(() => { const ya = ys.get('takes'); ya.delete(ya.toArray().indexOf(takeIn(ys, 't-check')), 1); });
+    await until(async () => !(secOf((await stored(A.page)).project, tId)?.takes || []).some(t => t.id === 't-check'), 6000); await sleep(1000);
+    const kept = mId && await hasBlob(A.page, mId);
+    rc.doc.transact(() => { ys.delete('img'); ys.set('kind', ''); });
+    const freed = await until(async () => !(await hasBlob(A.page, mId)), 6000);
+    check('a take deleted elsewhere: A keeps its file while the shot still uses it, and frees it once nothing does', used && kept && freed, `used by the shot ${used}, kept after the take went ${kept}, freed after the shot cleared ${freed}`);
+    rc.done();
+  }
+
   /* ---- the same browser in two tabs on one bound project: one person for the others, no duplicate, same state ---- */
   const A2 = await A.ctx.newPage();
   A2.on('console', m => { log.console.push(`A2 ${m.type()}: ${m.text()}`); }); A2.on('pageerror', e => log.console.push(`A2 pageerror: ${e.message}`));
@@ -252,6 +327,31 @@ try {
   const [sA, sB] = [await stored(A.page), await stored(B.page)], strip = p => JSON.stringify(p.sections.map(s => [s.id, s.start, s.title, s.notes, (s.takes || []).length]));
   check('two tabs of A: both tabs\' edits reach everyone, and A\'s saved project matches B\'s', !!sameAll && strip(sA.project) === strip(sB.project) && secOf(sA.project, await A.page.locator('.card').nth(0).getAttribute('data-id')).notes.endsWith(' [tab 1]'));
   await A2.close();
+
+  /* ---- a pending take with no `dev` in the room (someone else's, or older): B has a key and polls, but never that one ---- */
+  {
+    const rc = await roomClient(), sid = await A.page.locator('.card').nth(0).getAttribute('data-id'), ys = rc.shot(sid);
+    rc.doc.transact(() => {
+      let ya = ys.get('takes'); if (!(ya instanceof Y.Array)) { ya = new Y.Array(); ys.set('takes', ya); }
+      const t = new Y.Map();
+      for (const [k, v] of Object.entries({ id: 't-nodev', jobId: 'job-nodev', model: 'alibaba/wan-3.0', modelName: 'Wan 3.0', res: '480p', dur: 4, status: 'pending', created: Date.now(), prompt: 'not B\'s', media: '', error: '', note: '' })) t.set(k, v);
+      ya.insert(0, [t]);
+    });
+    let polls = 0;
+    const count = q => { if (q.url().includes('job-nodev')) polls++; };
+    A.page.on('request', count);
+    // what OpenRouter would answer for another account's job (assumed: not found), so a poll would mark it failed
+    await B.page.route(u => u.href.includes('/videos/job-nodev'), r => r.fulfill({ status: r.request().method() === 'OPTIONS' ? 204 : 404, headers: cors }));
+    await until(async () => (secOf((await stored(B.page)).project, sid)?.takes || []).some(t => t.id === 't-nodev'), 6000);
+    await B.page.evaluate(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); }); await new Promise(r => { const p = d.transaction('settings', 'readwrite').objectStore('settings').put('sk-or-v1-collab-check-not-a-key', 'apiKey'); p.onsuccess = r; }); });
+    B.page.on('request', count);
+    await B.page.reload(); await B.page.waitForSelector('.card'); await until(async () => (await chip(B.page)) === 'Synced');
+    await sleep(4500);   // the first poll runs 2.5 s after the project opens
+    const st = takeIn(ys, 't-nodev')?.get('status'), bSt = (secOf((await stored(B.page)).project, sid)?.takes || []).find(t => t.id === 't-nodev')?.status;
+    check('nobody polls a take without `dev` in a room, and its status stays "pending" everywhere', polls === 0 && st === 'pending' && bSt === 'pending', `requests ${polls}, room ${st}, B ${bSt}`);
+    A.page.off('request', count); B.page.off('request', count); await B.page.unroute(u => u.href.includes('/videos/job-nodev')).catch(() => {});
+    rc.done();
+  }
 
   /* ---- C: has a local project; a wrong token first, then the right link as a new project ---- */
   C = await newPage('C');
@@ -307,6 +407,16 @@ try {
   }
   await A.page.setViewportSize({ width: 1440, height: 900 });
   check('no horizontal overflow 1920 to 820 px with collaboration on', !over.length, over.join(' ') || widths.join(','));
+
+  /* ---- a first visit through an invite link, join cancelled: the example opens, the app isn't left empty ---- */
+  {
+    const D = await newPage('D');
+    await D.page.goto(room.link); await D.page.waitForSelector('#dlgJoin[open][data-step="name"]', { timeout: 6000 });
+    await D.page.click('#jCancel');
+    const n = await until(async () => { const k = await D.page.evaluate(() => document.querySelectorAll('.card').length); return k === exampleBefore ? k : 0; }, 6000);
+    check('first visit, join cancelled at the name step: the example project opens', n === exampleBefore, `${n || 0}/${exampleBefore} shots`);
+    await D.ctx.close();
+  }
 
   /* ---- the token never shows up where it shouldn't ---- */
   // snap Chromium can't write downloads to /tmp: read the blob the app hands to its download link instead

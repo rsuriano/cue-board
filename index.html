@@ -719,24 +719,31 @@ assets={
    pointing at it has been saved: until then the saved copy (and a room still sending the old value) may need it */
 const toRelease=new Map();
 function releaseMedia(id){if(id&&cur)toRelease.set(id,cur.id)}
+/* (a room maps a file's hash to whichever local copy this browser has, so another project may point at the same id) */
 function releaseSaved(p){for(const [id,pid] of toRelease)if(pid===p.id){toRelease.delete(id);
-  if(!projectMediaIds(p).includes(id)&&!(cur&&cur.id===pid&&projectMediaIds(cur).includes(id)))assets.delete(id).catch(()=>{})}}
+  if(![p,...projects,...(cur?[cur]:[])].some(q=>projectMediaIds(q).includes(id)))assets.delete(id).catch(()=>{})}}
 
 /* now=true for typing in a shared text field: it goes to the room at once, so remote edits merge around the caret */
 function scheduleSave(now){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);if(csess)csess.changed(!!now)}
 async function flush(){
   if(!cur||!store)return;
   if(saving){again=true;return}
+  /* a room project: the room's offline copy is written right after this save, with the push base that matches it */
+  const cs=csess&&csessPid===cur.id?csess:null,mk=cs?cs.mark():undefined;
   saving=true;cur.updated=Date.now();const snap=clone(cur);
   const i=projects.findIndex(p=>p.id===snap.id);if(i<0)projects.unshift(snap);else projects[i]=snap;renderProjSelect();
-  try{await store.set(snap);setStatus("ok","Saved locally");releaseSaved(snap)}
-  catch(e){const c=e&&e.code;setStatus("err",c==="quota_exceeded"?"Out of storage space":c==="invalid_argument"?"Read only":"Couldn't save")}
+  try{await store.set(snap);setStatus("ok","Saved locally");if(cs)cs.saved(mk,true);releaseSaved(snap)}
+  catch(e){if(cs)cs.saved(mk,false);const c=e&&e.code;setStatus("err",c==="quota_exceeded"?"Out of storage space":c==="invalid_argument"?"Read only":"Couldn't save")}
   saving=false;if(again){again=false;flush();return}
   if(!timer)dirty=false;
 }
+/* leaving or hiding the page: a save still waiting on its timer goes now */
+function flushNow(){if(timer){clearTimeout(timer);timer=null;flush()}}
+window.addEventListener("pagehide",flushNow);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushNow()});
 function onProjects(list){
   projects=list.sort((a,b)=>(b.updated||0)-(a.updated||0));
-  if(pendingInvite){const inv=pendingInvite;pendingInvite=null;setTimeout(()=>joinFlow(inv).finally(()=>{joining=false}),0)}
+  if(pendingInvite){const inv=pendingInvite;pendingInvite=null;setTimeout(()=>joinFlow(inv).finally(()=>{joining=false;if(!projects.length&&!cur)autoExample()}),0)}
   if(cur){const r=projects.find(p=>p.id===cur.id);
     if(r&&!dirty&&!saving&&r.updated!==cur.updated){cur=clone(r);if(!cur.sections.some(s=>s.id===selId))selId=cur.sections[0]&&cur.sections[0].id;lastKey="";renderAll()}}
   else if(projects.length){const last=ls(KEY_LAST);selectProject(projects.find(p=>p.id===last)||projects[0]);return}
@@ -1464,11 +1471,13 @@ $("gGo").onclick=()=>{
 };
 
 /* ---------- polling: OpenRouter jobs are async; resumes after a reload ---------- */
+/* only jobs sent from this browser: a collaborator's job belongs to their OpenRouter key, and their device fetches it.
+   A take without `dev` (older, or imported) is ours only in a project that isn't in a room */
+const ownJob=t=>t.dev?t.dev===deviceId:!(cur&&cset.rooms[cur.id]);
 function ensurePolling(){if(pollTimer)return;pollTimer=setInterval(pollOnce,10000);setTimeout(pollOnce,2500)}
 async function pollOnce(){
   if(polling||!cur)return;const pid=cur.id,pend=[];
-  /* only jobs sent from this browser: a collaborator's job belongs to their OpenRouter key, and their device fetches it */
-  S().forEach(s=>(s.takes||[]).forEach(t=>{if(t.jobId&&(!t.dev||t.dev===deviceId)&&["pending","in_progress","downloading"].includes(t.status))pend.push([s,t])}));
+  S().forEach(s=>(s.takes||[]).forEach(t=>{if(t.jobId&&ownJob(t)&&["pending","in_progress","downloading"].includes(t.status))pend.push([s,t])}));
   if(!pend.length){clearInterval(pollTimer);pollTimer=null;return}
   polling=true;
   for(const [s,t] of pend){if(!cur||cur.id!==pid)break;try{await pollTake(s,t,pid)}catch(e){t.note="Can't reach OpenRouter, retrying…"}
@@ -1484,7 +1493,7 @@ async function downloadJob(id,j){
 }
 async function pollTake(s,t,pid){
   const r=await apiFetch("/videos/"+encodeURIComponent(t.jobId));
-  if(!r.ok){if(r.status===404){t.status="failed";t.error="OpenRouter doesn't know this job anymore";scheduleSave()}else t.note="Status check failed (HTTP "+r.status+"), retrying…";return}
+  if(!r.ok){if(r.status===404){if(!ownJob(t))return;t.status="failed";t.error="OpenRouter doesn't know this job anymore";scheduleSave()}else t.note="Status check failed (HTTP "+r.status+"), retrying…";return}
   const j=await r.json();if(!cur||cur.id!==pid)return;t.note="";
   if(j.usage&&j.usage.cost!=null)t.cost=+j.usage.cost;
   if(j.status==="completed"){
@@ -1697,6 +1706,7 @@ const collabApp={
    identity (a running generation or poll holds them), focus and caret stay where they are, nothing is sent back. */
 function applyRemote(pid,p){
   if(!cur||cur.id!==pid)return;
+  const had=projectMediaIds(cur);
   const old=new Map(S().map(s=>[s.id,s])),swap=(o,n)=>{for(const k of Object.keys(o))if(!(k in n))delete o[k];return Object.assign(o,n)};
   for(const k of Object.keys(cur))if(!["id","updated","sections"].includes(k)&&!(k in p))delete cur[k];
   for(const [k,v] of Object.entries(p))if(!["id","updated","sections"].includes(k))cur[k]=v;
@@ -1704,7 +1714,10 @@ function applyRemote(pid,p){
     n.takes=(n.takes||[]).map(t=>ot.has(t.id)?swap(ot.get(t.id),t):t);return swap(o,n)});
   if(!S().length)S().push(newSec(0));
   if(!S().some(s=>s.id===selId))selId=S()[0].id;
-  dirty=true;clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);
+  /* files a remote change stopped using (a deleted take or shot, a replaced frame): freed after the save, if unused */
+  const has=new Set(projectMediaIds(cur));had.forEach(id=>{if(!has.has(id)&&!id.startsWith("sha256-"))releaseMedia(id)});
+  /* saved sooner than a local edit: the room's offline copy (saved 300 ms after a change) gets its base with this save */
+  dirty=true;clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},300);
   const draw=()=>{lastKey="";renderAll();if(side==="b")renderB()};draw();
   loadProjectMedia(cur).then(n=>{if(n&&cur&&cur.id===pid)draw()});
 }
@@ -1788,7 +1801,8 @@ async function joinFlow(inv){
     $("jShareHint").textContent=bound?"This project is already in another room.":r.empty?"The room is empty, so your cuts, notes, prompts and takes go into it. Media files stay on this device.":`Only while the room is empty, and this one has ${r.shots} shot${r.shots===1?"":"s"} already.`;
     how=await joinAsk("choose","Join “"+r.title+"”","You have “"+(cur.title||"Untitled project")+"” open. Nothing in it is overwritten either way.");if(!how)return}
   $("dlgJoin").close();
-  if(how==="share"){if(dirty)flush();cset.rooms[cur.id]={roomId:inv.roomId,token:inv.token,name:cset.name,share:true};await saveCset();collabFor(cur);renderProjSelect();return}
+  /* this project's takes were all sent from here: say so, so only this browser ever polls them */
+  if(how==="share"){S().forEach(s=>(s.takes||[]).forEach(t=>{if(!t.dev)t.dev=deviceId}));flush();cset.rooms[cur.id]={roomId:inv.roomId,token:inv.token,name:cset.name,share:true};await saveCset();collabFor(cur);renderProjSelect();return}
   const p={...r.project,id:uid("p"),updated:Date.now()};if(!p.sections.length)p.sections.push(newSec(0));
   await m.seed(p.id,r.update);
   cset.rooms[p.id]={roomId:inv.roomId,token:inv.token,name:cset.name};await saveCset();
