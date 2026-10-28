@@ -14,6 +14,20 @@ Open the printed invite link. `--import file.cueboard.json` (or `example/example
 
 Settings are environment variables, listed at the top of `src/main.mjs`. It listens on `127.0.0.1:3300` by default; put a reverse proxy in front for TLS.
 
+### Behind a reverse proxy (`TRUST_PROXY`)
+
+Without `TRUST_PROXY=1`, every user behind the proxy shares the proxy's IP for the per-IP limit. With it, the client IP comes from **`X-Forwarded-For`**, read **from the right**: the client IP is the entry `TRUSTED_PROXY_HOPS` places from the right (default 1, the last entry). Each proxy appends the address it saw, so anything to the left of our own proxies' entries was written by the client and is ignored. No other header (`X-Real-IP`, `Forwarded`) is read.
+
+The proxy must set or append `X-Forwarded-For` with the peer address it saw, and the server must be reachable only through it (keep `HOST=127.0.0.1`). Otherwise a client can connect directly and send any header. Caddy, as our only hop:
+
+```caddyfile
+sync.example.dev {                  # placeholder host
+	reverse_proxy 127.0.0.1:3300    # sets X-Forwarded-For with the client address Caddy saw; WebSocket upgrades just work
+}
+```
+
+Run it with `TRUST_PROXY=1` (`TRUSTED_PROXY_HOPS=1` is the default). Caddy keeps an incoming `X-Forwarded-For` and appends to it only when the peer is listed in `trusted_proxies`. Otherwise it replaces the header. In both cases the rightmost entry is the address Caddy saw, so leave `trusted_proxies` unset. If you add a CDN or a second proxy of your own in front, set `TRUSTED_PROXY_HOPS=2`. The hephaestus proxy config hasn't been checked against this yet.
+
 ## Layout
 
 | Path | What |
@@ -28,21 +42,34 @@ Settings are environment variables, listed at the top of `src/main.mjs`. It list
 
 ## What was verified
 
-`npm test` (Node 22, `node:test`, throwaway temp data dirs, ports 3350-3354). 7/7 pass, stable over repeated runs:
+`npm test` (Node 22, `node:test`, throwaway temp data dirs, ports 3350-3358). 11/11 pass, 3 runs in a row:
 
 | | Test | Result |
 |---|---|---|
 | a | Two clients type 50 chars each into one Y.Text, interleaved, with no waiting | converge, no char lost |
 | b | Client B goes offline, edits title and notes and adds a shot, while A edits the title; B reconnects | both sides have everything: `"The Opening shot"`, B's notes, B's new shot |
-| c | 20 edits with compaction every 7 records; state read from disk while the server still runs; restart; then a torn record appended to the log, restart again | text identical every time; torn tail cut off |
+| c | 20 edits with compaction every 7 records; state read from disk while the server still runs; restart; then a torn record appended to the log, restart again | text identical every time; torn tail cut off, original copied to `updates.bin.torn-<time>` byte for byte |
 | d | Wrong token, missing token, unknown room, path traversal in the room id | 4401, 4401, 4404, 4404; a valid client still joins |
 | e | 100 KB frame with a 64 KB limit; garbage frame; per-IP limit of 3 | 1009, 4400, 4429; the server keeps serving and the room still syncs |
 | f | Example project → Y.Doc → over the wire → `.cueboard.json` | equal to the original with payloads replaced by hashes; byte-identical `project` when payloads are handed back; no payload bytes in the doc |
 | f | Synthetic export with takes, frames, references and an unknown key | lossless; `useInCut` derived correctly; identical files deduplicate to one hash |
+| g | `project.json` with hash typos (`"abc"`, 64 non-hex chars, no `sha256`, 63 chars), and one that isn't valid JSON | malformed entries never match: wrong token 4401, real token still joins; invalid JSON 4500 three times; other rooms keep serving; refusals don't use up per-IP slots |
+| h | `updates.bin` with a garbage record between valid ones, and with a `0xffffffff` length header mid-file | 4500 on every join, both files byte-identical, no `.torn` copy, nothing loaded; other rooms keep serving; after an operator restores the file the room opens |
+| i | `TRUST_PROXY=1`, limit 1: `X-Forwarded-For: 10.0.0.1, 192.0.2.7`, then `10.0.0.2, 192.0.2.7`, then `10.0.0.1, 192.0.2.8`; also `TRUSTED_PROXY_HOPS=2` | joined, 4429, joined: the limit follows the proxy-added entry; same with two hops |
+| j | 3 rounds of: join, 5 edits, leave, wait for the unload (`unloadAfterMs` 50), rejoin | state intact every round; the log is the compacted record plus 5 appends while loaded and exactly 1 record after each unload and after shutdown |
+
+(g), (h) and (i) were also run against the code before the review fixes: (g) and (h) killed the process (`RangeError` in `timingSafeEqual`, `Unexpected end of array` in `loadDoc`), and (i) let the spoofed address through.
 
 Browser (`demo/browser-check.mjs`, testkit's playwright-core + `/snap/bin/chromium`, port 3360): 5/5 PASS. Both panes type into the same notes field with keystrokes interleaved: they converge and no keystroke is lost. Pane 2 goes offline and both panes edit: the edits stay local. Pane 2 comes back: both panes show `"Wide: The mountain at night"` and the same notes. Screenshot: `demo/shot.png`.
 
 Also run by hand: `create-project` (plain, `--import example/example.js`, `--data-dir`), and `npm start` followed by SIGTERM (logs `listening` / `shutting down` / `stopped`).
+
+## Review fixes (PR #2)
+
+- **A broken room can't crash the server.** The token check and room load run in a try/catch. On failure the socket closes with **4500** and one `error` log line is written (no stack; for errors that aren't ours, only the error name, because `JSON.parse` messages quote `project.json`). Everyone else keeps being served. The per-IP slot is taken only after the room loads, so refusals don't leak it.
+- **Malformed token hashes** in `project.json` (anything other than 64 hex chars, or a missing `sha256`) never match and never throw. Each room logs a warning about them once.
+- **`X-Forwarded-For` is read from the right**, with `TRUSTED_PROXY_HOPS` (see above), not from the client-controlled left.
+- **Torn tail vs corruption in `updates.bin`.** A tail is treated as torn only if it is a partial header, or a header (at most 256 MiB) whose record runs past the end of the file, *and* every record before it decodes. Then the whole file is first copied to `updates.bin.torn-<ISO time>` and only then truncated. Anything else (an undecodable record, or an impossible length) throws `CorruptLogError`: the file is not touched, and every join to that room gets 4500 until an operator fixes the file. No restart is needed, because each join retries the load.
 
 ## Numbers (this machine, loopback)
 
@@ -58,7 +85,7 @@ Also run by hand: `create-project` (plain, `--import example/example.js`, `--dat
 - **The per-IP connection limit trips easily.** Every local client shares 127.0.0.1, and behind a reverse proxy every user shares the proxy's IP unless `TRUST_PROXY=1` is set. With the default of 16 and no `TRUST_PROXY`, the 17th user anywhere is refused. My own measurement script hit this.
 - **Two people typing at the same caret position interleave character by character** ("HCourtn so nh…" in the screenshot). This is correct CRDT behaviour, not a bug, but on a shared notes field it will happen. Presence (show where the other person's caret is) is the usual fix.
 - **The current format maps onto a CRDT cleanly.** Shots are already ordered by `start`, not by array position, and "use in cut" is already a single pointer (`section.img`). Neither needed a model change.
-- **y-websocket's client retries rejected connections forever**, with backoff up to 2.5 s. The demo stops on 44xx close codes; the real client must too.
+- **y-websocket's client retries rejected connections forever**, with backoff up to 2.5 s. The demo stops on 44xx close codes; the real client must too, and it should back off on 4500 (room unavailable).
 
 ## Risks
 
@@ -79,6 +106,10 @@ Also run by hand: `create-project` (plain, `--import example/example.js`, `--dat
 - Hashing in the browser (import uses `node:crypto`; the app will need SubtleCrypto).
 - Rate limiting per message, metrics, TLS (expected from the reverse proxy), Docker/systemd, deploy. Not run on the VPS.
 - `fsync` per append (deliberately skipped; see Durability).
+- **Torn vs corrupt is a heuristic.** A mangled mid-file header that still claims a plausible length (≤ 256 MiB) running past EOF, with every earlier record decodable, looks like a torn tail and gets truncated. The `.torn-*` copy keeps the dropped bytes, but nothing re-applies them, and `.torn-*` files are never cleaned up. A record checksum per frame would make this exact.
+- Errors outside the join path are still uncaught: a disk error (full disk, permissions) in `append` during a sync message is caught as a 4400 for that client, but one in the periodic or unload-time `compact` would still kill the process.
+- A room refused with 4500 re-reads its whole `updates.bin` on every join attempt. There's no backoff or cache of the failure, and y-websocket clients retry forever unless they stop on 4xxx (see above).
+- The hephaestus reverse proxy config hasn't been checked against `TRUST_PROXY` / `TRUSTED_PROXY_HOPS`.
 
 ## Recommendation: next two steps
 
