@@ -7,11 +7,14 @@
      docs   : projectId -> { u: Y.Doc state, base: the push base that goes with the app's saved project } (offline
               edits survive a reload and merge on reconnect). A bare Uint8Array (seed(), older copies) has no base.
      hashes : mediaId   -> { sha256, bytes, mime } (this device's media files, by content hash)
+     parts  : sha256    -> { size, mime, pid, t } a file being received from peers (media.mjs, docs/media-p2p.md)
+     chunks : [sha256, i] -> Blob, its verified chunks so far (a reload or a crash resumes from them)
    The invite token only ever goes into the WebSocket subprotocol list, never into a URL, a log line or the doc. */
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { shotsMap } from '@cue-board/sync-server/schema';
 import { docToProject, pushProject, keepPending, isEmptyRoom, clearShots, sanitizeName, initials, same } from './convert.mjs';
+import { createMedia } from './media.mjs';
 
 const LOCAL = 'cueboard-app';                      // transaction origin of our own writes
 const REJECTED = new Set([4400, 4401, 4404]);       // the server won't take us: stop retrying
@@ -23,8 +26,8 @@ const SHOT_ID = /^[\w-]{1,64}$/;
 function db() {
   if (!dbP) dbP = new Promise(res => {
     try {
-      const r = indexedDB.open('cueboard-collab', 1);
-      r.onupgradeneeded = () => { for (const n of ['docs', 'hashes']) if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n); };
+      const r = indexedDB.open('cueboard-collab', 2);
+      r.onupgradeneeded = () => { for (const n of ['docs', 'hashes', 'parts', 'chunks']) if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n); };
       r.onsuccess = () => res(r.result); r.onerror = () => res(null);
     } catch { res(null); }
   });
@@ -69,6 +72,60 @@ async function dropMedia(/** @type {string} */ id) {
   return op('hashes', 'readwrite', st => st.delete(id));
 }
 
+/* ---------- partly received files (media.mjs) ---------- */
+const range = (/** @type {string} */ hex) => (typeof IDBKeyRange === 'function' ? IDBKeyRange.bound([hex, 0], [hex, Infinity]) : null);
+const parts = {
+  /** start or resume receiving `hex`: the indexes of the chunks already stored */
+  async open(/** @type {string} */ hex, /** @type {any} */ meta) {
+    const r = range(hex); if (!r) return [];
+    const old = await op('parts', 'readonly', st => st.get(hex));
+    if (old && old.size === meta.size) {
+      if (old.pid !== meta.pid) await op('parts', 'readwrite', st => st.put({ ...old, pid: meta.pid }, hex));
+      const keys = await op('chunks', 'readonly', st => st.getAllKeys(r));
+      return (keys || []).map((/** @type {any} */ k) => k[1]).filter(Number.isInteger);
+    }
+    if (old) await parts.drop(hex);
+    await op('parts', 'readwrite', st => st.put(meta, hex));
+    return [];
+  },
+  /** false when the write failed (quota exceeded, storage gone) */
+  async put(/** @type {string} */ hex, /** @type {number} */ i, /** @type {Uint8Array} */ b) {
+    return (await op('chunks', 'readwrite', st => st.put(new Blob([b]), [hex, i]))) !== undefined;
+  },
+  async read(/** @type {string} */ hex, /** @type {number} */ count) {
+    const r = range(hex), v = r && await op('chunks', 'readonly', st => st.getAll(r));
+    return Array.isArray(v) && v.length === count && v.every(b => b instanceof Blob) ? v : null;
+  },
+  async drop(/** @type {string} */ hex) {
+    const r = range(hex); if (!r) return;
+    await op('chunks', 'readwrite', st => st.delete(r)); await op('parts', 'readwrite', st => st.delete(hex));
+  },
+  /** what a left room was receiving; with no pid, whatever no room's offline copy points at anymore, and orphan chunks */
+  async gc(/** @type {string} */ pid = '') {
+    if (!range('0')) return;
+    const [keys, vals] = await Promise.all([op('parts', 'readonly', st => st.getAllKeys()), op('parts', 'readonly', st => st.getAll())]);
+    const docs = new Set(pid ? [] : (await op('docs', 'readonly', st => st.getAllKeys())) || []);
+    const keep = new Set();
+    for (const [i, k] of (keys || []).entries()) {
+      const v = vals && vals[i];
+      if (pid ? v && v.pid === pid : !v || !docs.has(v.pid)) await parts.drop(k); else keep.add(k);
+    }
+    if (!pid) for (const hex of new Set(((await op('chunks', 'readonly', st => st.getAllKeys())) || []).map((/** @type {any} */ k) => k[0]))) if (!keep.has(hex)) await parts.drop(hex);
+  },
+};
+
+/** <meta name="cue-ice-urls">: space- or comma-separated stun:/turn: URLs; a TURN login as turn:user:secret@host:port.
+    Empty: no ICE servers at all, so only host candidates (same network) connect directly; everyone else uses the relay. */
+export function parseIce(/** @type {string} */ s) {
+  /** @type {RTCIceServer[]} */ const out = [];
+  for (const u of String(s || '').split(/[\s,]+/).filter(Boolean).slice(0, 8)) {
+    const t = /^(turns?):([^:@\s]+):([^@\s]+)@([\w.[\]:?=&-]+)$/.exec(u);
+    if (t) out.push({ urls: t[1] + ':' + t[4], username: t[2], credential: t[3] });
+    else if (/^(stuns?|turns?):[\w.[\]:?=&-]+$/.test(u)) out.push({ urls: u });
+  }
+  return out;
+}
+
 /**
  * @typedef {{ roomId: string, token: string, name: string, dev?: string }} Binding   dev: this browser's id
  * @typedef {'syncing' | 'synced' | 'offline' | 'unreachable' | 'rejected'} Status
@@ -84,11 +141,17 @@ async function dropMedia(/** @type {string} */ id) {
  *   onPeers(pid: string, peers: Peer[]): void,
  *   onEvent(pid: string, type: 'shared' | 'not-empty'): void,
  *   onUnshared?(pid: string, n: number): void, n media fields whose file couldn't be read or hashed: kept here, not in the room
+ *   storeMedia?(blob: Blob, mime: string): Promise<string>,   a file received from a peer, verified: keep it, return its new media id
+ *   storeSong?(pid: string, blob: Blob, name: string): Promise<void>,
+ *   onMedia?(pid: string): void,               transfer state changed (chip, placeholders, files list)
+ *   mediaLimits?(pid: string): { file: number, project: number },
  * }} App
  */
 
-/** @param {App} app @param {string} syncUrl e.g. wss://sync.example.dev */
-export function createCollab(app, syncUrl) {
+/** @param {App} app @param {string} syncUrl e.g. wss://sync.example.dev @param {{ ice?: RTCIceServer[], media?: boolean }} [opts] */
+export function createCollab(app, syncUrl, opts = {}) {
+  const ice = opts.ice || [], mediaOn = opts.media !== false && !!app.storeMedia;
+  if (mediaOn) setTimeout(() => parts.gc().catch(() => {}), 10000);
   const base = syncUrl.replace(/\/+$/, '') + '/r';
   const connect = (/** @type {string} */ roomId, /** @type {string} */ token, /** @type {Y.Doc} */ doc, /** @type {boolean} */ now) =>
     new WebsocketProvider(base, roomId, doc, { protocols: ['cueboard', token], disableBc: true, connect: now, maxBackoffTime: 10000 });
@@ -114,7 +177,7 @@ export function createCollab(app, syncUrl) {
   /** Keep a room's state for a local project before its session opens (so "open as a new project" starts offline-ready). */
   const seed = (/** @type {string} */ pid, /** @type {Uint8Array} */ update) => op('docs', 'readwrite', st => st.put(update, pid));
   /** @type {Map<string, Set<() => void>>} */ const live = new Map();   // pid -> its open sessions' "never write the copy again"
-  const forget = (/** @type {string} */ pid) => { for (const f of live.get(pid) || []) f(); return op('docs', 'readwrite', st => st.delete(pid)); };
+  const forget = (/** @type {string} */ pid) => { for (const f of live.get(pid) || []) f(); parts.gc(pid).catch(() => {}); return op('docs', 'readwrite', st => st.delete(pid)); };
 
   /**
    * Bind the open project `pid` to its room.
@@ -144,6 +207,43 @@ export function createCollab(app, syncUrl) {
        elsewhere drops out by itself. */
     /** @type {Map<string, import('./convert.mjs').Hold>} */ let held = new Map();
     let unshared = 0;
+    /** @type {ReturnType<typeof createMedia> | null} */ let media = null;
+    /** @type {Map<string, any> | null} */ let wantCache = null;
+    /* every file the doc references: hash -> size, type, a label for the files list, and whether this device has it */
+    function wanted() {
+      if (wantCache) return wantCache;
+      const v = docToProject(doc, localIdFor), m = new Map();
+      if (!v) return (wantCache = m);
+      const hexOf = (/** @type {string} */ id) => { const x = SHA_ID.exec(id || ''); return x ? x[1] : id && hashes.get(id)?.sha256; };
+      /** @type {Map<string, string>} */ const label = new Map();
+      const name = (/** @type {string | undefined} */ h, /** @type {string} */ l) => { if (h && !label.has(h)) label.set(h, l); };
+      v.project.sections.forEach((/** @type {any} */ s, /** @type {number} */ i) => {
+        const n = 'Shot ' + String(i + 1).padStart(2, '0');
+        name(hexOf(s.img), n + ' · ' + (s.kind === 'video' ? 'clip' : 'image')); name(hexOf(s.key), n + ' · start frame'); name(hexOf(s.endKey), n + ' · end frame');
+        (s.takes || []).forEach((/** @type {any} */ t, /** @type {number} */ j) => name(hexOf(t.media), n + ' · take ' + (j + 1)));
+      });
+      (v.project.refs || []).forEach((/** @type {string} */ id) => name(hexOf(id), 'Reference image'));
+      for (const [hex, r] of v.refs) m.set(hex, { bytes: r.bytes, mime: r.mime, label: label.get(hex) || 'File', local: !!localIdFor(hex) });
+      const sf = v.songFile, sl = songLocal;
+      if (sf && sl !== 'pending' && (!sl || sl.sha256 === sf.sha256)) m.set(sf.sha256, { bytes: sf.bytes, mime: sf.mime, label: 'Song' + (sf.name ? ' · ' + sf.name : ''), song: true, local: !!sl });
+      return (wantCache = m);
+    }
+    const mediaChanged = () => { wantCache = null; if (media) media.refresh(); };
+    async function landed(/** @type {string} */ hex, /** @type {Blob} */ blob, /** @type {any} */ w) {
+      if (stopped) throw new Error('session stopped');
+      if (w.song) {
+        if (!app.storeSong) throw new Error('no song store');
+        const name = (songFile && songFile.name) || 'song';
+        await app.storeSong(pid, blob, name);
+        songLocal = { sha256: hex, mime: w.mime, bytes: blob.size, name }; songFor = app.project(pid)?.song?.name ?? songFor;
+      } else {
+        if (!app.storeMedia) throw new Error('no media store');
+        const id = await app.storeMedia(blob, w.mime), ref = { sha256: hex, bytes: blob.size, mime: w.mime };
+        hashes.set(id, ref); noteHash(hex, id);
+        await op('hashes', 'readwrite', st => st.put(ref, id));
+      }
+      mediaChanged(); queuePull();
+    }
 
     const status = () => /** @type {Status} */ (rejected ? 'rejected' : !navigator.onLine ? 'offline' : prov && prov.wsconnected ? (prov.synced ? 'synced' : 'syncing') : failing ? 'unreachable' : 'syncing');
     let shown = '';
@@ -168,7 +268,7 @@ export function createCollab(app, syncUrl) {
       songFor = name; songLocal = 'pending';
       let r = null;
       try { const rec = canHash() ? await app.songBlob(pid) : null; if (rec && rec.blob) r = { sha256: await sha256(rec.blob), mime: rec.blob.type || '', bytes: rec.blob.size, name: rec.name || name }; } catch { r = null; }
-      songLocal = r;
+      songLocal = r; wantCache = null;
       if (!stopped) push();
     }
     async function hashQueued() {
@@ -196,6 +296,7 @@ export function createCollab(app, syncUrl) {
       last = pushProject(doc, last, cur, { refOf, songRef, origin: LOCAL, pending: h => now.set([h.shot, h.take, h.field].join('/'), h) });
       held = now; reportUnshared();
       if (needHash.size) hashQueued();
+      mediaChanged();
     }
     const isFailed = (/** @type {import('./convert.mjs').Hold} */ h) => [h.value].flat().some(id => failed.has(id));
     function reportUnshared() {
@@ -239,7 +340,7 @@ export function createCollab(app, syncUrl) {
       for (const [k, h] of held) if (isFailed(h) && !same(valueAt(v.project, h) ?? '', h.base ?? '')) held.delete(k);
       const mine = keepPending(structuredClone(v.project), held.values());
       if (!same(mine, stripLocal(app.project(pid)))) app.applyRemote(pid, mine);
-      reportUnshared();
+      reportUnshared(); mediaChanged();
       restoreCaret(c);
     }
     const stripLocal = (/** @type {any} */ p) => { if (!p) return p; const { id, updated, ...rest } = p; return rest; };
@@ -303,6 +404,20 @@ export function createCollab(app, syncUrl) {
         report();
       });
       prov.awareness.on('change', () => { if (!stopped) app.onPeers(pid, peers()); });
+      if (mediaOn) media = createMedia({
+        provider: prov, roomId: binding.roomId, token: binding.token, pid, ice, store: parts, wanted, landed,
+        localBlob: async hex => {
+          const w = wanted().get(hex);
+          if (w && w.song) { const r = songLocal && songLocal !== 'pending' && songLocal.sha256 === hex ? await app.songBlob(pid) : null; return r ? r.blob : null; }
+          const id = localIdFor(hex); if (!id) return null;
+          const b = await app.mediaBlob(id);
+          if (!b) { noFile.add(id); wantCache = null; }     // gone from this browser's storage: fetched again from the others
+          return b;
+        },
+        clientName: c => { const st = prov && prov.awareness.getStates().get(c); return st ? sanitizeName(st.user && st.user.name) : ''; },
+        limits: () => (app.mediaLimits ? app.mediaLimits(pid) : { file: 500e6, project: 5e9 }),
+        onChange: () => { if (!stopped && app.onMedia) app.onMedia(pid); },
+      });
       report();
     })();
 
@@ -341,6 +456,8 @@ export function createCollab(app, syncUrl) {
       select(/** @type {string | null} */ id) { const a = prov && prov.awareness; if (a && a.getLocalState()?.sel !== id) a.setLocalStateField('sel', id); },
       status,
       peers,
+      /** transfer state for the chip, the placeholders and the files list; null when media sync is off */
+      media: () => media,
       stop() {
         if (stopped) return;
         clearTimeout(pushTimer); push(); stopped = true;
@@ -348,6 +465,7 @@ export function createCollab(app, syncUrl) {
         window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline);
         window.removeEventListener('pagehide', onHide); globalThis.document?.removeEventListener('visibilitychange', onVis);
         if (!marks) unlist();
+        if (media) media.stop();
         if (prov) { prov.awareness.setLocalState(null); prov.destroy(); }
         setTimeout(() => doc.destroy(), 0);
       },
