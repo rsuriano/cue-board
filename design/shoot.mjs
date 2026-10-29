@@ -41,6 +41,11 @@ async function newPage(w = 1440, h = 900) {
   page.on('pageerror', e => log.console.push('pageerror: ' + e.message));
   return { ctx, page };
 }
+// Delete project lives in the More menu: open it, then two taps (the menu stays open between them)
+async function delProject(page) {
+  if (await page.getAttribute('#moreb', 'aria-expanded') !== 'true') await page.click('#moreb');
+  await sleep(100); await page.click('#delp'); await sleep(150); await page.click('#delp'); await sleep(800);
+}
 const shot = (page, name) => page.screenshot({ path: `${out}/${name}.png` });
 const settle = page => page.evaluate(() => document.fonts.ready).then(() => sleep(400));
 
@@ -101,38 +106,43 @@ try {
   check('monitor has no own timecode / shot count', await page.locator('#monitor .mbar, #mtc, #msec').count() === 0);
   check('project name appears once in the header', await page.evaluate(() => { const n = document.getElementById('projname').textContent; return [...document.querySelectorAll('.top *')].filter(e => e.offsetParent && e.children.length === 0 && (e.textContent === n || e.value === n)).length; }) === 1);
 
-  // ---------- pass 3: project menu + rename in place ----------
+  // ---------- project menu (switches projects only) + rename with the pencil ----------
   const name0 = proj.text, pname = () => page.textContent('#projname'), focused = () => page.evaluate(() => document.activeElement?.id || document.activeElement?.className);
   await page.locator('.top').screenshot({ path: `${out}/hdr-1-closed.png` });
   await page.click('#proj'); await sleep(150);
   check('project menu opens on click, current project checked and focused', await page.isVisible('#projmenu') && await page.evaluate(() => document.activeElement?.getAttribute('aria-checked') === 'true'));
-  await page.keyboard.press('ArrowDown'); await sleep(50);
-  check('ArrowDown moves to Rename…', await page.evaluate(() => document.activeElement?.dataset.act) === 'rename');
-  await page.keyboard.press('Space'); await sleep(50);
-  check('Space in the menu does not start playback', await page.evaluate(() => document.getElementById('play').textContent.trim()) === 'Play');
-  await page.keyboard.press('Escape'); await sleep(50);
-  // Space activated Rename…; Escape cancels it. Re-open with the keyboard to test Escape on the menu itself.
-  await page.focus('#proj'); await page.keyboard.press('ArrowDown'); await sleep(100);
+  const menuText = await page.locator('#projmenu .mi').allTextContents();
+  check('project menu only switches projects: the projects, New project (no Rename, Join or Leave)', await page.locator('#projmenu [data-act="rename"], #projmenu [data-act="join"], #projmenu [data-act="leave"]').count() === 0
+    && menuText.join('|') === `${name0}|New project`, menuText.join(' | '));
+  await page.keyboard.press('Space'); await sleep(100);
+  check('Space in the menu does not start playback', await page.evaluate(() => document.getElementById('play').textContent.trim()) === 'Play' && !(await page.isVisible('#projmenu')));
+  await page.focus('#proj'); await page.keyboard.press('ArrowDown'); await sleep(100); await page.keyboard.press('ArrowDown'); await sleep(50);
+  check('ArrowDown moves to New project', await page.evaluate(() => document.activeElement?.dataset.act) === 'new');
   await page.mouse.move(5, 5); await page.locator('.projpick').hover(); await sleep(100);
   await shot(page, 'hdr-2-menu-open');
   await page.keyboard.press('Escape'); await sleep(100);
   check('Escape closes the menu and focus returns to the picker', !(await page.isVisible('#projmenu')) && await focused() === 'proj' && await page.getAttribute('#proj', 'aria-expanded') === 'false');
-  await page.click('#proj'); await page.click('#projmenu [data-act="rename"]'); await sleep(100);
-  check('Rename… turns the name into a selected field', await page.isVisible('#ptitle') && !(await page.isVisible('#proj')) && await page.evaluate(() => { const t = document.getElementById('ptitle'); return document.activeElement === t && t.selectionEnd - t.selectionStart === t.value.length; }));
+  const pencil = () => page.evaluate(() => { const b = document.getElementById('renamep'); return b.querySelector('use').getAttribute('href') + '|' + b.getAttribute('aria-label'); });
+  check('the pencil next to the name is labelled Rename project', await pencil() === '#i-pencil|Rename project', await pencil());
+  await page.click('#renamep'); await sleep(100);
+  check('the pencil turns the name into a selected field and itself into a check', await page.isVisible('#ptitle') && !(await page.isVisible('#proj')) && await pencil() === '#i-check|Save name' && await page.evaluate(() => { const t = document.getElementById('ptitle'); return document.activeElement === t && t.selectionEnd - t.selectionStart === t.value.length; }));
   await page.keyboard.type('Pass three rename'); await page.mouse.move(5, 5);
   await shot(page, 'hdr-3-renaming');
   await page.keyboard.press('Enter'); await sleep(400);
-  check('Enter saves the new name', await pname() === 'Pass three rename' && await focused() === 'proj', await pname());
+  check('Enter saves the new name, focus back on the pencil', await pname() === 'Pass three rename' && await focused() === 'renamep' && await pencil() === '#i-pencil|Rename project', await pname());
   await page.reload(); await page.waitForSelector('.card', { timeout: 15000 }); await settle(page);
   check('renamed project keeps its name after reload', await pname() === 'Pass three rename', await pname());
-  await page.click('#proj'); await page.click('#projmenu [data-act="rename"]'); await page.keyboard.type('Should not stick'); await page.keyboard.press('Escape'); await sleep(200);
-  check('Escape cancels the rename', await pname() === 'Pass three rename' && await focused() === 'proj', await pname());
-  await page.click('#proj'); await page.click('#projmenu [data-act="rename"]'); await page.keyboard.type(name0); await page.mouse.click(700, 500); await sleep(400);
+  await page.click('#renamep'); await page.keyboard.type('Should not stick'); await page.keyboard.press('Escape'); await sleep(200);
+  check('Escape cancels the rename', await pname() === 'Pass three rename' && await focused() === 'renamep', await pname());
+  await page.click('#renamep'); await page.keyboard.type('By the check'); await page.click('#renamep'); await sleep(400);
+  check('the check saves (and does not start another rename)', await pname() === 'By the check' && !(await page.isVisible('#ptitle')) && await pencil() === '#i-pencil|Rename project', await pname());
+  await page.click('#renamep'); await page.keyboard.type(name0); await page.mouse.click(700, 500); await sleep(400);
   check('leaving the field (blur) saves', await pname() === name0, await pname());
   // New, then switch back through the menu with the keyboard
   await page.click('#newp'); await sleep(500);
   check('New opens a project and starts renaming it', await page.isVisible('#ptitle') && await page.locator('.card').count() <= 1);
   await page.keyboard.type('Scratch'); await page.keyboard.press('Enter'); await sleep(300);
+  check('after naming a new project, focus is back on New', await focused() === 'newp', await focused());
   await page.focus('#proj'); await page.keyboard.press('ArrowDown'); await sleep(100);
   const items = await page.locator('#projmenu [role="menuitemradio"]').allTextContents();
   check('menu lists both projects', items.includes('Scratch') && items.includes(name0), items.join(' | '));
@@ -141,10 +151,10 @@ try {
   check('choosing a project in the menu switches to it', await pname() === name0 && await page.locator('.card').count() >= 10 && !(await page.isVisible('#projmenu')));
   // remove the scratch project again so the rest of the run sees the same data as before
   await page.click('#proj'); await page.click('#projmenu [role="menuitemradio"]:has-text("Scratch")'); await sleep(500);
-  await page.click('#delp'); await sleep(150); await page.click('#delp'); await sleep(800);
+  await delProject(page);
   await page.click('#proj'); await sleep(100);
   const left = await page.locator('#projmenu [role="menuitemradio"]').allTextContents(); await page.keyboard.press('Escape');
-  check('Delete removes the open project', await pname() === name0 && !left.includes('Scratch'), left.join(' | '));
+  check('Delete (in More, two taps) removes the open project', await pname() === name0 && !left.includes('Scratch'), left.join(' | '));
   await page.locator('.card').nth(2).click(); await settle(page); await page.mouse.move(5, 5);
 
   const t0 = await page.textContent('#tc');
@@ -210,16 +220,19 @@ try {
   await shot(page, '13-sideB-empty');
   await page.click('.sidetab[data-side="a"]'); await sleep(200);
   // delete every project (two-tap Delete) to reach the no-project states
-  for (let i = 0; i < 5 && await page.isEnabled('#delp'); i++) { await page.click('#delp'); await sleep(150); await page.click('#delp'); await sleep(700); }
+  for (let i = 0; i < 5 && await page.isEnabled('#delp'); i++) await delProject(page);
   await page.mouse.move(5, 5); await sleep(1900);
   check('no-project empty state shows', await page.isVisible('#ed-empty'));
   await shot(page, '14-sideA-no-project');
   await page.click('.sidetab[data-side="b"]'); await sleep(400);
   check('side B empty state shows', await page.isVisible('#bEmpty'));
   await shot(page, '15-sideB-no-project');
-  check('with no projects the picker says so and is disabled', await pname() === 'No projects' && await page.isDisabled('#proj'));
-  await page.click('#examplep'); await page.waitForSelector('.bitem', { timeout: 15000 }); await sleep(500);
-  check('Example button loads the example from the no-project state', await page.locator('.bitem').count() >= 10 && await page.isEnabled('#proj'), await pname());
+  await page.click('#proj'); await sleep(150);
+  const none = await page.locator('#projmenu .mi').allTextContents();
+  check('with no projects the picker says so and offers New project and the example', await pname() === 'No projects' && none.join('|') === 'New project|Example project' && await page.isDisabled('#renamep'), none.join(' | '));
+  check('the Example button is gone from the bar', await page.locator('#examplep').count() === 0 && !(await page.evaluate(() => [...document.querySelectorAll('.top .btn')].some(b => b.offsetParent && /example/i.test(b.textContent)))));
+  await page.click('#projmenu [data-act="example"]'); await page.waitForSelector('.bitem', { timeout: 15000 }); await sleep(500);
+  check('the project menu loads the example from the no-project state', await page.locator('.bitem').count() >= 10 && await page.isEnabled('#renamep') && /example/.test(await pname()), await pname());
   await ctx.close();
 
   // ---------- 2x crops for pixel alignment, then the Cut button ----------
