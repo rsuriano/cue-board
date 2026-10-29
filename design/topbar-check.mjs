@@ -190,25 +190,34 @@ try {
   await page.keyboard.press('Escape'); await sleep(150);
   check('cancelling Join hands focus back to Join', await page.evaluate(() => document.activeElement?.id) === 'joinb');
 
-  // ---------- Settings: the gear, named on hover and on focus, like the other icon buttons ----------
+  // ---------- Settings: the gear and the word, like Join; below 1280 the gear alone, named on hover and on focus ----------
   await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur());
-  const gear = await page.evaluate(() => { const s = document.getElementById('settingsb'), m = document.getElementById('moreb'), r = s.getBoundingClientRect(), mr = m.getBoundingClientRect();
-    return { ico: s.querySelector('svg[aria-hidden="true"] use')?.getAttribute('href'), name: s.getAttribute('aria-label'), text: s.textContent.trim(), w: r.width, h: r.height, mw: mr.width, mh: mr.height,
+  const gearAt = () => page.evaluate(() => { const s = document.getElementById('settingsb'), m = document.getElementById('moreb'), j = document.getElementById('joinb'), r = s.getBoundingClientRect(), mr = m.getBoundingClientRect(), l = s.querySelector('.lbl').getBoundingClientRect();
+    return { ico: s.querySelector('svg[aria-hidden="true"] use')?.getAttribute('href'), aria: s.getAttribute('aria-label'), title: s.title, text: s.textContent.trim(), lw: Math.round(l.width), w: r.width, h: r.height, mw: mr.width, mh: mr.height,
+      font: getComputedStyle(s).font === getComputedStyle(j).font && getComputedStyle(s).color === getComputedStyle(m).color,
       sw: getComputedStyle(s.querySelector('.ico')).strokeWidth, msw: getComputedStyle(m.querySelector('.ico')).strokeWidth, tag: s.tagName, last: s === document.querySelector('.tright').lastElementChild }; });
-  check('Settings is a gear icon button: aria-label "Settings", no text, same size and stroke as More, last in the bar', gear.ico === '#i-gear' && gear.name === 'Settings' && !gear.text && gear.tag === 'BUTTON'
-    && gear.w === gear.mw && gear.h === gear.mh && gear.sw === gear.msw && gear.last && await page.locator('#i-sliders').count() === 0, JSON.stringify(gear));
-  check('no tooltip on Settings at rest', await tip('#settingsb') === '');
+  const gear = await gearAt(), named = await page.getByRole('button', { name: 'Settings', exact: true }).count();
+  check('Settings: the gear then the word "Settings" (aria-label matches the word), styled like Join, same height and stroke as More, last in the bar', gear.ico === '#i-gear' && gear.text === 'Settings' && gear.lw > 40 && named === 1 && gear.aria === "Settings" && !gear.title && gear.font
+    && gear.tag === 'BUTTON' && gear.h === gear.mh && gear.sw === gear.msw && gear.last && await page.locator('#i-sliders').count() === 0, JSON.stringify(gear));
   await page.hover('#settingsb'); await sleep(150);
-  check('Settings: its name on hover', await tip('#settingsb') === 'Settings');
-  await bar('14-settings-gear-hover', 40);
+  check('with its word showing, no tooltip on Settings (at rest or on hover)', await tip('#settingsb') === '');
+  await bar('14-settings-label-hover', 40);
   await page.mouse.move(700, 600); await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
   const ring = await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [document.activeElement.id, s.outlineStyle, s.outlineWidth, s.outlineColor]; });
   await page.focus('#moreb'); const mring = await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; });
-  await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
-  check('Settings: its name on keyboard focus, with the same focus ring as More', ring[0] === 'settingsb' && await tip('#settingsb') === 'Settings' && ring[1] !== 'none' && JSON.stringify(ring.slice(1)) === JSON.stringify(mring), `${ring} / ${mring}`);
-  await bar('15-settings-gear-focus', 40);
+  check('Settings: the same focus ring as More, no tooltip while its word shows', ring[0] === 'settingsb' && ring[1] !== 'none' && JSON.stringify(ring.slice(1)) === JSON.stringify(mring), `${ring} / ${mring}`);
+  await page.setViewportSize({ width: 1024, height: 900 }); await sleep(200); await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur());
+  const narrow = await gearAt();
+  check('below 1280: the gear alone, same size as More, still named "Settings"', narrow.w === narrow.mw && narrow.h === narrow.mh && narrow.lw <= 1 && await page.getByRole('button', { name: 'Settings', exact: true }).count() === 1 && await tip('#settingsb') === '', JSON.stringify(narrow));
+  await page.hover('#settingsb'); await sleep(150);
+  check('below 1280: its name on hover', await tip('#settingsb') === 'Settings');
+  await bar('14-settings-gear-hover-1024', 40);
+  await page.mouse.move(700, 600); await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
+  check('below 1280: its name on keyboard focus', await page.evaluate(() => document.activeElement?.id) === 'settingsb' && await tip('#settingsb') === 'Settings');
+  await bar('15-settings-gear-focus-1024', 40);
   await page.keyboard.press('Enter'); await sleep(250);
   check('the gear opens Settings', await page.isVisible('#dlgSettings')); await page.keyboard.press('Escape'); await sleep(150);
+  await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150);
 
   // ---------- an armed Leave does not follow you into another room ----------
   await db(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
