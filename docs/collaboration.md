@@ -6,7 +6,7 @@ User-facing summary and limits: README, "Collaboration v1". Server and doc layou
 
 | Where | What |
 |---|---|
-| `index.html` | `<meta name="cue-sync-url">` (empty = off), the join dialog, status chip, presence, "Join collaboration…" / "Leave collaboration", the bindings, `applyRemote()`. Imports `./collab.js` only when a project is bound or being joined. |
+| `index.html` | `<meta name="cue-sync-url">` (empty = off), the join dialog, status chip, presence (you first), the top bar's "Join collaboration" / "Leave collaboration" buttons, the bindings, `applyRemote()`. Imports `./collab.js` only when a project is bound or being joined. |
 | `packages/collab-client/src/collab.mjs` | One session per open bound project: Y.Doc, y-websocket provider, offline copy of the doc, media hashing, caret-preserving pulls, awareness. |
 | `packages/collab-client/src/convert.mjs` | Project ⇄ doc. Doc → project is the sync server's `docToCueboard()` plus `sanitizeProject()`. Project → doc is `pushProject()`, a field-level diff; writing a whole project into an empty doc gives the same doc as the server's `cueboardToDoc()` (tested). |
 | `collab.js` | The two above, Yjs and y-websocket bundled by esbuild (`npm run build:collab`), committed. |

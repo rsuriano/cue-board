@@ -1231,6 +1231,8 @@ $("moremenu").onclick=e=>{
   const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong")return;
   closeMore(true);$(b.dataset.for).click();
 };
+/* Space and Enter on a button in the bar press it (side A's Space-to-play is for the rest of the page) */
+document.querySelector(".top").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&e.target.closest("button"))e.stopPropagation()});
 $("importb").onclick=()=>$("importf").click();
 $("songlbl").onclick=()=>$("song").click();
 /* rename in place: the pencil next to the name turns the picker into a field and itself into a check. Enter or the
