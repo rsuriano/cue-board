@@ -331,10 +331,11 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   await page.setViewportSize(opts.viewport); await page.waitForTimeout(300);
   // manifest and icons
   const man = await page.evaluate(async () => { const l = document.querySelector('link[rel=manifest]'); const j = await (await fetch(l.href)).json();
-    const icons = await Promise.all(j.icons.map(async i => { const b = await (await fetch(new URL(i.src, l.href))).blob(); const im = await createImageBitmap(b); return [i.sizes, im.width + 'x' + im.height, b.type]; }));
+    const icons = await Promise.all(j.icons.map(async i => { const b = await (await fetch(new URL(i.src, l.href))).blob(); const im = await createImageBitmap(b); return [i.sizes, im.width + 'x' + im.height, b.type, i.purpose || 'any']; }));
     return { name: j.name, display: j.display, theme: j.theme_color, start: j.start_url, icons, apple: !!document.querySelector('link[rel=apple-touch-icon]') }; });
   const cdp = await ctx.newCDPSession(page), am = await cdp.send('Page.getAppManifest');
-  check(dev, 'install manifest valid: standalone, theme from tokens, 192 and 512 icons, iOS meta', man.display === 'standalone' && man.theme === '#191817' && man.icons.length === 2 && man.icons.every(([s, d, t]) => s === d && t === 'image/png') && man.apple && !(am.errors || []).length, JSON.stringify(man) + ' ' + JSON.stringify(am.errors));
+  const iconSet = man.icons.map(([s, , , p]) => p + ' ' + s).sort().join();
+  check(dev, 'install manifest valid: standalone, theme from tokens, separate "any" and "maskable" icons at 192 and 512, iOS meta', man.display === 'standalone' && man.theme === '#191817' && iconSet === 'any 192x192,any 512x512,maskable 192x192,maskable 512x512' && man.icons.every(([s, d, t]) => s === d && t === 'image/png') && man.apple && !(am.errors || []).length, JSON.stringify(man) + ' ' + JSON.stringify(am.errors));
   check(dev, 'no console errors', !errs.length, errs.join(' | '));
   check(dev, 'nothing left 127.0.0.1 except the blocked OpenRouter catalog', blocked.every(u => /openrouter\.ai|Failed to load resource/.test(u)), blocked.slice(0, 3).join(' '));
   await ctx.close();
