@@ -1,5 +1,15 @@
 # Cue Board on a phone: plan
 
+## Status (v1 shipped on `feat/mobile-v1`, 2026-10-29)
+
+The owner's decisions changed the scope: v1 includes touch cut editing (from v2), installability, a "takes only on Wi-Fi" setting; no landscape design and no generation on the phone.
+
+**In v1:** phone layout below 820 px (desktop unchanged above it); app bar (project name opens the Project sheet, you + 2 + N, files indicator); Cut / Takes tabs; preview (tap plays); transport; fixed-centre timeline, viewport-sized canvas, scrolling seeks, tap selects, − Fit + zoom (12 px/s to start); **Cut here**, cut grips (drag to trim, tap → ±0.1 s with a readout), hold a shot 450 ms to move it (desktop swap / slide rules and chip), Move → Earlier / Later, Delete (two taps), Photo; peek row (from 700 px tall); details sheet (half height, full while typing, ends at the keyboard via `visualViewport`, prev / next, shot type chips); side B rail, frames upload, references, takes (Use in cut, Play in cut; Generate, From start, Retry and the generation panel hidden); Project sheet (projects, New, Rename, Import, Export, song, room: people "on 03", state, Files, Join / Leave, Settings, Copy shot list, Delete, the Add to Home Screen note on iOS); dialogs and the files panel as bottom sheets; **Download takes only on Wi-Fi** (default on for phones; `navigator.connection` where it exists, else takes wait), size confirmation before a phone download, **Download everything now**; `manifest.webmanifest`, two icons, iOS meta; `navigator.storage.persist()` on phones and installed apps; the song picker's extension list; 16 px inputs, 44 px targets, safe areas, `dvh`, no double-tap zoom, no pull-to-refresh. No service worker (not needed to install on iOS 26 or Chrome).
+
+**Checks:** `node design/mobile-check.mjs . design/shots/mobile` (iPhone 14 and Pixel 7 emulation, CDP touch): 94/94.
+
+**Remaining:** pinch zoom; "scroll moves the cut" mode; landscape layout; generation (v3); swipe between shots on the sheet head (buttons only now); reconnect-on-resume in `collab-client`; take cards create `<video>` on tap (iOS video limit); export without base64; a service worker for offline launch; and everything under "iPhone only" below, never run on a device yet.
+
 ## Summary
 
 **Recommendation.** We add a phone layout to the same `index.html`: a CSS layer below 820 px plus about 300 to 400 lines of script. There is no second app and no build step, the phone uses the same elements and the same IDs, and desktop is unchanged. The layout borrows the shape every mobile editor shares (CapCut, iMovie, Premiere on iPhone): the preview at the top, a timeline under a fixed centre playhead, a toolbar for the selected shot at thumb height, and bottom sheets for details. We copy the shape only. Colour, type and the single orange are ours (`DESIGN.md`).

@@ -18,7 +18,7 @@ After changing `index.html`, `collab.js`, `example/` or `fonts/` here (`collab.j
 3. Commit in hephaestus, e.g. `cue: sync with rsuriano/cue-board <short sha>`, and push to `main`.
 4. A webhook deploys it on the VPS in about 30 s. Check that https://cue.bedrocklabs.dev serves the new version **and** that `curl -s https://cue.bedrocklabs.dev/ | grep cue-sync-url` shows `wss://sync.bedrocklabs.dev`.
 
-Only `index.html`, `collab.js`, `example/` and `fonts/` go to hephaestus (without `fonts/` the hosted copy falls back to system fonts; without `collab.js` joining a room fails, everything else works).
+Also copy `manifest.webmanifest` and `icons/` (the phone install: without them the app can't be added to a home screen as an app, and iOS may clear a phone's projects after a week). Only `index.html`, `collab.js`, `manifest.webmanifest`, `icons/`, `example/` and `fonts/` go to hephaestus (without `fonts/` the hosted copy falls back to system fonts; without `collab.js` joining a room fails, everything else works).
 
 Media between collaborators (`docs/media-p2p.md`) uses `<meta name="cue-ice-urls" content="">` for WebRTC ICE servers. Empty (this repo and, until the owner picks an option, the hosted copy) means no STUN/TURN: peers on one network connect directly, everyone else goes through the sync server's encrypted relay. If the owner picks STUN or coturn, set it in the hephaestus copy only, like the sync URL: `sed -i 's|<meta name="cue-ice-urls" content="[^"]*">|<meta name="cue-ice-urls" content="stun:…">|' hephaestus/pages/cue/index.html`.
 

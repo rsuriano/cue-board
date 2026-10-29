@@ -820,7 +820,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
         <button type="button" id="mstat" class="btn ghost icon" aria-haspopup="dialog" aria-expanded="false" aria-controls="mpanel" aria-label="Files"><svg class="ico" aria-hidden="true"><use href="#i-sync"/></svg><svg class="mring" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="13" pathLength="100"/><circle class="arc" cx="14" cy="14" r="13" pathLength="100"/></svg><span class="mdot"></span></button>
         <span class="mlabel" id="mlabel" aria-hidden="true"></span>
         <div class="mpanel" id="mpanel" role="dialog" tabindex="-1" aria-labelledby="mhead" aria-describedby="mtip" hidden>
-          <div class="mp-head"><h3 id="mhead" aria-live="polite"></h3><p class="muted" id="mtip"></p><button type="button" class="btn ghost icon m-only" id="fClose" aria-label="Close files"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+          <div class="mp-head"><h3 id="mhead" aria-live="polite"></h3><p class="muted" id="mtip"></p></div>
           <p class="hint" id="fWarn" hidden></p>
           <ul class="mlist" id="fList" aria-label="Files"></ul>
           <div class="mp-foot">
@@ -2318,7 +2318,7 @@ function placeFiles(){const p=$("mpanel");if(p.hidden||phone())return;p.style.re
   if(r.left<g)p.style.setProperty("--mp-shift",Math.round(r.left-g)+"px");
   p.style.setProperty("--mp-max",Math.max(240,Math.floor(innerHeight-$("mstat").getBoundingClientRect().bottom-g))+"px")}
 /* from the keyboard focus lands on the first file; from a click on the panel itself, so no ring shows */
-function openFiles(key){if($("mstatw").hidden)return;const p=$("mpanel");renderFiles();p.hidden=false;$("mstat").setAttribute("aria-expanded","true");placeFiles();((key&&fileNav()[0])||p).focus()}
+function openFiles(key){if($("mstatw").hidden)return;const p=$("mpanel");fCloseBtn();renderFiles();p.hidden=false;$("mstat").setAttribute("aria-expanded","true");placeFiles();((key&&fileNav()[0])||p).focus()}
 function closeFiles(refocus){const p=$("mpanel");if(p.hidden)return;const inside=p.contains(document.activeElement);
   p.hidden=true;$("mstat").setAttribute("aria-expanded","false");if(refocus||inside){if(!$("mstatw").hidden)$("mstat").focus();else if(inside)document.activeElement.blur()}}
 const fileNav=()=>[...$("mpanel").querySelectorAll(".mrow,button:not([disabled])")];
@@ -2341,7 +2341,10 @@ $("fAll").onclick=async()=>{const m=cmedia();if(!m)return;
     if(l.length&&!(await sizeAsk("Download everything now?",`${plural(l.length)}, ${fmtMB(n)} to download. On mobile data this counts against your plan.`,"Download all")))return}
   m.downloadAll();renderFiles()};
 $("fWifi").onchange=e=>{wifiOnly=e.target.checked;putSetting("wifiOnly",wifiOnly);const m=cmedia();if(m)m.refresh();renderFiles()};
-$("fClose").onclick=()=>closeFiles(true);
+/* the files sheet's close button exists only in the phone layout (the desktop panel closes with Escape or outside) */
+function fCloseBtn(){const h=document.querySelector(".mp-head"),b=$("fClose");
+  if(phone()&&!b){h.insertAdjacentHTML("beforeend",`<button type="button" class="btn ghost icon" id="fClose" aria-label="Close files">${ico("x")}</button>`);$("fClose").onclick=()=>closeFiles(true)}
+  else if(!phone()&&b)b.remove()}
 $("fPause").onclick=()=>{const m=cmedia();if(m){m.pause(!m.summary().paused);renderFiles()}};
 $("fLimF").onchange=$("fLimP").onchange=()=>{const b=cur&&cset.rooms[cur.id];if(!b)return;b.limits={file:+$("fLimF").value,project:+$("fLimP").value};saveCset();const m=cmedia();if(m)m.refresh();renderFiles()};
 /* Download (past the limit) and Retry, in the panel and in place. The file may have landed, failed or been deleted
@@ -2709,7 +2712,7 @@ $("mTabs").addEventListener("click",e=>{const b=e.target.closest("[data-side]");
 if(window.visualViewport){const vv=window.visualViewport,kb=()=>document.documentElement.style.setProperty("--kb",Math.max(0,Math.round(innerHeight-vv.height-vv.offsetTop))+"px");
   vv.addEventListener("resize",kb);vv.addEventListener("scroll",kb)}
 /* crossing the breakpoint (a rotation, a resized window): sheets close, everything redraws for the other layout */
-phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close();if(mLift)mLiftEnd(false);mCut=-1;mMode="";closeFiles();
+phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close();if(mLift)mLiftEnd(false);mCut=-1;mMode="";closeFiles();fCloseBtn();
   ph.style.transform="";lastKey="";renderAll();if(side==="b")renderB()});
 window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"))mSheetTop()});
 
