@@ -34,7 +34,7 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
  *            read(hex: string, count: number): Promise<Blob[] | null>, drop(hex: string): Promise<void> },
  *   wanted(): Map<string, Want>, localBlob(hex: string): Promise<Blob | null>,
  *   landed(hex: string, blob: Blob, w: Want): Promise<void>, clientName(c: number): string,
- *   limits(): { file: number, project: number }, onChange(): void,
+ *   limits(): { file: number, project: number, video?: boolean }, onChange(): void,   video: false holds video files back
  *   storage?(): 'ok' | 'blocked' | 'replaced',   whether the store can be used (another tab may hold the database)
  * }} Ctx
  * store.list?(pid): the files this project has parts of (dropped once the doc no longer references them)
@@ -373,6 +373,9 @@ export function createMedia(ctx) {
       if (!Number.isSafeInteger(v.bytes) || v.bytes <= 0 || v.bytes > MAX_FILE) { skipped.set(h, 'unknown'); continue; }
       const any = override || asked.has(h);
       if (!any && v.bytes > lim.file) { skipped.set(h, 'file'); continue; }
+      // video waits for a tap (the app's "takes only on Wi-Fi", off the Wi-Fi it can see): stored chunks are kept.
+      // Not the song, even stored as video/mp4 (an .mp4 or some .m4a): the song always comes
+      if (!any && lim.video === false && !v.song && /^video\//.test(v.mime || '')) { skipped.set(h, 'video'); continue; }
       if (!any && used + v.bytes > lim.project) { skipped.set(h, 'project'); continue; }
       used += v.bytes; fetch.push(h);
     }
@@ -425,7 +428,7 @@ export function createMedia(ctx) {
     }
     for (const [h, x] of dls) if (!fetch.includes(h) && !x.finishing) {
       const v = w.get(h), why = skipped.get(h);
-      stopFetch(h, x, !!v && !v.local && !failed.has(h) && (why === 'file' || why === 'project'));
+      stopFetch(h, x, !!v && !v.local && !failed.has(h) && (why === 'file' || why === 'project' || why === 'video'));
     }
     for (const h of fetch) {
       if (dls.size >= MAX_ACTIVE) break;
@@ -545,8 +548,13 @@ export function createMedia(ctx) {
     /** no new requests; chunks already asked for still land (dropping them would count against an honest peer).
         "Download all now" stays on: resuming continues the files it started, from their stored chunks */
     pause(/** @type {boolean} */ on) { paused = on; changed(); schedule(); },
-    /** fetch everything now, the size limits too, for the rest of the session; also retries after "storage full" */
-    downloadAll() { override = true; paused = false; storageFull = false; failed.clear(); changed(); schedule(); },
+    /** fetch everything now, the size limits too, for the rest of the session; also retries after "storage full".
+        With `only` (the files the user was shown and agreed to), a one-off: just those, past the limits (as
+        `download`); what arrives afterwards follows the limits again */
+    downloadAll(/** @type {string[]=} */ only) {
+      if (only) for (const h of only) { asked.add(h); failed.delete(h); } else { override = true; failed.clear(); }
+      paused = false; storageFull = false; changed(); schedule();
+    },
     /** fetch this one file now, past the size limits, for the rest of the session */
     download(/** @type {string} */ hex) { asked.add(hex); changed(); schedule(); },
     /** a file that failed its hash: three more tries */

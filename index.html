@@ -10,6 +10,15 @@
      Empty = none: peers on the same network connect directly, everyone else through the sync server's encrypted relay. -->
 <meta name="cue-ice-urls" content="">
 <title>Cue Board</title>
+<!-- installable (docs/mobile/PLAN.md): home screen web apps keep their storage on iOS. The manifest is linked only over
+     http(s); from a file it would only log an error -->
+<meta name="theme-color" content="#191817">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cue Board">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script>if(/^https?:$/.test(location.protocol)){const l=document.createElement("link");l.rel="manifest";l.href="manifest.webmanifest";document.head.appendChild(l)}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141317'/%3E%3Cg fill='%23a8702a'%3E%3Crect x='2' y='18' width='4' height='8' rx='2'/%3E%3Crect x='8' y='14' width='4' height='16' rx='2'/%3E%3C/g%3E%3Cg fill='%238b8896'%3E%3Crect x='20' y='12' width='4' height='18' rx='2'/%3E%3Crect x='26' y='17' width='4' height='10' rx='2'/%3E%3C/g%3E%3Crect x='14' y='8' width='4' height='22' rx='2' fill='%23f0a33a'/%3E%3Cpath d='M6 2h20L16 13z' fill='%23f0a33a'/%3E%3C/svg%3E">
 <style>
 /* Cue Board design system. Tokens are documented in DESIGN.md; every value below comes from one of them.
@@ -39,7 +48,7 @@
   /* type */
   --font-ui:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --text-sm:12px; --text-md:13px; --text-lg:14px; --text-xl:16px; --text-2xl:20px; --text-3xl:28px;
+  --text-sm:12px; --text-md:13px; --text-lg:14px; --text-xl:16px; --text-2xl:20px; --text-3xl:28px; --text-input:var(--text-md);
   /* line heights in px so every line box lands on the 4px grid */
   --lh-sm:16px; --lh-md:20px; --lh-xl:24px; --lh-2xl:28px; --lh-3xl:32px; --lh-control:1;
   --w-regular:400; --w-medium:500; --w-semibold:600;
@@ -216,7 +225,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:var(
 .btn kbd{background:transparent;border-color:var(--border);color:var(--ink-3);margin-right:calc(-1 * var(--sp-1))}
 
 /* ---------- inputs ---------- */
-.top select,.top input,.field input,.field textarea,.field select,.prompts textarea,.genrow select,.genrow input,.transport select,.genbox textarea,.fgen textarea{width:100%;background:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-md)}
+.top select,.top input,.field input,.field textarea,.field select,.prompts textarea,.genrow select,.genrow input,.transport select,.genbox textarea,.fgen textarea{width:100%;background:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-input)}
 .top select,.top input,.field input,.field select,.genrow select,.genrow input,.transport select{height:var(--h-md);padding:0 var(--sp-3)}
 textarea{display:block;padding:var(--sp-1-5) var(--sp-3);line-height:var(--lh-md);resize:vertical}
 select,#proj{appearance:none;-webkit-appearance:none;padding-right:var(--sp-8)!important;cursor:pointer;
@@ -295,7 +304,7 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 .keys kbd,.klist kbd{min-width:0;height:auto;padding:0 var(--sp-1);border:0;background:var(--surface-2);line-height:var(--lh-sm);color:var(--ink-2)}
 .keys .linkbtn{color:var(--ink-3);font-weight:var(--w-regular);text-decoration:none}
 .keys .linkbtn:hover{color:var(--ink)}
-@media (max-width:819px){.keys{display:none}}
+@media not all and (min-width:820px){.keys{display:none}}
 /* shortcuts panel: a modal like the others, wider, sections in two columns when there's room */
 #dlgKeys{max-width:min(var(--dialog-w-wide),calc(100vw - var(--sp-8)))}
 #kBody:focus{outline:none}
@@ -595,6 +604,150 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .blist{position:static;max-height:none;grid-auto-flow:column;grid-auto-columns:var(--list-w);overflow-x:auto}
 }
 @media (max-width:620px){.frames,.genrow{grid-template-columns:minmax(0,1fr)}.dlg .row:has(.field){grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- phone: below 820px, portrait (docs/mobile/PLAN.md). Same DOM and tokens, other values ----------
+   App bar (the project name opens the Project sheet), the monitor, transport, a fixed-centre timeline (scrolling is
+   seeking; cut grips and long-press to move a shot), the selected shot's peek row and toolbar, then Cut / Takes tabs.
+   The inspector is a bottom sheet; dialogs and the files panel are bottom sheets. Nothing here applies from 820px up */
+@media (min-width:820px){.m-only{display:none!important}}
+/* "not all and (min-width:820px)", not (max-width:819px): with zoom or a fractional DPR the width can be 819.5px */
+@media not all and (min-width:820px){
+  :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
+    --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px; --tl-min:150px;
+    --grip-w:var(--sp-3); --icon-tool:var(--sp-5); --z-sheet:14;
+    --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px); --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px)}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+  .app{display:flex;flex-direction:column;gap:0;height:100dvh;max-width:none;padding:0}
+  /* app bar: the project's name, who's here, the files indicator */
+  .top{display:flex;flex:none;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
+  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#leaveb,#status,#settingsb,.mlabel{display:none!important}
+  .tleft{flex:1}
+  .tleft>.projgroup,.projpick{flex:1 1 auto;min-width:0}
+  #proj{width:auto;max-width:100%;background-color:transparent;border-color:transparent;padding-left:var(--sp-2);font:var(--w-semibold) var(--text-xl)/var(--lh-xl) var(--font-ui);letter-spacing:var(--track-tight)}
+  #proj:hover,#proj[aria-expanded="true"]{border-color:transparent}
+  .strip,.keys,#mark,#copylist,.transport>.grow,.btn kbd,#ed-empty,#f-imglbl,#f-imgmsg{display:none!important}
+  #sideA,#sideB{flex:1;min-height:0}
+  #sideA{display:flex;flex-direction:column;gap:0}
+  .sideB{display:grid;align-content:start;overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-3) calc(var(--gutter) + var(--safe-r)) var(--sp-6) calc(var(--gutter) + var(--safe-l))}
+  .songbar{flex:none;margin:var(--sp-2) var(--gutter) 0}
+  /* the monitor: full width, 16:9, never taller than a third of the screen */
+  .stage{display:block;flex:none}
+  .monitor{height:auto;max-height:34dvh;aspect-ratio:16/9;min-height:0;margin-inline:auto;border:0;border-radius:0}
+  .slate{padding:var(--sp-4)}
+  .slate.cap{padding:var(--sp-8) var(--sp-4) var(--sp-3)}
+  .slate .t{font-size:var(--text-xl);line-height:var(--lh-xl)}
+  .slate p{font-size:var(--text-md);line-height:var(--lh-md);-webkit-line-clamp:2}
+  /* transport: Play, the time, Loop and Speed in one row; zoom sits on the timeline's corner */
+  .deck{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;gap:0}
+  .transport{flex:none;flex-wrap:nowrap;gap:var(--sp-2);padding:var(--sp-1) calc(var(--gutter) + var(--safe-r)) var(--sp-1) calc(var(--gutter) + var(--safe-l))}
+  .transport .tgroup{display:contents}
+  #play{min-width:0;padding:0 var(--sp-4)}
+  #tc{flex:1;min-width:0}
+  #speed{width:auto}
+  .transport .seg{position:absolute;right:calc(var(--sp-2) + var(--safe-r));bottom:var(--sp-2);z-index:2}
+  /* the timeline: a native horizontal scroller under a fixed playhead. The canvas is the viewport's size */
+  .timeline{flex:1;min-height:var(--tl-min);border-width:var(--hairline) 0;border-radius:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  #tl-scroll{position:static;display:flex;height:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;scrollbar-width:none;touch-action:pan-x}
+  #tl-scroll::-webkit-scrollbar{display:none}
+  #tl{position:sticky;left:0;flex:none;cursor:default;touch-action:pan-x}
+  #mSpace{display:block;flex:none;height:var(--sp-px)}
+  .ph{left:50%;z-index:1;transform:none!important}
+  #mGrips{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .grip{all:unset;position:absolute;width:var(--hit);margin-left:calc(var(--hit) / -2);display:grid;place-items:center;pointer-events:auto;touch-action:none;cursor:ew-resize}
+  .grip::before{content:"";width:var(--grip-w);height:min(100%,var(--h-sm));border-radius:var(--r-xs);background:var(--surface-3);box-shadow:inset 0 0 0 var(--hairline) var(--border-control)}
+  .grip[aria-pressed="true"]::before{background:var(--ink);box-shadow:none}
+  .grip:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
+  .m-ghost{position:fixed;left:0;top:0;z-index:var(--z-drag);pointer-events:none;padding:var(--sp-2) var(--sp-3);background:var(--surface-3);border:var(--hairline) solid var(--accent);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-semibold) var(--text-sm)/var(--lh-sm) var(--font-ui);white-space:nowrap}
+  /* the selected shot in one row (opens its details), then its tools */
+  .m-peek{flex:none;min-height:var(--peek-h);border-top:var(--hairline) solid var(--border-subtle);background:var(--surface-1)}
+  .m-peekb{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:var(--sp-0-5) var(--sp-3);width:100%;min-height:var(--peek-h);padding:var(--sp-2) calc(var(--gutter) + var(--safe-r)) var(--sp-2) calc(var(--gutter) + var(--safe-l));cursor:pointer}
+  .m-peekb:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
+  .m-peekb .pt{min-width:0;overflow:hidden;font-weight:var(--w-semibold);text-overflow:ellipsis;white-space:nowrap}
+  .m-peekb .pt em{font-style:normal;font-weight:var(--w-regular);color:var(--ink-3)}
+  .m-peekb .ico{color:var(--ink-3)}
+  .m-peekb .pn{grid-column:2/-1;min-width:0;overflow:hidden;color:var(--ink-2);font-size:var(--text-sm);line-height:var(--lh-sm);text-overflow:ellipsis;white-space:nowrap}
+  .m-empty{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) calc(var(--gutter) + var(--safe-r)) var(--sp-2) calc(var(--gutter) + var(--safe-l));color:var(--ink-2)}
+  .m-empty>span{flex:1 1 12em}
+  .m-tool{flex:none;display:flex;min-height:var(--toolbar-h);padding:0 var(--safe-r) 0 var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
+  .m-tool>button{all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;display:grid;justify-items:center;align-content:center;gap:var(--sp-1);padding:var(--sp-1) 0;font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-ui);color:var(--ink-2);white-space:nowrap;cursor:pointer}
+  .m-tool>button .ico{width:var(--icon-tool);height:var(--icon-tool)}
+  .m-tool>button:active{background:var(--surface-2);color:var(--ink)}
+  .m-tool>button:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
+  .m-tool>button:disabled{opacity:var(--o-disabled);cursor:not-allowed}
+  .m-tool>button[data-armed]{color:var(--error);background:var(--error-subtle)}
+  .m-read{flex:2.4 1 0;min-width:0;display:grid;align-content:center;padding:0 var(--sp-2);border-inline:var(--hairline) solid var(--border-subtle);color:var(--ink-3);font-size:var(--text-tiny);line-height:var(--lh-sm)}
+  .m-read b{font:var(--w-medium) var(--text-xl)/var(--lh-xl) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+  .m-read span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .flip .ico{transform:scaleX(-1)}
+  /* tabs: navigation, so neutral */
+  .m-tabs{flex:none;display:flex;padding:0 var(--safe-r) var(--safe-b) var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
+  .m-tabs button{all:unset;box-sizing:border-box;flex:1;display:grid;justify-items:center;align-content:center;gap:var(--sp-0-5);height:var(--tabbar-h);font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-ui);color:var(--ink-3);cursor:pointer}
+  .m-tabs button .ico{width:var(--icon-tool);height:var(--icon-tool)}
+  .m-tabs [aria-selected="true"]{color:var(--ink);font-weight:var(--w-semibold)}
+  .m-tabs button:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
+  /* shot details: the inspector as a bottom sheet. Half height under the transport (the preview and Play stay in
+     view), full height while a field has the focus; it ends at the keyboard (--kb, from visualViewport) */
+  .editor{position:fixed;left:0;right:0;top:var(--sheet-top,40dvh);bottom:var(--kb,0px);z-index:var(--z-sheet);display:none;gap:var(--sp-3);padding:0 calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l));overflow:auto;overscroll-behavior:contain;border-width:var(--hairline) 0 0;border-color:var(--border-strong);border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-overlay)}
+  body.m-ed .editor{display:grid}
+  body.m-ed.m-full .editor{top:var(--safe-t)}
+  .sh-top{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:var(--sp-1);min-height:calc(var(--hit) + var(--sp-4));margin:0 calc(-1 * var(--sp-2));padding:var(--sp-3) 0 var(--sp-1);background:var(--surface-1);touch-action:none}
+  .editor .sh-top{margin-inline:calc(-1 * var(--gutter));padding-inline:var(--sp-2)}
+  .grab{position:absolute;left:50%;top:var(--sp-1-5);width:var(--sp-8);height:var(--sp-1);margin-left:calc(var(--sp-8) / -2);border-radius:var(--r-xs);background:var(--border-strong)}
+  .sh-top h3{margin:0 0 0 var(--sp-2);font:var(--w-semibold) var(--text-xl)/var(--lh-xl) var(--font-ui);letter-spacing:var(--track-tight)}
+  #mShotChips .chip[aria-pressed="true"]{background:var(--accent-subtle);border-color:var(--accent-border);color:var(--accent)}
+  .chip{height:var(--h-sm);font-size:var(--text-sm)}
+  /* side B: a rail of shots, the header stacked, frames and takes in one column; no generation on the phone */
+  .blist{grid-auto-columns:var(--list-w);margin-inline:calc(-1 * var(--gutter));padding-inline:var(--gutter);border-radius:0;border-width:0;background:none}
+  .bitem{grid-template-columns:minmax(0,1fr);gap:var(--sp-1);padding:var(--sp-1)}
+  .bitem .cv{display:none}
+  .bbar{gap:var(--sp-2) var(--gap-block)}
+  .bshot{flex-basis:100%}
+  #bConn,#fStartGen,#fEndGen,#fEndFrom,.fgen,.genbox,.take [data-act="retry"]{display:none!important}
+  .takes{grid-template-columns:minmax(0,1fr)}
+  /* sheets: dialogs, the Project sheet and the files panel rise from the bottom, above the keyboard */
+  dialog{width:100%;max-width:100%;margin:auto 0 var(--kb,0px);max-height:calc(100dvh - var(--safe-t) - var(--sp-6) - var(--kb,0px));overflow:auto;overscroll-behavior:contain;border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;padding:var(--sp-2) var(--gutter) var(--safe-b)}
+  .dlg{padding:var(--sp-2) var(--safe-r) var(--sp-6) var(--safe-l)}
+  .dlg .row:has(.field){grid-template-columns:minmax(0,1fr)}
+  .sh{display:grid;gap:var(--gap-block);padding:0 var(--safe-r) var(--sp-6) var(--safe-l)}
+  .sheet .sh-top{padding-top:var(--sp-1)}
+  .m-list{display:grid}
+  .m-pi{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-3);min-height:var(--hit);color:var(--ink-2);cursor:pointer}
+  .m-pi .ico{visibility:hidden;color:var(--ink)}
+  .m-pi[aria-current="true"]{color:var(--ink)}
+  .m-pi[aria-current="true"] .ico{visibility:visible}
+  .m-pi>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .m-pi .muted{flex:none}
+  .m-pi:focus-visible,.m-row:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring));border-radius:var(--r-xs)}
+  .m-acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:var(--sp-2)}
+  .m-room{display:grid;gap:var(--sp-3);padding-top:var(--gap-block);border-top:var(--hairline) solid var(--border-subtle)}
+  .m-rh{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2)}
+  .m-rh h3{margin:0;font:var(--w-semibold) var(--text-md)/var(--lh-md) var(--font-ui)}
+  .m-people{display:grid;gap:var(--sp-1);margin:0;padding:0;list-style:none}
+  .m-people li{display:flex;align-items:center;gap:var(--sp-3);min-height:var(--hit)}
+  .m-people .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .m-people .nm i{font-style:normal;color:var(--ink-3)}
+  .m-people .pchip{flex:none}
+  .m-state{display:grid;gap:var(--sp-0-5);padding:var(--inset-card);background:var(--surface-2);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
+  .m-state[data-k="err"] b{color:var(--error)}
+  .m-saveerr{margin:0;padding:var(--inset-card);border:var(--hairline) solid var(--error);border-radius:var(--r-md);color:var(--error)}
+  .m-state p{margin:0}
+  .m-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit);border-top:var(--hairline) solid var(--border-subtle);cursor:pointer}
+  .m-row>span:first-child{flex:1;font-weight:var(--w-medium)}
+  .m-row .ico{color:var(--ink-3)}
+  .m-del,#mLeave,#mDelsong{justify-self:start}
+  .m-del:hover,.m-del[data-armed],#mLeave:hover,#mLeave[data-armed],#mDelsong[data-armed]{color:var(--error);background:var(--error-subtle);border-color:transparent}
+  .mpanel{position:fixed;top:auto;right:0;bottom:0;left:0;width:auto;max-width:none;max-height:calc(100dvh - var(--safe-t) - var(--appbar-h));padding:var(--inset-panel) calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l));border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-overlay)}
+  .mp-head{grid-template-columns:minmax(0,1fr) auto;column-gap:var(--sp-2)}
+  #fClose{grid-column:2;grid-row:1 / span 2;align-self:start}
+  .lims{grid-template-columns:minmax(0,1fr)}
+  .mlist{max-height:none}
+  .toast{bottom:calc(var(--toolbar-h) + var(--tabbar-h) + var(--sp-3) + var(--safe-b));max-width:calc(100vw - 2 * var(--gutter));white-space:normal;text-align:center}
+}
+@media not all and (min-width:820px){@media (max-height:699px){.m-peek{display:none}}}
+/* landscape (or any very short window): no layout of its own, the page just scrolls */
+@media not all and (min-width:820px){@media (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.timeline{flex:none;height:var(--tl-min)}}}
+@media not all and (min-width:820px){@media (prefers-reduced-motion:no-preference){body.m-ed .editor{animation:rise var(--dur-base) var(--ease-out)}}}
 </style>
 </head>
 <body>
@@ -616,6 +769,14 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-gear" viewBox="0 0 16 16"><path d="M12.46 6.89L14.17 7.02L14.17 8.98L12.46 9.11A4.6 4.6 0 0 1 11.94 10.37L13.06 11.67L11.67 13.06L10.37 11.94A4.6 4.6 0 0 1 9.11 12.46L8.98 14.17L7.02 14.17L6.89 12.46A4.6 4.6 0 0 1 5.63 11.94L4.33 13.06L2.94 11.67L4.06 10.37A4.6 4.6 0 0 1 3.54 9.11L1.83 8.98L1.83 7.02L3.54 6.89A4.6 4.6 0 0 1 4.06 5.63L2.94 4.33L4.33 2.94L5.63 4.06A4.6 4.6 0 0 1 6.89 3.54L7.02 1.83L8.98 1.83L9.11 3.54A4.6 4.6 0 0 1 10.37 4.06L11.67 2.94L13.06 4.33L11.94 5.63A4.6 4.6 0 0 1 12.46 6.89zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></symbol>
   <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.25a5.75 5.75 0 1 0 0 11.5 5.75 5.75 0 0 0 0-11.5zM8 5v3.5M8 10.75h.01"/></symbol>
   <symbol id="i-x"viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
+  <!-- phone layout: tabs, the shot toolbar, rows -->
+  <symbol id="i-split" viewBox="0 0 16 16"><path d="M8 1.5v13M5.5 5L2.5 8l3 3M10.5 5l3 3-3 3"/></symbol>
+  <symbol id="i-lines" viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></symbol>
+  <symbol id="i-image" viewBox="0 0 16 16"><path d="M2.5 3.5h11v9h-11zM2.5 10.5l3-3 3 3 2-2 3 3M10.5 6.25h.01"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 16 16"><path d="M2 7v2M5 5v6M8 2.5v11M11 5v6M14 7v2"/></symbol>
+  <symbol id="i-film" viewBox="0 0 16 16"><path d="M2.5 3h11v10h-11zM5.5 3v10M10.5 3v10M2.5 6h3M2.5 10h3M10.5 6h3M10.5 10h3"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
 </defs></svg>
 <div class="app">
   <header class="top">
@@ -649,7 +810,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       </div>
       <div class="tgroup songops">
         <button type="button" class="btn primary" data-for="song" id="songlbl">Load song</button>
-        <input id="song" type="file" accept="audio/*" hidden>
+        <input id="song" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac,.ogg" hidden>
       </div>
     </div>
     <nav class="sides" role="tablist" aria-label="Side"><button type="button" class="sidetab" role="tab" data-side="a" aria-selected="true">Side A<span class="lbl">&nbsp;· Cut</span></button><button type="button" class="sidetab" role="tab" data-side="b" aria-selected="false">Side B<span class="lbl">&nbsp;· Takes</span></button></nav>
@@ -666,6 +827,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
           <p class="hint" id="fWarn" hidden></p>
           <ul class="mlist" id="fList" aria-label="Files"></ul>
           <div class="mp-foot">
+            <label class="chk m-only" for="fWifi"><input type="checkbox" id="fWifi" aria-describedby="fWifiHint"> Download takes and clips only on Wi-Fi</label>
+            <p class="hint m-only" id="fWifiHint">Frames and the song always download. A phone can't always tell when it's on Wi-Fi: takes and clips then wait for Download, or Download everything now.</p>
             <div class="lims">
               <div class="field"><label for="fLimF">Download automatically</label><select id="fLimF"><option value="100">Files up to 100 MB</option><option value="500">Files up to 500 MB</option><option value="2000">Files up to 2 GB</option></select></div>
               <div class="field"><label for="fLimP">For the whole project</label><select id="fLimP"><option value="5000">Up to 5 GB</option><option value="20000">Up to 20 GB</option><option value="50000">Up to 50 GB</option></select></div>
@@ -692,12 +855,14 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       <div class="mprog"><b id="mprog"></b></div>
     </div>
 
-    <aside class="editor" id="editor">
+    <aside class="editor" id="editor" aria-label="Shot details">
+      <div class="m-only sh-top"><span class="grab" id="mEdGrab" aria-hidden="true"></span><button type="button" class="btn ghost icon flip" id="mEdPrev" aria-label="Previous shot"><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" class="btn ghost icon" id="mEdNext" aria-label="Next shot"><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button><span class="grow"></span><button type="button" class="btn ghost icon" id="mEdClose" aria-label="Close shot details"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
       <div id="ed-empty" class="ed-empty">Load a song to start. While it plays, press <kbd>M</kbd> at every change in the music and each stretch becomes a shot. Or <button type="button" class="linkbtn" data-example>open the example project</button> to see a finished cut.</div>
       <div id="ed-body" hidden style="display:grid">
         <div class="ed-head"><span class="ed-n" id="ed-n">01</span><span id="ed-time" class="tc"></span><span class="grow"></span><button type="button" id="f-del" class="btn ghost small">Delete shot</button><span id="ed-clip" class="clip"></span></div>
         <label class="field">Title<input id="f-title" placeholder="e.g. John crosses the river"></label>
         <label class="field">Shot type<input id="f-shot" list="shots" placeholder="Wide shot, close-up…"></label>
+        <div class="chips m-only" id="mShotChips" role="group" aria-label="Shot type"></div>
         <datalist id="shots"><option value="Wide shot"><option value="Medium shot"><option value="Close-up"><option value="Extreme close-up"><option value="Insert / detail"><option value="Tracking shot"><option value="Aerial"><option value="Low angle"><option value="POV"></datalist>
         <label class="field">Notes<textarea id="f-notes" rows="4" placeholder="What happens here, what the viewer should feel…"></textarea></label>
         <div class="row">
@@ -737,8 +902,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <button type="button" id="copylist" class="btn ghost">Copy shot list</button>
   </div>
 
-  <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="ph" class="ph"></div></div></div>
+  <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="mSpace" class="m-only"></div><div id="ph" class="ph"></div></div><div id="mGrips" class="m-only"></div></div>
   </section>
+  <!-- phone: the selected shot in one row, then its tools at thumb height (hidden on desktop) -->
+  <div id="mPeek" class="m-only m-peek"></div>
+  <div id="mTool" class="m-only m-tool" role="toolbar" aria-label="Shot tools"></div>
   <div class="strip" id="strip"></div>
   <p class="keys" id="keys"><span><kbd>Space</kbd> play</span><span><kbd>M</kbd> cut</span><span><kbd>L</kbd> loop</span><span><kbd>←</kbd><kbd>→</kbd> step</span><button type="button" class="linkbtn" id="keysb" aria-haspopup="dialog"><kbd>?</kbd> All shortcuts</button></p>
   </div>
@@ -814,6 +982,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       </section>
     </div>
   </div>
+  <nav id="mTabs" class="m-only m-tabs" role="tablist" aria-label="Side"><button type="button" role="tab" data-side="a" aria-selected="true"><svg class="ico" aria-hidden="true"><use href="#i-wave"/></svg>Cut</button><button type="button" role="tab" data-side="b" aria-selected="false"><svg class="ico" aria-hidden="true"><use href="#i-film"/></svg>Takes</button></nav>
 </div>
 <dialog id="dlgKeys" aria-labelledby="kTitle"><div class="dlg" id="kBody" tabindex="-1">
   <div class="khead"><h3 id="kTitle">Shortcuts</h3><button type="button" id="kClose" class="btn ghost icon" aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
@@ -844,6 +1013,31 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     </dl></section>
   </div>
 </div></dialog>
+<!-- phone: the project, the song and the room in one sheet (the app bar's title opens it) -->
+<dialog id="mProj" class="sheet" aria-labelledby="mProjH"><div class="sh">
+  <div class="sh-top"><span class="grab" aria-hidden="true"></span><h3 id="mProjH">Projects</h3><span class="grow"></span><button type="button" class="btn ghost icon" data-close aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <p class="m-saveerr" id="mSaveErr" role="alert" hidden></p>
+  <div class="m-list" id="mProjList" role="group" aria-label="Projects"></div>
+  <div class="m-acts"><button type="button" class="btn" id="mNew">New</button><button type="button" class="btn" id="mRename">Rename</button><button type="button" class="btn" id="mImport">Import</button><button type="button" class="btn" id="mExport">Export</button></div>
+  <div class="m-acts"><button type="button" class="btn" id="mSong">Load song</button><button type="button" class="btn ghost" id="mDelsong" hidden><span>Remove song</span></button></div>
+  <section class="m-room" id="mRoom" hidden>
+    <div class="m-rh"><h3>Collaboration</h3><span class="muted" id="mRoomN"></span></div>
+    <ul class="m-people" id="mPeople"></ul>
+    <div class="m-state" id="mState"><b id="mStateT"></b><p class="muted" id="mStateTip"></p></div>
+    <button type="button" class="m-row" id="mFiles"><span>Files and downloads</span><span class="muted" id="mFilesV"></span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+    <button type="button" class="btn" id="mJoin"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Join collaboration</button>
+    <button type="button" class="btn ghost" id="mLeave"><span>Leave collaboration</span></button>
+  </section>
+  <button type="button" class="m-row" id="mSettings"><span>Settings</span><span class="muted">OpenRouter key</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+  <button type="button" class="m-row" id="mCopy"><span>Copy shot list</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+  <p class="hint" id="mInstall" hidden>Add Cue Board to your Home Screen (Share, then Add to Home Screen) to keep your projects on this phone. In a browser tab, iOS may clear them after a week without a visit.</p>
+  <button type="button" class="btn ghost m-del" id="mDelp"><span>Delete project</span></button>
+</div></dialog>
+<dialog id="dlgSize"><form class="dlg" method="dialog">
+  <h3 id="szTitle">Download this take?</h3>
+  <p class="muted" id="szText"></p>
+  <div class="row"><span class="grow"></span><button type="submit" value="" class="btn ghost">Cancel</button><button type="submit" value="ok" class="btn primary" id="szGo">Download</button></div>
+</form></dialog>
 <dialog id="dlgSettings"><form class="dlg" id="setForm">
   <h3>Settings</h3>
   <div class="field"><label for="setKey">OpenRouter API key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
@@ -913,15 +1107,21 @@ function localStore(){let cb=null;const all=async()=>{const r=await idbS("projec
 /* saved state, in the bar: what this browser's save says (busy/ok/err) together with the room's state when the
    project is in one. Nothing to press: every change saves itself, here and to the room */
 let saveK="busy",saveT="Loading",roomSt="";
-function setStatus(kind,text){saveK=kind;saveT=text;renderSaved()}
+/* the phone hides #status: a save error (and the recovery from one) arrives as a toast, and stays in the Projects sheet while it lasts */
+let saveErr="";
+function setStatus(kind,text){const was=saveErr;saveK=kind;saveT=text;if(kind==="err")saveErr=text;else if(kind==="ok")saveErr="";renderSaved();
+  if(!matchMedia("not all and (min-width:820px)").matches)return;
+  if(saveErr&&was!==saveErr)toast(saveTip(saveErr),6000);else if(was&&!saveErr)toast("Saved again")}
+function saveTip(t){return t+(t==="Browser storage unavailable"?". This browser blocks local storage, so nothing will be saved.":". Your latest changes are only in this tab; export the project to keep a copy.")}
 function renderSaved(){const s=$("status"),r=SYNC_URL&&cur&&cset.rooms[cur.id]?roomSt:"";let k=saveK,t,tip;
-  if(k==="err"){t=saveT;tip=saveT+(saveT==="Browser storage unavailable"?". This browser blocks local storage, so nothing will be saved.":". Your latest changes are only in this tab; export the project to keep a copy.")}
+  if(k==="err"){t=saveT;tip=saveTip(saveT)}
   else if(k==="busy"){t=saveT==="Loading"?"Loading":"Saving…";tip=t==="Loading"?"Loading your projects":r?"Saving your changes in this browser and sending them to the room":"Saving your changes in this browser"}
   else if(!r){t="Saved";tip="Every change is saved in this browser"}
   else if(r==="synced"){t="Saved";tip="Every change is saved in this browser and synced with the room"}
   else if(r==="syncing"){k="busy";t="Syncing…";tip="Saved in this browser. Connecting to the room…"}
   else{k="local";t="Saved locally";tip="Saved in this browser. Your changes go to the room once it can be reached again."}
-  s.dataset.k=k;s.title=tip;s.querySelector(".lbl").textContent=t;s.querySelector("use").setAttribute("href",k==="err"?"#i-alert":k==="busy"?"#i-more":"#i-check")}
+  s.dataset.k=k;s.title=tip;s.querySelector(".lbl").textContent=t;s.querySelector("use").setAttribute("href",k==="err"?"#i-alert":k==="busy"?"#i-more":"#i-check");
+  const m=$("mSaveErr");m.hidden=!saveErr;m.textContent=saveErr?saveTip(saveErr):""}
 
 /* media: blobs in IndexedDB, shown through object URLs cached per session */
 const mediaCache=new Map();
@@ -1074,6 +1274,7 @@ function renderSongbar(){
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
   /* no song: "Load song" in the bar (in More when the bar is narrow); a song: Replace and Remove, in More */
   $("songlbl").hidden=has;$("mLoad").hidden=has;$("mReplace").hidden=!has;$("delsong").hidden=!has;
+  renderPeek();
 }
 function renderTransport(){
   const pl=$("play"),pi=playing?"pause":"play";$("play").disabled=!hasAudio;
@@ -1081,6 +1282,7 @@ function renderTransport(){
   $("mark").disabled=!cur;$("loop").setAttribute("aria-pressed",String(loop));$("copylist").disabled=!cur;
 }
 function renderTimeline(){
+  if(phone()){renderTimelineM();return}
   const cw=scroller.clientWidth||600,d=dur();
   W=Math.min(30000,Math.max(cw,Math.round(d*(pps==null?cw/d:pps))));P=W/d;
   const H=132,dpr=window.devicePixelRatio||1;
@@ -1116,7 +1318,7 @@ function tlLabel(g,num,title,room){
   if(lo>=2)return num+"  "+title.slice(0,lo).trimEnd()+"…";
   return g.measureText(num).width<=room?num:"";
 }
-function placePlayhead(){ph.style.transform=`translateX(${now()*P}px)`;$("tc").textContent=fmt(now())}
+function placePlayhead(){if(phone()){$("tc").textContent=fmt(now());mSync();mDraw();return}ph.style.transform=`translateX(${now()*P}px)`;$("tc").textContent=fmt(now())}
 /* cards are patched in place when the order is unchanged, so a collaborator's keystroke doesn't reload every thumbnail */
 function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
@@ -1145,11 +1347,12 @@ function renderEdHead(){
 }
 function setVal(id,v){const el=$(id);if(document.activeElement!==el)el.value=v||""}
 function renderEditor(){
+  renderPeek();renderMTool();
   const s=selSec();$("ed-empty").hidden=!!s;$("ed-body").hidden=!s;$("ed-body").style.display=s?"grid":"none";if(!s)return;
-  renderEdHead();setVal("f-title",s.title);setVal("f-shot",s.shot);setVal("f-notes",s.notes);setVal("f-imgp",s.imgPrompt);setVal("f-vidp",s.vidPrompt);
+  renderEdHead();mShotChips();setVal("f-title",s.title);setVal("f-shot",s.shot);setVal("f-notes",s.notes);setVal("f-imgp",s.imgPrompt);setVal("f-vidp",s.vidPrompt);
   $("f-imgdel").hidden=!s.img;$("f-imglbl").hidden=!assets;$("f-imglbl").textContent=s.img?(s.kind==="video"?"Replace clip":"Replace image"):"Upload image, GIF or clip";
-  
-  resetDel();
+
+  resetDel();resetMtDel();
 }
 function renderMonitor(force){
   const t=now();
@@ -1197,7 +1400,7 @@ function tick(){
   if(loop){const i=s.findIndex(x=>x.id===selId);if(i>=0){const a=s[i].start,b=secEnd(i);if(t>=b-.03||t<a-.3)audio.currentTime=a}}
   else if(!editing()){const i=secAt(t);if(s[i].id!==selId){selId=s[i].id;renderStrip();renderEditor();renderTimeline();scrollCard()}}
   placePlayhead();renderMonitor();
-  const x=t*P;if(x<scroller.scrollLeft||x>scroller.scrollLeft+scroller.clientWidth-40)scroller.scrollLeft=Math.max(0,x-40);
+  if(!phone()){const x=t*P;if(x<scroller.scrollLeft||x>scroller.scrollLeft+scroller.clientWidth-40)scroller.scrollLeft=Math.max(0,x-40)}
   raf=requestAnimationFrame(tick);
 }
 function setLoop(v){loop=v;renderTransport();toast(loop?"Looping this shot":"Loop off")}
@@ -1220,11 +1423,11 @@ function scrubTo(e){
   const r=scroller.getBoundingClientRect();
   if(e.clientX>r.right-30)scroller.scrollLeft+=12;else if(e.clientX<r.left+30)scroller.scrollLeft-=12;
 }
-cv.addEventListener("pointerdown",e=>{if(!cur||e.button>0)return;const x=cx(e),hit=boundaryAt(x);
+cv.addEventListener("pointerdown",e=>{if(!cur||e.button>0||phone())return;const x=cx(e),hit=boundaryAt(x);
   cv.setPointerCapture(e.pointerId);
   if(hit>0){drag=hit;return}
   scrub=true;cv.style.cursor="grabbing";scrubTo(e)});
-cv.addEventListener("pointermove",e=>{if(!cur)return;
+cv.addEventListener("pointermove",e=>{if(!cur||phone())return;
   if(drag){const s=S(),lo=s[drag-1].start+.2,hi=(drag<s.length-1?s[drag+1].start:dur())-.2;
     s[drag].start=Math.round(Math.min(hi,Math.max(lo,cx(e)/P))*100)/100;renderTimeline();renderStrip();renderEdHead();renderMonitor()}
   else if(scrub)scrubTo(e);
@@ -1333,7 +1536,7 @@ $("newp").onclick=()=>newProject($("newp"));
 function twoTap(btn,label,confirmLabel,fn){let armed=false,tm=null;const l=btn.querySelector("span")||btn;
   const set=on=>{armed=on;l.textContent=on?confirmLabel:label;btn.toggleAttribute("data-armed",on)};
   btn.onclick=()=>{if(!armed){set(true);tm=setTimeout(()=>set(false),2600);return}clearTimeout(tm);set(false);fn()};return()=>{clearTimeout(tm);set(false)}}
-const resetDelp=twoTap($("delp"),"Delete project","Tap again to delete",async()=>{
+const deleteProject=async()=>{
   closeMore(true);if(!cur||!store)return;const id=cur.id,imgs=projectMediaIds(cur);
   clearTimeout(timer);timer=null;dirty=false;stop();
   try{await store.del(id)}catch(e){toast("Couldn't delete");return}
@@ -1343,23 +1546,26 @@ const resetDelp=twoTap($("delp"),"Delete project","Tap again to delete",async()=
   if(projects.length)selectProject(projects[0]);else renderAll();toast("Project deleted");
   /* the last one: More has nothing left to offer and hides, so the focus goes to New */
   if(document.activeElement===$("moreb")&&!$("moreb").getClientRects().length||document.activeElement===document.body)$("newp").focus();
-});
-const resetDelsong=twoTap($("delsong"),"Remove song","Tap again to remove",()=>{
+};
+const resetDelp=twoTap($("delp"),"Delete project","Tap again to delete",deleteProject);
+const removeSong=()=>{
   closeMore(true);if(!cur)return;stop();idbDo("readwrite",st=>st.delete(cur.id));
   if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}audio.removeAttribute("src");try{audio.load()}catch(e){}
   hasAudio=false;cur.song=null;vt=0;scheduleSave();renderAll();toast("Song removed. Your cuts and shots are kept.");
-});
+};
+const resetDelsong=twoTap($("delsong"),"Remove song","Tap again to remove",removeSong);
 function disarmMore(){resetDelp();resetDelsong()}
-const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",()=>{
+const deleteShot=()=>{
   const s=S(),i=s.findIndex(x=>x.id===selId);if(i<0)return;
   if(s.length===1){Object.assign(s[0],{title:"",shot:"",notes:"",imgPrompt:"",vidPrompt:""});}
   else{const[rm]=s.splice(i,1);if(i===0)s[0].start=0;sectionMediaIds(rm).forEach(releaseMedia);selId=s[Math.max(0,i-1)].id}
   scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);
-});
+};
+const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",deleteShot);
 [["f-title","title"],["f-shot","shot"],["f-notes","notes"],["f-imgp","imgPrompt"],["f-vidp","vidPrompt"]].forEach(([id,f])=>{
   $(id).addEventListener("input",e=>{const s=selSec();if(!s)return;s[f]=e.target.value;scheduleSave(true);
     if(f==="title"||f==="shot"){const c=$("strip").querySelector(`.card[data-id="${CSS.escape(s.id)}"]`);if(c){const i=S().indexOf(s);c.querySelector(".ct").innerHTML=s.title?esc(s.title):"<em>Untitled</em>";c.querySelector(".cs").textContent=s.shot||clipHint(secEnd(i)-s.start)}}
-    if(f==="title")renderTimeline();if(f!=="imgPrompt"&&f!=="vidPrompt")renderMonitor()})});
+    if(f==="title")renderTimeline();if(f!=="imgPrompt"&&f!=="vidPrompt")renderMonitor();if(f!=="imgPrompt"&&f!=="vidPrompt")renderPeek()})});
 /* ---------- reorder shots by dragging cards ----------
    Drop on the MIDDLE of a card  → swap: the two shots trade time slots, nothing else changes.
    Drop on a card's EDGE / a gap → slide in: the shot leaves its old slot (the shot before it absorbs that time)
@@ -1415,18 +1621,22 @@ function endStripDrag(apply){
   suppressClick=true;setTimeout(()=>suppressClick=false,80);
   d.ghost.remove();d.chip.remove();d.card.classList.remove("lifted");clearDropMarks();
   if(!apply||!d.zone)return;
-  const s=S(),from=s.findIndex(x=>x.id===d.id);if(from<0)return;
-  if(d.zone.kind==="swap"){
-    const to=s.findIndex(x=>x.id===d.zone.card.dataset.id);if(to<0)return;
+  moveShot(d.id,d.zone.kind==="swap"?{kind:"swap",to:d.zone.card.dataset.id}:{kind:"insert",plan:d.plan});
+}
+/* the drop itself, from the strip (desktop) or the phone's timeline: swap with `to`, or slide in by `plan` */
+function moveShot(id,z){
+  const s=S(),from=s.findIndex(x=>x.id===id);if(from<0)return;
+  if(z.kind==="swap"){
+    const to=s.findIndex(x=>x.id===z.to);if(to<0||to===from)return;
     const a=s[from].start;s[from].start=s[to].start;s[to].start=a;s.sort((x,y)=>x.start-y.start);
     toast(`Swapped shots ${pad(from+1)} and ${pad(to+1)} · cuts unchanged`);
   }else{
-    const p=d.plan;if(!p||p.same)return;if(p.tight){toast("Not enough room to slide it in there");return}
+    const p=z.plan;if(!p||p.same)return;if(p.tight){toast("Not enough room to slide it in there");return}
     const[m]=s.splice(from,1);if(from===0&&s.length)s[0].start=0;
     if(p.first){s[0].start=p.firstTo;m.start=0;s.unshift(m)}else{m.start=p.start;s.splice(p.at,0,m)}
     toast(`Slid in at ${fmt(m.start)} · new cut at ${fmt(p.first?p.firstTo:p.start)}`);
   }
-  selId=d.id;scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);scrollCard();
+  selId=id;scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);scrollCard();
 }
 strip.addEventListener("pointerup",()=>endStripDrag(true));
 strip.addEventListener("pointercancel",()=>endStripDrag(false));
@@ -1481,7 +1691,7 @@ async function uploadMedia(f){
     releaseMedia(old);msg.textContent="";renderStrip();renderEditor();renderMonitor(true)}
   catch(e){const c=e&&e.code;msg.textContent=c==="too_large"?"The file is too big (20 MB max).":c==="unsupported_type"?"That format can't be uploaded: use JPG, PNG, GIF, MP4 or WebM.":c==="quota_or_state"?"The board is out of storage.":c==="rate_limited"?"Too many uploads in a row, wait a moment.":"Couldn't upload the file."}
 }
-$("f-img").onchange=e=>{const f=e.target.files[0];e.target.value="";uploadMedia(f)};
+$("f-img").onchange=e=>{const f=e.target.files[0];e.target.value="";uploadMedia(f).then(()=>{const t=$("f-imgmsg").textContent;if(phone()&&t)toast(t)})};
 $("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;s.img="";s.kind="";s.clipDur=0;scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
 document.addEventListener("dragover",e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes("Files"))e.preventDefault()});
 document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(!f)return;e.preventDefault();
@@ -1609,7 +1819,8 @@ function ratePerSec(m,res,audio,i2v){
 /* ---------- sides ---------- */
 function setSide(v){
   side=v;ls("cueboard-side",v);$("sideA").hidden=v!=="a";$("sideB").hidden=v!=="b";
-  document.querySelectorAll(".sidetab").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.side===v)));
+  document.querySelectorAll(".sidetab,#mTabs [role=tab]").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.side===v)));
+  if(v!=="a")closeDetails();resetMtDel();
   if(v==="a"){lastKey="";renderAll()}else{stop();renderB()}
 }
 document.querySelectorAll(".sidetab").forEach(b=>b.onclick=()=>setSide(b.dataset.side));
@@ -1961,7 +2172,7 @@ function openSettings(msg){
   $("setKey").value=apiKey;$("setAll").checked=showAll;$("setMsg").textContent=msg||"";
   $("setImg").innerHTML=IMG_MODELS.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");$("setImg").value=imgSet.model;$("setImgRes").value=imgSet.res;$("setImgN").value=String(imgSet.n);
   $("setConn").textContent=viaProxy?(proxyHasKey?"Running through the local server, which already has an API key. You can leave the field empty.":"Running through the local server. Requests go through it to OpenRouter."):"This page calls OpenRouter directly from your browser.";
-  $("dlgSettings").showModal();setTimeout(()=>$("setKey").focus(),30);
+  $("dlgSettings").showModal();setTimeout(()=>{if(!phone())$("setKey").focus()},30);
 }
 $("settingsb").onclick=()=>openSettings();
 $("setClose").onclick=()=>$("dlgSettings").close();
@@ -2000,7 +2211,7 @@ async function loadCollab(){if(cmod)return cmod;try{const m=await import("./coll
 const collabApp={
   project:pid=>cur&&cur.id===pid?cur:null,
   applyRemote,
-  busy:()=>!!(drag||scrub||(sd&&sd.on)),
+  busy:()=>!!(drag||scrub||(sd&&sd.on)||mBusy()),
   focusedText(){const a=document.activeElement,s=selSec();if(!a||!s)return null;
     const f={"f-title":"title","f-notes":"notes","f-imgp":"imgPrompt","f-vidp":"vidPrompt","bPrompt":"vidPrompt"}[a.id]||(a.id==="fStartPrompt"&&fpanel&&fpanel.slot==="key"?"imgPrompt":"");
     return f?{el:a,shotId:s.id,field:f}:null},
@@ -2019,7 +2230,9 @@ const collabApp={
   onSong:(pid,stale)=>{if(!cur||cur.id!==pid||csessPid!==pid)return;songStale=stale;
     if(stale){if(hasAudio){stop();detachAudio()}renderAll()}else if(!hasAudio)loadAudio();else renderSongbar()},
   onMedia:pid=>{if(cur&&cur.id===pid&&csessPid===pid){renderCollab(csess.status());renderMiss()}},
-  mediaLimits:pid=>{const l=(cset.rooms[pid]&&cset.rooms[pid].limits)||{};return{file:(+l.file||500)*1e6,project:(+l.project||5000)*1e6}},
+  mediaLimits:pid=>{const l=(cset.rooms[pid]&&cset.rooms[pid].limits)||{},o={file:(+l.file||500)*1e6,project:(+l.project||5000)*1e6};
+    /* takes and clips only on Wi-Fi (the phone's setting, in the phone layout): video waits while this device can't see a Wi-Fi connection */
+    if(holdVideo())o.video=false;return o},
   onEvent:(pid,t)=>{const b=cset.rooms[pid];if(!b)return;
     if(t==="shared"){delete b.share;saveCset();toast("Shared into the room")}
     else{leaveRoom(pid,true);toast("Someone started working in that room meanwhile, so nothing was shared")}}
@@ -2052,7 +2265,7 @@ const plural=(k,w)=>k+" file"+(k>1?"s":"")+(w?" "+w:"");
 const fmtMB=b=>b>=1e9?(b/1e9).toFixed(1)+" GB":b>=1e6?(b/1e6).toFixed(1)+" MB":Math.max(1,Math.round(b/1e3))+" KB";
 const cmedia=()=>csess&&csess.media?csess.media():null;
 /* the media side while connected: [look, text, explanation, state], or null for plain "Synced" (a project without files) */
-function mediaChip(x){if(!x||!x.total)return null;
+function mediaChip(x,m){if(!x||!x.total)return null;
   const low=x.storage.persisted===false?" This browser may clear these files when space runs low; your collaborators keep their copies.":"";
   if(x.storageBusy==="blocked")return["off","Storage busy, close other tabs","Another Cue Board tab, still on the previous version, is holding this browser's storage. Close or reload the other tabs and files start arriving. Edits sync as usual.","busy"];
   if(x.storageBusy==="replaced")return["off","Storage busy, reload this tab","Cue Board was updated in another tab, so this one let go of the browser's storage. Reload this tab to keep receiving files. Edits sync as usual.","busy"];
@@ -2062,7 +2275,12 @@ function mediaChip(x){if(!x||!x.total)return null;
   if(x.paused&&x.active+x.unavailable)return["off","Paused, "+plural(x.active+x.unavailable,"to get"),"Downloads are paused. Resume picks up where they stopped.","paused"];
   if(x.unavailable)return["off",plural(x.unavailable,"not available yet"),"Nobody online has "+(x.unavailable>1?"them":"it")+". "+(x.unavailable>1?"They arrive":"It arrives")+" when someone who has "+(x.unavailable>1?"them":"it")+" opens the project."+low,"unavailable"];
   if(x.relay)return["off",plural(x.relay,"too large to relay"),"Too big to pass through the sync server. It arrives when you and someone who has it can connect directly (for example, on the same network).","relay"];
-  if(x.skipped)return["off",plural(x.skipped,"skipped: over the size limit"),"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
+  const held=x.skipped&&m?m.files().filter(f=>f.state==="skipped"&&f.skip==="video").length:0;
+  /* the two reasons are counted apart: a held video isn't over any limit */
+  const big=x.skipped-held,hT=held>1?held+" videos wait for Wi-Fi":"1 video waits for Wi-Fi",bT=plural(big,"skipped: over the size limit");
+  if(held&&!big)return["off",hT,"Takes and clips download only on Wi-Fi on this phone. Download gets one now, Download everything now gets them all.","skipped"];
+  if(held)return["off",hT+" · "+bT,"Takes and clips download only on Wi-Fi on this phone; the other "+(big>1?"files are":"file is")+" bigger than this project's download limit. Download gets one now, Download everything now gets them all.","skipped"];
+  if(x.skipped)return["off",bT,"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
   return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
 function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSaved();
   if(!s){w.hidden=true;closeFiles();for(const k of ["state","media","unshared","k"])delete b.dataset[k];peers=[];renderPresence();return}
@@ -2071,7 +2289,7 @@ function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSav
   /* a file this browser couldn't read or hash: it stays here, the others keep the previous one */
   const n=s==="synced"&&csess?cunshared:0;
   if(n){k="off";t=`Synced, ${n} file${n>1?"s":""} not shared`;tip="This browser couldn't prepare "+(n>1?"these files":"this file")+" for the room, so the others still see the previous one. Choosing the file again retries."}
-  else{const mt=mediaChip(x);if(mt){[k,t,tip,media]=mt}}
+  else{const mt=mediaChip(x,m);if(mt){[k,t,tip,media]=mt}}
   w.hidden=false;b.dataset.state=s;b.dataset.k=k;if(media)b.dataset.media=media;else delete b.dataset.media;if(n)b.dataset.unshared="";else delete b.dataset.unshared;
   /* the ring: bytes here of the files on their way; unknown (nothing started yet) spins a quarter */
   let p=null;if(k==="ring"){let got=0,all=0;m.files().forEach(f=>{if(f.state==="downloading"||f.state==="queued"){got+=f.got;all+=f.bytes}});p=all&&got?got/all:null}
@@ -2079,7 +2297,8 @@ function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSav
   b.setAttribute("aria-label","Files: "+t);$("mlabel").textContent=t;
   const h=$("mhead");h.textContent=t;h.dataset.k=k;$("mtip").textContent=tip;
   if(!$("mpanel").hidden)renderFiles();
-  if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}}
+  if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}
+  if($("mProj").open)renderProjSheet()}
 const FST={here:"Here",downloading:"Downloading",queued:"Waiting its turn",unavailable:"Nobody online has it",skipped:"Skipped: over the size limit",failed:"Couldn't be verified",paused:"Paused",relay:"Too large to relay: needs a direct connection"};
 /* a per-file action: ghost in the panel's list, secondary in place (it sits on black media, where a ghost reads as text) */
 const mactHTML=(act,hex,ghost=true)=>`<button type="button" class="btn small${ghost?" ghost":""}" data-mact="${act}" data-hex="${esc(hex)}">${act==="retry"?"Retry":"Download"}</button>`;
@@ -2094,7 +2313,7 @@ function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=
       n.innerHTML=`<span class="fn" title="${esc(f.label)}">${esc(f.label)}</span><span class="fs"></span><span class="fw${f.state==="failed"?" err":f.state==="unavailable"?" nob":""}"></span>${act?mactHTML(act,f.hex):""}${pct!=null?`<span class="mbar"><b></b></span>`:""}`;
       if(li){const foc=li.contains(document.activeElement);li.replaceWith(n);if(foc)n.focus()}li=n}
     li.querySelector(".fs").textContent=f.got&&f.state!=="here"?fmtMB(f.got)+" of "+fmtMB(f.bytes):fmtMB(f.bytes);
-    li.querySelector(".fw").textContent=(FST[f.state]||"")+(pct!=null?" · "+pct+"%":"")+(f.who.length?(f.state==="here"?" · also with ":" · with ")+f.who.join(", "):"");
+    li.querySelector(".fw").textContent=(f.state==="skipped"&&f.skip==="video"?"Waits for Wi-Fi":FST[f.state]||"")+(pct!=null?" · "+pct+"%":"")+(f.who.length?(f.state==="here"?" · also with ":" · with ")+f.who.join(", "):"");
     const bar=li.querySelector(".mbar b");if(bar)bar.style.setProperty("--w",pct+"%");
     li.dataset.state=f.state;return li});
   old.forEach(li=>{if(li.contains(document.activeElement))$("mpanel").focus();li.remove()});
@@ -2104,14 +2323,15 @@ function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=
   if(x&&x.foreign)warn.push(x.foreign>1?"Some collaborators joined with another invite link, so files can't pass between you.":"Someone joined with another invite link, so files can't pass between you.");
   $("fWarn").textContent=warn.join(" ");$("fWarn").hidden=!warn.length;
   $("fPause").textContent=x&&x.paused?"Resume":"Pause";$("fPause").disabled=!m;$("fAll").disabled=!m;
-  const lim=(b&&b.limits)||{},sv=(id,v)=>{if($(id).value!==v)$(id).value=v};sv("fLimF",String(lim.file||500));sv("fLimP",String(lim.project||5000))}
+  const lim=(b&&b.limits)||{},sv=(id,v)=>{if($(id).value!==v)$(id).value=v};sv("fLimF",String(lim.file||500));sv("fLimP",String(lim.project||5000));
+  $("fWifi").checked=wifiOnly;$("fAll").textContent=phone()?"Download everything now":"Download all now"}
 /* the panel: non-modal. Escape or a click outside closes it, focus goes back to the indicator; arrows move through it */
-function placeFiles(){const p=$("mpanel");if(p.hidden)return;p.style.removeProperty("--mp-shift");
+function placeFiles(){const p=$("mpanel");if(p.hidden||phone())return;p.style.removeProperty("--mp-shift");
   const g=parseFloat(getComputedStyle(document.querySelector(".app")).paddingLeft)||0,r=p.getBoundingClientRect();
   if(r.left<g)p.style.setProperty("--mp-shift",Math.round(r.left-g)+"px");
   p.style.setProperty("--mp-max",Math.max(240,Math.floor(innerHeight-$("mstat").getBoundingClientRect().bottom-g))+"px")}
 /* from the keyboard focus lands on the first file; from a click on the panel itself, so no ring shows */
-function openFiles(key){if($("mstatw").hidden)return;const p=$("mpanel");renderFiles();p.hidden=false;$("mstat").setAttribute("aria-expanded","true");placeFiles();((key&&fileNav()[0])||p).focus()}
+function openFiles(key){if($("mstatw").hidden)return;const p=$("mpanel");fCloseBtn();renderFiles();p.hidden=false;$("mstat").setAttribute("aria-expanded","true");placeFiles();((key&&fileNav()[0])||p).focus()}
 function closeFiles(refocus){const p=$("mpanel");if(p.hidden)return;const inside=p.contains(document.activeElement);
   p.hidden=true;$("mstat").setAttribute("aria-expanded","false");if(refocus||inside){if(!$("mstatw").hidden)$("mstat").focus();else if(inside)document.activeElement.blur()}}
 const fileNav=()=>[...$("mpanel").querySelectorAll(".mrow,button:not([disabled])")];
@@ -2126,14 +2346,29 @@ $("mpanel").addEventListener("keydown",e=>{e.stopPropagation();
   const it=fileNav(),i=it.indexOf(document.activeElement);
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();it[i<0?0:(i+(e.key==="ArrowDown"?1:-1)+it.length)%it.length]?.focus()}
   else if(e.key==="Home"||e.key==="End"){e.preventDefault();it[e.key==="Home"?0:it.length-1]?.focus()}});
-document.addEventListener("pointerdown",e=>{if(!e.target.closest(".mstat"))closeFiles()});
+/* a tap outside closes it, but not one in a dialog over it (the size question it opened) */
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".mstat,dialog[open]"))closeFiles()});
 window.addEventListener("resize",placeFiles);
-$("fAll").onclick=()=>{const m=cmedia();if(m){m.downloadAll();renderFiles()}};
+$("fAll").onclick=async()=>{const m=cmedia();if(!m)return;
+  /* the phone says how much first: it may be on mobile data. Then exactly those files, once: what a collaborator adds
+     later follows "Wi-Fi only" and the limits again */
+  if(phone()){const l=m.files().filter(f=>f.state!=="here"),n=l.reduce((a,f)=>a+Math.max(0,f.bytes-f.got),0);
+    if(l.length&&!(await sizeAsk("Download everything now?",`${plural(l.length)}, ${fmtMB(n)} to download. On mobile data this counts against your plan.`,"Download all")))return;
+    m.downloadAll(l.map(f=>f.hex));renderFiles();return}
+  m.downloadAll();renderFiles()};
+$("fWifi").onchange=e=>{wifiOnly=e.target.checked;putSetting("wifiOnly",wifiOnly);const m=cmedia();if(m)m.refresh();renderFiles()};
+/* the files sheet's close button exists only in the phone layout (the desktop panel closes with Escape or outside) */
+function fCloseBtn(){const h=document.querySelector(".mp-head"),b=$("fClose");
+  if(phone()&&!b){h.insertAdjacentHTML("beforeend",`<button type="button" class="btn ghost icon" id="fClose" aria-label="Close files">${ico("x")}</button>`);$("fClose").onclick=()=>closeFiles(true)}
+  else if(!phone()&&b)b.remove()}
 $("fPause").onclick=()=>{const m=cmedia();if(m){m.pause(!m.summary().paused);renderFiles()}};
 $("fLimF").onchange=$("fLimP").onchange=()=>{const b=cur&&cset.rooms[cur.id];if(!b)return;b.limits={file:+$("fLimF").value,project:+$("fLimP").value};saveCset();const m=cmedia();if(m)m.refresh();renderFiles()};
 /* Download (past the limit) and Retry, in the panel and in place. The file may have landed, failed or been deleted
    since it was drawn: the client ignores a hash it no longer wants */
-document.addEventListener("click",e=>{const a=e.target.closest("[data-mact]");if(!a)return;e.stopPropagation();const m=cmedia();if(!m)return;
+document.addEventListener("click",async e=>{const a=e.target.closest("[data-mact]");if(!a)return;e.stopPropagation();const m=cmedia();if(!m)return;
+  /* on the phone a download says its size first */
+  if(a.dataset.mact==="download"&&phone()){const f=m.files().find(x=>x.hex===a.dataset.hex);
+    if(f&&!(await sizeAsk("Download "+f.label.replace(/^Shot (\d+) · /,"shot $1's ")+"?",fmtMB(f.bytes)+". On mobile data this counts against your plan.")))return}
   if(a.dataset.mact==="retry")m.retry(a.dataset.hex);else m.download(a.dataset.hex);
   /* the button goes away with the state it answered: focus stays on its placeholder */
   const ph=a.closest(".mph");if(ph&&a===document.activeElement){ph.tabIndex=-1;ph.focus()}renderMiss();if(!$("mpanel").hidden)renderFiles()},true);
@@ -2147,7 +2382,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
     /* a file started before Pause still counts as downloading in the client: here it says Paused */
     const st=!f||f.state==="here"?"":paused&&/downloading|queued/.test(f.state)?"paused":f.state;
     const p=st&&m?m.progress(f.hex):null,pct=p!=null&&/downloading|queued|paused/.test(st)?Math.floor(p*100):null;
-    const t=!st?base:pct!=null?(st==="paused"?"Paused · ":"Arriving · ")+pct+"%":st==="paused"?"Paused":MST[st]||base;
+    const t=!st?base:pct!=null?(st==="paused"?"Paused · ":"Arriving · ")+pct+"%":st==="paused"?"Paused":st==="skipped"&&f.skip==="video"?"Waits for Wi-Fi · "+fmtMB(f.bytes):MST[st]||base;
     const act=st&&!noact?(st==="failed"?"retry":st==="skipped"?"download":""):"";
     const sig=[st,pct!=null,act,f?f.hex:""].join("|");
     if(el._sig!==sig){const foc=el.contains(document.activeElement);el._sig=sig;
@@ -2159,7 +2394,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -2176,6 +2411,7 @@ function renderPresence(){const el=$("presence"),b=cur&&csess&&csessPid===cur.id
   el.replaceChildren(...kids);el.hidden=!kids.length;el.setAttribute("aria-label",kids.length?"In this room: "+[me+" (you)",...l.map(p=>p.name)].join(", "):"");
   if(kids.length){const f=kids.find(c=>c.dataset.key===foc)||kids[0];f.tabIndex=0;if(foc!=null)f.focus()}
   else if(foc!=null)(!$("joinb").hidden?$("joinb"):$("proj")).focus();
+  if($("mProj").open)renderProjSheet();
 }
 narrowBar.addEventListener("change",renderPresence);
 /* one tab stop for the row; arrows move along it */
@@ -2266,8 +2502,247 @@ async function joinFlow(inv){
   selectProject(p);toast("Joined “"+p.title+"”");
 }
 
+/* ================= PHONE: below 820px (docs/mobile/PLAN.md) =================
+   Same DOM and handlers. The timeline is a native horizontal scroller under a fixed playhead: scrolling is seeking.
+   The canvas is the viewport's size and redrawn on scroll. Cuts have 44px grips (drag to trim, tap for ±0.1 s);
+   holding a shot lifts it (drop as on desktop: middle swaps, an edge slides in). The inspector is a bottom sheet, the
+   bar's project name opens the Project sheet, and the selected shot gets a peek row and a toolbar at thumb height. */
+const phoneMQ=matchMedia("not all and (min-width:820px)"),phone=()=>phoneMQ.matches;
+const standalone=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+let wifiOnly=false;
+const onWifi=()=>{const c=navigator.connection;return!!c&&/^(wifi|ethernet)$/.test(c.type||"")};
+/* the switch is in the phone layout only, so wider than that nothing is held */
+const holdVideo=()=>phone()&&wifiOnly&&!onWifi();
+try{navigator.connection&&navigator.connection.addEventListener("change",()=>{const m=cmedia();if(m)m.refresh()})}catch(e){}
+/* iOS clears a site's storage after a week without a visit, unless the app is on the home screen */
+function keepStorage(){try{const s=navigator.storage;if(s&&s.persist)s.persisted().then(p=>p||s.persist()).catch(()=>{})}catch(e){}}
+function sizeAsk(title,text,go){const d=$("dlgSize");$("szTitle").textContent=title;$("szText").textContent=text;$("szGo").textContent=go||"Download";
+  d.returnValue="";d.showModal();return new Promise(r=>d.addEventListener("close",()=>r(d.returnValue==="ok"),{once:true}))}
+
+/* ---------- timeline ---------- */
+let mProg=null,mTouch=false,mScrollAt=0,mFit=false,mGrip=null,mCutId="",mMode="",mLift=null,mPress=null;
+/* the picked cut is kept by the id of the shot it starts (a collaborator's insert before it doesn't move the pick), resolved here */
+function mCutI(){const i=mCutId?S().findIndex(x=>x.id===mCutId):-1;return i>0?i:-1}
+const mBusy=()=>!!((mGrip&&mGrip.moved)||mLift);
+const MT={};["--accent","--screen","--ink","--on-media","--surface-3"].forEach(n=>MT[n]=tok(n));
+const mThumbs=new Map();
+function mThumb(id){const u=mediaURL(id);if(!u)return null;let im=mThumbs.get(u);
+  if(!im){im=new Image();im.onload=()=>mDraw();im.src=u;mThumbs.set(u,im)}return im.complete&&im.naturalWidth?im:null}
+/* zoom: 12 px/s to start (whole shots, cuts far enough apart to grab), Fit shows the whole song */
+function renderTimelineM(){
+  const cw=scroller.clientWidth;if(!cw)return;const d=dur(),fit=cw/d;
+  P=pps!=null?pps:mFit?fit:Math.max(fit,12);W=Math.round(d*P);$("mSpace").style.width=W+"px";
+  const H=scroller.clientHeight,dpr=window.devicePixelRatio||1;
+  if(cv.width!==Math.round(cw*dpr)||cv.height!==Math.round(H*dpr)){cv.style.width=cw+"px";cv.style.height=H+"px";cv.width=Math.round(cw*dpr);cv.height=Math.round(H*dpr)}
+  mSync();mDraw();
+}
+/* the scroll position is the time, except while a finger (or its fling) moves it */
+function mSync(){if(!phone()||mTouch||mLift||performance.now()-mScrollAt<200)return;const x=Math.round(now()*P);
+  if(Math.abs(scroller.scrollLeft-x)>1){mProg=x;scroller.scrollLeft=x}}
+const mBand=H=>{const top=24,h=Math.max(36,Math.min(56,Math.round((H-24)*.32)));return{top,h,wave:top+h+8}};
+function mDraw(){
+  if(!phone()||!cv.width)return;const cw=cv.clientWidth,H=cv.clientHeight,dpr=window.devicePixelRatio||1,g=cv.getContext("2d");
+  g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,cw,H);
+  const off=scroller.scrollLeft-cw/2,X=t=>t*P-off,d=dur(),RU=20,b=mBand(H),t0=Math.max(0,off/P),t1=Math.min(d,(off+cw)/P);
+  g.fillStyle=T["--tl-ruler"];g.fillRect(Math.max(0,X(0)),0,Math.min(cw,X(d))-Math.max(0,X(0)),RU);
+  const st=[1,2,5,10,15,30,60,120].find(s=>s*P>=64)||120;
+  g.font="500 11px 'JetBrains Mono', monospace";g.textBaseline="middle";g.textAlign="left";g.lineWidth=1;
+  for(let t=Math.floor(t0/st)*st;t<=t1+1e-6;t+=st){const x=Math.round(X(t))+.5;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
+  const grips=[];
+  if(cur){const s=S(),mid=b.wave+(H-8-b.wave)/2,wh=(H-8-b.wave)/2;
+    s.forEach((x,i)=>{const a=X(x.start),e=X(secEnd(i));if(e<0||a>cw)return;const sel=x.id===selId,lift=mLift&&mLift.id===x.id;
+      g.fillStyle=sel?T["--tl-region-sel"]:(i%2?T["--tl-region-b"]:T["--tl-region-a"]);g.fillRect(a,RU,e-a,H-RU);
+      g.save();g.globalAlpha=lift?.3:1;g.beginPath();g.rect(a+2,b.top,Math.max(0,e-a-4),b.h);g.clip();g.fillStyle=MT["--screen"];g.fillRect(a+2,b.top,e-a-4,b.h);
+      const im=mThumb(x.img&&x.kind!=="video"?x.img:x.key);
+      if(im){const tw=b.h*16/9;for(let k=a+2;k<e-2;k+=tw)g.drawImage(im,k,b.top,tw,b.h)}
+      const lb=Math.min(20,b.h);g.fillStyle=MT["--on-media"];g.fillRect(a+2,b.top+b.h-lb,e-a-4,lb);
+      g.fillStyle=sel?T["--tl-text-sel"]:T["--tl-text"];g.font="600 12px 'Instrument Sans', sans-serif";
+      const lbl=tlLabel(g,pad(i+1),x.title||"Untitled",e-a-16);if(lbl)g.fillText(lbl,Math.max(a+8,Math.min(8,e-8-g.measureText(lbl).width)),b.top+b.h-lb/2);
+      g.restore();
+      if(sel){g.strokeStyle=MT["--accent"];g.lineWidth=2;g.strokeRect(a+3,b.top+1,Math.max(0,e-a-6),b.h-2)}});
+    const pk=cur.song&&cur.song.peaks,sd=(cur.song&&cur.song.duration)||d;
+    if(pk&&pk.length){g.fillStyle=T["--tl-wave"];for(let px=Math.max(0,Math.ceil(X(0)/2)*2);px<Math.min(cw,X(sd));px+=2){const t=(px+off)/P,idx=Math.min(pk.length-1,Math.floor(t/sd*pk.length));const am=Math.max(.75,pk[idx]*wh);g.fillRect(px,mid-am,1.4,am*2)}}
+    else{g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(Math.max(0,X(0)),mid+.5);g.lineTo(Math.min(cw,X(d)),mid+.5);g.stroke();
+      g.fillStyle=T["--tl-label"];g.font="500 12px 'Instrument Sans', sans-serif";g.textAlign="center";g.fillText(hasAudio?"Analyzing…":"Load the song to see the waveform",cw/2,mid-12);g.textAlign="left"}
+    /* cuts: neutral lines; the one being moved in ink. Their grips are buttons (#mGrips) */
+    s.forEach((x,i)=>{if(!i)return;const px=Math.round(X(x.start))+.5;if(px<-24||px>cw+24)return;const on=x.id===mCutId;
+      g.strokeStyle=on?MT["--ink"]:T["--tl-cut"];g.lineWidth=on?2:1.5;g.beginPath();g.moveTo(px,RU);g.lineTo(px,H);g.stroke();
+      g.fillStyle=g.strokeStyle;g.beginPath();g.moveTo(px-6,RU);g.lineTo(px+6,RU);g.lineTo(px,RU+8);g.closePath();g.fill();
+      grips.push({i,x:px,t:x.start,top:b.top,h:b.h})});
+    g.lineWidth=1}
+  mPlaceGrips(grips);
+}
+function mPlaceGrips(list){const box=$("mGrips"),ci=mCutI();
+  while(box.children.length<list.length){const b=document.createElement("button");b.type="button";b.className="grip";box.appendChild(b)}
+  [...box.children].forEach((b,k)=>{const c=list[k];if(!c){b.hidden=true;return}b.hidden=false;b.dataset.i=c.i;
+    b.style.left=c.x+"px";b.style.top=c.top+"px";b.style.height=c.h+"px";
+    b.setAttribute("aria-label",`Cut between shots ${pad(c.i)} and ${pad(c.i+1)}, at ${fmt(c.t)}`);b.setAttribute("aria-pressed",String(ci===c.i))})}
+/* scrolling: seek, and the shot under the playhead becomes the selected one (as when playing) */
+scroller.addEventListener("scroll",()=>{if(!phone())return;const x=scroller.scrollLeft;
+  if(mProg!=null&&Math.abs(x-mProg)<2){mProg=null;mDraw();return}mProg=null;
+  if(!cur){mDraw();return}
+  mScrollAt=performance.now();const t=Math.max(0,Math.min(dur()-.01,x/P));if(hasAudio)audio.currentTime=t;else vt=t;$("tc").textContent=fmt(t);
+  if(!editing()&&!mLift&&!mGrip&&!loop){const i=secAt(t);if(S()[i]&&S()[i].id!==selId){selId=S()[i].id;renderStrip();renderEditor()}}
+  renderMonitor();mDraw()},{passive:true});
+scroller.addEventListener("touchstart",()=>{mTouch=true},{passive:true});
+["touchend","touchcancel"].forEach(n=>scroller.addEventListener(n,()=>{mTouch=false;mScrollAt=performance.now()},{passive:true}));
+/* a lifted shot moves with the finger, not the timeline */
+scroller.addEventListener("touchmove",e=>{if(mLift&&e.cancelable)e.preventDefault()},{passive:false});
+const mTimeAt=clientX=>(scroller.scrollLeft-cv.clientWidth/2+(clientX-cv.getBoundingClientRect().left))/P;
+const mInBand=clientY=>{const y=clientY-cv.getBoundingClientRect().top,b=mBand(cv.clientHeight);return y>=b.top&&y<=b.top+b.h};
+cv.addEventListener("pointerdown",e=>{if(!phone()||!cur||e.button>0)return;
+  const t=mTimeAt(e.clientX),band=mInBand(e.clientY);mPress={x:e.clientX,y:e.clientY,pid:e.pointerId,at:performance.now(),t,band,timer:0};
+  if(band&&t>=0&&t<=dur())mPress.timer=setTimeout(()=>mLiftStart(e),450)});
+cv.addEventListener("pointermove",e=>{if(!phone())return;
+  if(mLift){mLiftMove(e);return}
+  if(mPress&&Math.hypot(e.clientX-mPress.x,e.clientY-mPress.y)>8){clearTimeout(mPress.timer);mPress=null}});
+cv.addEventListener("pointerup",e=>{if(!phone())return;
+  if(mLift){mLiftEnd(true);return}
+  const p=mPress;mPress=null;if(!p)return;clearTimeout(p.timer);if(performance.now()-p.at>450)return;
+  /* a tap: on a shot, select it and go to its start; on the waveform, go there */
+  if(mCutId||mMode){mCutId="";mMode="";renderMTool()}
+  const t=Math.max(0,Math.min(dur()-.01,p.t));mScrollAt=0;if(p.band){const s=S()[secAt(t)];if(s)select(s.id,true)}else seek(t)});
+/* the preview: a tap plays or pauses, except on a control in it (the slate's Download / Retry, a link);
+   Enter or Space on a focused button also arrives here as a click */
+$("monitor").addEventListener("click",e=>{if(phone()&&!e.target.closest("button,a,input,select,textarea,label,[data-mact]"))toggle()});
+cv.addEventListener("pointercancel",()=>{if(mPress){clearTimeout(mPress.timer);mPress=null}if(mLift)mLiftEnd(false)});
+function mLiftStart(e){const p=mPress;if(!p||!cur)return;const s=S()[secAt(p.t)];if(!s)return;
+  mPress=null;try{cv.setPointerCapture(p.pid)}catch(_){}
+  mLift={id:s.id,zone:null,ghost:document.createElement("div"),chip:document.createElement("div")};
+  mLift.ghost.className="m-ghost";mLift.ghost.textContent=pad(S().indexOf(s)+1)+"  "+(s.title||"Untitled");mLift.chip.className="dropchip";mLift.chip.hidden=true;
+  document.body.append(mLift.ghost,mLift.chip);mLiftMove(e);mDraw()}
+function mLiftMove(e){const L=mLift;L.ghost.style.transform=`translate(${e.clientX-24}px,${e.clientY-48}px)`;
+  const r=scroller.getBoundingClientRect();if(e.clientX>r.right-40)scroller.scrollLeft+=10;else if(e.clientX<r.left+40)scroller.scrollLeft-=10;
+  const s=S(),from=s.findIndex(x=>x.id===L.id),t=mTimeAt(e.clientX);L.zone=null;
+  if(t>=0&&t<=dur()&&from>=0){const to=secAt(t),a=s[to].start,rx=(t-a)/Math.max(.01,secEnd(to)-a);
+    if(to!==from){if(rx>=.28&&rx<=.72){L.zone={kind:"swap",to:s[to].id};L.chip.innerHTML=`swap ${pad(from+1)}${ico("swap")}${pad(to+1)}`}
+      else{const li=rx>.72?to:to-1,ri=li+1,pl=planInsert(L.id,li>=0?s[li].id:null,ri<s.length?s[ri].id:null);L.zone={kind:"insert",plan:pl};
+        L.chip.textContent=pl.same?"same spot":pl.tight?"not enough room there":`slide in ${li>=0?"after "+pad(li+1):"at the start"}${li>=0&&ri<s.length?" · before "+pad(ri+1):""} · new cut ${fmt(pl.first?pl.firstTo:pl.start)}`}}}
+  L.chip.hidden=!L.zone;L.chip.style.transform=`translate(${Math.min(e.clientX-24,innerWidth-L.chip.offsetWidth-8)}px,${e.clientY-84}px)`}
+function mLiftEnd(apply){const L=mLift;mLift=null;L.ghost.remove();L.chip.remove();if(apply&&L.zone)moveShot(L.id,L.zone);else mDraw()}
+/* cut grips: drag to move the cut, tap to pick it (then ±0.1 s from the toolbar or the arrow keys) */
+const mGrips=$("mGrips");
+mGrips.addEventListener("pointerdown",e=>{const b=e.target.closest(".grip");if(!b||!cur)return;const i=+b.dataset.i,s=S();if(!s[i])return;
+  try{b.setPointerCapture(e.pointerId)}catch(_){}mGrip={id:s[i].id,i,x0:e.clientX,s0:s[i].start,moved:false}});
+mGrips.addEventListener("pointermove",e=>{if(!mGrip)return;const dx=e.clientX-mGrip.x0;if(!mGrip.moved&&Math.abs(dx)<6)return;mGrip.moved=true;
+  const s=S(),i=s.findIndex(x=>x.id===mGrip.id);if(i<1)return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
+  s[i].start=r2(Math.min(hi,Math.max(lo,mGrip.s0+dx/P)));mCutId=mGrip.id;mDraw();renderEdHead();renderMTool();renderMonitor()});
+const mGripEnd=()=>{const g=mGrip;mGrip=null;if(!g)return;
+  if(g.moved){scheduleSave();renderStrip();renderPeek();renderMonitor(true)}else{mCutId=mCutId===g.id?"":g.id;mMode=""}renderMTool();mDraw()};
+mGrips.addEventListener("pointerup",mGripEnd);mGrips.addEventListener("pointercancel",mGripEnd);
+mGrips.addEventListener("keydown",e=>{const b=e.target.closest(".grip");if(!b||(e.key!=="ArrowLeft"&&e.key!=="ArrowRight"))return;e.preventDefault();e.stopPropagation();const c=S()[+b.dataset.i];if(!c)return;mCutId=c.id;mNudge(e.key==="ArrowLeft"?-.1:.1)});
+function mNudge(dt){const s=S(),i=mCutI();if(i<1||!s[i])return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
+  s[i].start=r2(Math.min(hi,Math.max(lo,s[i].start+dt)));scheduleSave();renderStrip();renderEdHead();renderPeek();renderMonitor(true);renderMTool();mDraw()}
+/* Fit means the whole song; the zoom buttons sit on the timeline's corner */
+{const zf=$("zfit").onclick,zo=$("zout").onclick,zi=$("zin").onclick;
+  $("zfit").onclick=()=>{mFit=true;zf()};$("zout").onclick=()=>{mFit=true;zo()};$("zin").onclick=()=>{mFit=false;zi()}}
+
+/* ---------- peek row and toolbar ---------- */
+function renderPeek(){if(!phone())return;const el=$("mPeek"),s=selSec();
+  if(!cur)el.innerHTML=`<div class="m-empty"><span>Load a song, then tap Cut here at every change in the music. Or <button type="button" class="linkbtn" data-example>open the example project</button>.</span><button type="button" class="btn primary" data-msong>Load song</button></div>`;
+  else if(!hasAudio&&!(cur.song&&cur.song.name))el.innerHTML=`<div class="m-empty"><span>Load the song to hear it and cut along.</span><button type="button" class="btn primary" data-msong>Load song</button></div>`;
+  else if(s){const i=S().indexOf(s),d=secEnd(i)-s.start,h=`<span class="ed-n">${pad(i+1)}</span><span class="pt">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="tc">${d.toFixed(1)} s</span>${ico("chev")}<span class="pn">${esc(s.notes||s.shot||"Notes, shot type and prompts")}</span>`;
+    const b=el.querySelector(".m-peekb");if(b){if(b._h!==h){b.innerHTML=h;b._h=h}}else{el.innerHTML=`<button type="button" class="m-peekb" aria-label="Shot details">${h}</button>`;el.firstChild._h=h}}
+  else el.innerHTML="";
+}
+$("mPeek").addEventListener("click",e=>{if(e.target.closest("[data-msong]"))$("song").click();else if(e.target.closest(".m-peekb"))openDetails(e.target.closest(".m-peekb"))});
+const MTOOL=[["mtCut","shot","split","Cut here"],["mtDet","shot","lines","Details"],["mtImg","shot","image","Photo"],["mtMove","shot","swap","Move"],["mtDel","shot","trash","Delete"],
+  ["mtDone","cut move","check","Done"],["mtRead","cut"],["mtMinus","cut","minus","0.1 s","Move the cut 0.1 s earlier"],["mtPlus","cut","plus","0.1 s","Move the cut 0.1 s later"],
+  ["mtPrev","move","arrow-right","Earlier","Swap with the shot before"],["mtNext","move","arrow-right","Later","Swap with the shot after"],["mtHint","move"]];
+$("mTool").innerHTML=MTOOL.map(([id,m,ic,l,al])=>ic?`<button type="button" id="${id}" data-m="${m}"${id==="mtPrev"?' class="flip"':""}${al?` aria-label="${al}"`:""}>${ico(ic)}<span>${l}</span></button>`:`<div class="m-read" id="${id}" data-m="${m}" aria-live="polite"></div>`).join("");
+$("mtHint").innerHTML="<span>Or hold a shot on the timeline</span><span>and drag it</span>";
+function renderMTool(){if(!phone())return;const s=selSec(),i=s?S().indexOf(s):-1;
+  const mCut=mCutI();if(mCut<0)mCutId="";const mode=mCut>0?"cut":mMode==="move"&&s?"move":"shot";
+  $("mTool").querySelectorAll("[data-m]").forEach(b=>b.hidden=!b.dataset.m.split(" ").includes(mode));
+  ["mtCut","mtDet","mtImg","mtMove","mtDel"].forEach(id=>$(id).disabled=!cur||(!s&&id!=="mtCut"));$("mtMove").disabled=!s||S().length<2;
+  $("mtPrev").disabled=i<1;$("mtNext").disabled=i<0||i>=S().length-1;
+  if(mode==="cut"){const c=S()[mCut],a=S()[mCut-1];$("mtRead").innerHTML=`<b>${fmt(c.start)}</b><span>${pad(mCut)} is ${(c.start-a.start).toFixed(1)} s · ${pad(mCut+1)} is ${(secEnd(mCut)-c.start).toFixed(1)} s</span>`}}
+$("mtCut").onclick=addMarker;
+$("mtDet").onclick=()=>openDetails($("mtDet"));
+$("mtImg").onclick=()=>$("f-img").click();
+$("mtMove").onclick=()=>{mMode="move";mCutId="";renderMTool();mDraw()};
+$("mtDone").onclick=()=>{mMode="";mCutId="";renderMTool();mDraw()};
+$("mtMinus").onclick=()=>mNudge(-.1);$("mtPlus").onclick=()=>mNudge(.1);
+[["mtPrev",-1],["mtNext",1]].forEach(([id,k])=>$(id).onclick=()=>{const s=S(),i=s.findIndex(x=>x.id===selId),o=s[i+k];if(o)moveShot(selId,{kind:"swap",to:o.id})});
+/* disarmed whenever the selection changes (renderEditor: a scroll, playback crossing a cut, a tap), a sheet opens or
+   closes, the tab or the project changes, so a second tap never deletes a shot that wasn't armed */
+const resetMtDel=twoTap($("mtDel"),"Delete","Tap again",deleteShot);
+/* shot type: the common ones as chips, the field stays for anything else */
+const MSHOTS=["Wide shot","Medium shot","Close-up","Extreme close-up","Insert / detail","POV"];
+$("mShotChips").innerHTML=MSHOTS.map(v=>`<button type="button" class="chip" aria-pressed="false" data-shot="${v}">${v}</button>`).join("");
+function mShotChips(){const v=$("f-shot").value;$("mShotChips").querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed",String(c.dataset.shot===v)))}
+$("mShotChips").onclick=e=>{const c=e.target.closest("[data-shot]");if(!c)return;const f=$("f-shot");f.value=f.value===c.dataset.shot?"":c.dataset.shot;f.dispatchEvent(new Event("input"));mShotChips()};
+$("f-shot").addEventListener("input",mShotChips);
+
+/* ---------- sheets ---------- */
+let mEdFrom=null;
+const mSheetTop=()=>document.documentElement.style.setProperty("--sheet-top",Math.round(document.querySelector(".transport").getBoundingClientRect().bottom)+"px");
+function openDetails(from){if(!phone()||!selSec())return;resetMtDel();mEdFrom=from||null;mSheetTop();document.body.classList.add("m-ed");$("editor").scrollTop=0;$("mEdClose").focus({preventScroll:true})}
+function closeDetails(){if(!document.body.classList.contains("m-ed"))return;resetMtDel();const ed=$("editor");if(ed.contains(document.activeElement))document.activeElement.blur();
+  document.body.classList.remove("m-ed","m-full");ed.style.transform="";const f=mEdFrom;mEdFrom=null;if(f&&f.isConnected&&f.getClientRects().length)f.focus({preventScroll:true})}
+$("mEdClose").onclick=closeDetails;
+[["mEdPrev",-1],["mEdNext",1]].forEach(([id,k])=>$(id).onclick=()=>{const s=S(),i=s.findIndex(x=>x.id===selId),o=s[i+k];if(o)select(o.id,true)});
+/* typing: the sheet goes full height, the field stays above the keyboard */
+$("editor").addEventListener("focusin",e=>{if(!phone()||!/INPUT|TEXTAREA/.test(e.target.tagName))return;document.body.classList.add("m-full");setTimeout(()=>e.target.scrollIntoView({block:"nearest"}),320)});
+$("editor").addEventListener("focusout",()=>setTimeout(()=>{if(!$("editor").contains(document.activeElement)||!/INPUT|TEXTAREA/.test(document.activeElement.tagName))document.body.classList.remove("m-full")},60));
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&document.body.classList.contains("m-ed")&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))closeDetails()});
+/* drag the grabber row down to close (the close button does the same) */
+function sheetDrag(handle,sheet,close){let y0=null,dy=0;
+  handle.addEventListener("pointerdown",e=>{if(e.target.closest("button"))return;y0=e.clientY;dy=0;try{handle.setPointerCapture(e.pointerId)}catch(_){}});
+  handle.addEventListener("pointermove",e=>{if(y0==null)return;dy=Math.max(0,e.clientY-y0);sheet.style.transform=dy?`translateY(${dy}px)`:""});
+  const end=()=>{if(y0==null)return;y0=null;sheet.style.transform="";if(dy>80)close()};handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end)}
+sheetDrag($("editor").querySelector(".sh-top"),$("editor"),closeDetails);
+const mProj=$("mProj");sheetDrag(mProj.querySelector(".sh-top"),mProj,()=>mProj.close());
+mProj.addEventListener("click",e=>{if(e.target===mProj||e.target.closest("[data-close]"))mProj.close()});
+mProj.addEventListener("close",()=>resetMtDel());
+$("dlgSize").addEventListener("click",e=>{if(e.target===$("dlgSize"))$("dlgSize").close()});
+/* the app bar's project name opens the Project sheet instead of the menu */
+$("proj").parentNode.addEventListener("click",e=>{if(phone()&&e.target.closest("#proj")){e.stopPropagation();openProjSheet()}},true);
+function openProjSheet(){closeDetails();resetMtDel();renderProjSheet();mProj.showModal();mProj.querySelector("[data-close]").focus()}
+function renderProjSheet(){
+  const list=projects.map(p=>cur&&p.id===cur.id?cur:p);if(cur&&!list.includes(cur))list.unshift(cur);
+  $("mProjList").innerHTML=list.map(p=>`<button type="button" class="m-pi" data-pid="${esc(p.id)}" aria-current="${p===cur}">${ico("check")}<span>${esc(p.title||"Untitled project")}</span>${SYNC_URL&&cset.rooms[p.id]?'<span class="muted">in a room</span>':""}</button>`).join("")
+    +(list.some(p=>p.id==="p-example")?"":`<button type="button" class="m-pi" data-example>${ico("plus")}<span>Example project</span></button>`);
+  const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
+  ["mRename","mExport","mCopy","mDelp"].forEach(id=>$(id).disabled=!cur);$("mSong").textContent=has?"Replace song":"Load song";$("mDelsong").hidden=!has;
+  const inRoom=!!(SYNC_URL&&cur&&cset.rooms[cur.id]);$("mRoom").hidden=!SYNC_URL;
+  ["mPeople","mState","mFiles","mRoomN"].forEach(id=>$(id).hidden=!inRoom);$("mJoin").hidden=inRoom;$("mLeave").hidden=!inRoom;
+  if(inRoom){const b=cset.rooms[cur.id],me=b.name||cset.name||"You",l=csess&&csessPid===cur.id?peers:[];
+    $("mRoomN").textContent=(l.length+1)+(l.length?" people here":" person here");
+    const on=p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return i>=0?`on <span class="tc">${pad(i+1)}</span>`:""};
+    $("mPeople").innerHTML=[`<li><span class="pchip self" aria-hidden="true">${esc(initialsOf(me))}</span><span class="nm">${esc(me)} <i>(you)</i></span>${on({sel:selId})}</li>`,
+      ...l.map(p=>`<li><span class="pchip" aria-hidden="true">${esc(p.initials)}</span><span class="nm">${esc(p.name)}</span>${on(p)}</li>`)].join("");
+    $("mState").dataset.k=$("mhead").dataset.k||"";$("mStateT").textContent=$("mhead").textContent;$("mStateTip").textContent=$("mtip").textContent;
+    $("mFilesV").textContent=wifiOnly?"Takes and clips on Wi-Fi only":""}
+  $("mInstall").hidden=!(phone()&&!standalone()&&/iPhone|iPad|iPod/.test(navigator.userAgent));
+}
+$("mProjList").onclick=e=>{const b=e.target.closest("[data-pid]");if(!b)return;mProj.close();const p=projects.find(x=>x.id===b.dataset.pid);if(p&&(!cur||p.id!==cur.id)){if(dirty)flush();selectProject(p)}};
+mProj.addEventListener("click",e=>{if(e.target.closest("[data-example]"))mProj.close()});
+$("mNew").onclick=()=>{mProj.close();newProject($("proj"))};
+$("mRename").onclick=()=>{mProj.close();startRename($("proj"))};
+$("mImport").onclick=()=>{mProj.close();$("importf").click()};
+$("mExport").onclick=()=>{mProj.close();$("exportb").click()};
+$("mSong").onclick=()=>{mProj.close();$("song").click()};
+twoTap($("mDelsong"),"Remove song","Tap again to remove",()=>{removeSong();renderProjSheet()});
+$("mJoin").onclick=()=>{mProj.close();joinFlow(null)};
+twoTap($("mLeave"),"Leave collaboration","Tap again to leave",()=>{leaveRoom();renderProjSheet()});
+$("mFiles").onclick=()=>{mProj.close();openFiles(false)};
+$("mSettings").onclick=()=>{mProj.close();openSettings()};
+$("mCopy").onclick=()=>{if(cur)$("copylist").onclick()};
+twoTap($("mDelp"),"Delete project","Tap again to delete",async()=>{mProj.close();await deleteProject()});
+$("mTabs").addEventListener("click",e=>{const b=e.target.closest("[data-side]");if(b)setSide(b.dataset.side)});
+/* the keyboard: sheets and dialogs end where it starts (iOS doesn't resize the layout for it) */
+if(window.visualViewport){const vv=window.visualViewport,kb=()=>document.documentElement.style.setProperty("--kb",Math.max(0,Math.round(innerHeight-vv.height-vv.offsetTop))+"px");
+  vv.addEventListener("resize",kb);vv.addEventListener("scroll",kb)}
+/* crossing the breakpoint (a rotation, a resized window): sheets close, everything redraws for the other layout */
+phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close();if(mLift)mLiftEnd(false);mCutId="";mMode="";closeFiles();fCloseBtn();
+  ph.style.transform="";lastKey="";renderAll();if(side==="b")renderB();
+  /* videos wait for Wi-Fi in the phone layout only: re-evaluate them, then the chip */
+  const m=cmedia();if(m)m.refresh();if(csess)renderCollab(csess.status())});
+window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"))mSheetTop()});
+
 /* ---------- toast / boot ---------- */
-let tt=null;function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,1800)}
+let tt=null;function toast(t,ms=1800){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,ms)}
 let rz=0;try{new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(renderTimeline)}).observe(scroller)}catch(e){window.addEventListener("resize",renderTimeline)}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>renderTimeline());
 renderAll();
@@ -2278,6 +2753,9 @@ renderAll();
   try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im)}catch(e){}
   try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms};
     deviceId=(await getSetting("deviceId"))||"";if(!deviceId){deviceId=uid("d");await putSetting("deviceId",deviceId)}}catch(e){}
+  /* takes and clips only on Wi-Fi: on by default on a phone, set in its Files sheet */
+  try{const w=await getSetting("wifiOnly");wifiOnly=w===undefined?phone()&&matchMedia("(pointer:coarse)").matches:!!w}catch(e){}
+  if(phone()||standalone())keepStorage();
   await detectProxy();
   side=ls("cueboard-side")==="b"?"b":"a";setSide(side);
   store.subscribe(onProjects);

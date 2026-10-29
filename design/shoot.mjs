@@ -5,7 +5,8 @@
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join, extname, normalize } from 'node:path';
+import { join, extname, normalize, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 const { chromium } = createRequire('/home/ramiro/testkit/')('playwright-core');
 
 const [root, out, flag] = process.argv.slice(2);
@@ -277,7 +278,8 @@ try {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await ctx.route('**/*', r => r.request().url().startsWith('file:') ? r.continue() : (log.external.push(r.request().url()), r.abort()));
     const page = await ctx.newPage();
-    await page.goto('file://' + join(process.cwd(), root, 'index.html')); await page.waitForSelector('.card', { timeout: 15000 });
+    await page.goto(pathToFileURL(resolve(root, 'index.html')).href);   // resolve, not join(cwd, root): root may be absolute
+    await page.waitForSelector('.card', { timeout: 15000 });
     const fonts = await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map(f => f.family + ':' + f.status); });
     const want = await page.evaluate(() => document.querySelector('link[href*="fonts.googleapis"]') ? 'cdn' : 'local');
     check('file:// load: fonts resolve', want === 'cdn' || fonts.some(f => /Instrument Sans.*loaded/.test(f)) && fonts.some(f => /JetBrains Mono.*loaded/.test(f)), [...new Set(fonts)].join(' '));
@@ -293,3 +295,5 @@ check('no external requests besides OpenRouter (blocked)', ext.length === 0, ext
 console.log('INFO OpenRouter calls blocked:', [...new Set(log.external)].filter(u => u.startsWith('https://openrouter.ai/')).join(' ') || 'none');
 writeFileSync(`${out}/results.json`, JSON.stringify(log, null, 2));
 await browser.close(); srv.close();
+// a FAIL fails the run (a broken boot, file:// included, stops at "run completed")
+process.exit(log.checks.some(c => !c.ok) ? 1 : 0);
