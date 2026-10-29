@@ -64,6 +64,8 @@ async function newPage(name) {
   await ctx.route('**/*', r => (r.request().url().startsWith(origin) ? r.continue() : r.abort()));
   // sessionStorage "slowHash" = ms: SHA-256 takes that long (a large file on a slow device), to widen the hashing window
   await ctx.addInitScript(() => {
+    // this check is about the doc: "not on this device yet" stays as it is. Media transfers: design/media-check.mjs
+    window.__CUE_MEDIA_TEST = { off: true };
     const digest = SubtleCrypto.prototype.digest;
     SubtleCrypto.prototype.digest = async function (...a) { const ms = +sessionStorage.getItem('slowHash') || 0; if (ms) await new Promise(r => setTimeout(r, ms)); return digest.apply(this, a); };
   });

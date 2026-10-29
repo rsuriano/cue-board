@@ -6,6 +6,9 @@
 <meta name="description" content="Cue Board: plan an AI music video against the song (side A) and generate each shot through OpenRouter (side B).">
 <!-- Collaboration: the sync server's WebSocket URL (e.g. wss://sync.example.dev). Empty = off: no network, collab.js never loads. -->
 <meta name="cue-sync-url" content="">
+<!-- Media between collaborators (docs/media-p2p.md): ICE servers for WebRTC, e.g. "stun:stun.example.dev:3478 turn:user:secret@turn.example.dev:3478".
+     Empty = none: peers on the same network connect directly, everyone else through the sync server's encrypted relay. -->
+<meta name="cue-ice-urls" content="">
 <title>Cue Board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141317'/%3E%3Cg fill='%23a8702a'%3E%3Crect x='2' y='18' width='4' height='8' rx='2'/%3E%3Crect x='8' y='14' width='4' height='16' rx='2'/%3E%3C/g%3E%3Cg fill='%238b8896'%3E%3Crect x='20' y='12' width='4' height='18' rx='2'/%3E%3Crect x='26' y='17' width='4' height='10' rx='2'/%3E%3C/g%3E%3Crect x='14' y='8' width='4' height='22' rx='2' fill='%23f0a33a'/%3E%3Cpath d='M6 2h20L16 13z' fill='%23f0a33a'/%3E%3C/svg%3E">
 <style>
@@ -405,7 +408,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 /* in a shared project the chip speaks for saving too; the header status only shows up to report a local save error */
 .top:has(#cstat:not([hidden])) #status:not(.err){display:none}
 /* the long states don't fit one header row below 1600px: the groups wrap whole, as they already do below 1360px */
-@media (max-width:1599px){.top:has(#cstat[data-state="offline"]:not([hidden]),#cstat[data-state="unreachable"]:not([hidden]),#cstat[data-state="rejected"]:not([hidden]),#cstat[data-unshared]:not([hidden])){flex-wrap:wrap}}
+@media (max-width:1599px){.top:has(#cstat[data-state="offline"]:not([hidden]),#cstat[data-state="unreachable"]:not([hidden]),#cstat[data-state="rejected"]:not([hidden]),#cstat[data-unshared]:not([hidden]),#cstat[data-media]:not([hidden])){flex-wrap:wrap}}
 .status.sync::before{background:var(--ink-3)}
 .status.off::before{background:transparent;box-shadow:inset 0 0 0 var(--hairline) var(--ink-3)}
 .presence{display:flex;align-items:center;gap:var(--sp-0-5)}
@@ -426,6 +429,14 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .opt:hover{background:var(--surface-3);border-color:var(--border-control)}
 .opt:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 .opt:disabled,.opt:disabled:hover{opacity:var(--o-disabled);cursor:not-allowed;background:var(--surface-2);border-color:var(--border-strong)}
+.flist{display:grid;margin:0;padding:0;list-style:none;max-height:min(50vh,420px);overflow:auto}
+.flist li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-0-5) var(--sp-3);padding:var(--sp-2) 0;border-top:var(--hairline) solid var(--border)}
+.flist li:first-child{border-top:0}
+.flist .fn{overflow:hidden;color:var(--ink);font-size:var(--text-md);line-height:var(--lh-md);text-overflow:ellipsis;white-space:nowrap}
+.flist .fs{font:var(--w-regular) var(--text-sm)/var(--lh-md) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-3)}
+.flist .fw{grid-column:1/-1;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm)}
+.flist:empty::before{content:"No files in this project yet.";color:var(--ink-3);font-size:var(--text-md)}
+.dlg .lims{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-3)}
 .jmsg{margin:0;color:var(--error);font-size:var(--text-sm);line-height:var(--lh-sm)}
 .jmsg:empty{display:none}
 
@@ -655,6 +666,17 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <p class="jmsg" id="jMsg" role="alert"></p>
   <div class="row"><span class="grow"></span><button type="button" id="jCancel" class="btn ghost">Cancel</button><button type="submit" id="jGo" class="btn primary">Join</button></div>
 </form></dialog>
+<dialog id="dlgFiles" aria-labelledby="fTitle"><div class="dlg">
+  <h3 id="fTitle">Files in this project</h3>
+  <p class="muted">Everyone in the room keeps a copy of every file. Files go straight from one collaborator to another, encrypted; the sync server never stores them.</p>
+  <p class="hint" id="fWarn" role="status" hidden></p>
+  <ul class="flist" id="fList" aria-label="Files"></ul>
+  <div class="lims">
+    <div class="field"><label for="fLimF">Download automatically</label><select id="fLimF"><option value="100">Files up to 100 MB</option><option value="500">Files up to 500 MB</option><option value="2000">Files up to 2 GB</option></select></div>
+    <div class="field"><label for="fLimP">For the whole project</label><select id="fLimP"><option value="5000">Up to 5 GB</option><option value="20000">Up to 20 GB</option><option value="50000">Up to 50 GB</option></select></div>
+  </div>
+  <div class="row"><button type="button" id="fPause" class="btn ghost">Pause</button><span class="grow"></span><button type="button" id="fClose" class="btn ghost">Close</button><button type="button" id="fAll" class="btn primary">Download all now</button></div>
+</div></dialog>
 <audio id="audio" preload="auto"></audio>
 <div class="toast" id="toast" hidden></div>
 
@@ -878,7 +900,7 @@ function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
   const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
   const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
-    const media=!mediaURL(s.img)?(isMissing(s.img)?`<span class="tn miss">Not on this device yet</span>`:`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${mediaURL(s.img)}" alt="">`;
+    const media=!mediaURL(s.img)?(isMissing(s.img)?`<span class="tn miss" data-miss="${esc(s.img)}">Not on this device yet</span>`:`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${mediaURL(s.img)}" alt="">`;
     return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${esc(s.shot||clipHint(d))}</div>${clipLine(s,d)}</div></button>`});
   const cards=[...el.children],fresh=[];
   if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
@@ -916,7 +938,7 @@ function renderMonitor(force){
   const miss=isMissing(s.img),key=[s.id,i,s.img,s.kind,s.title,s.shot,s.notes,miss].join("|");
   if(force||key!==lastKey){lastKey=key;
     const vd=$("mvid");
-    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?`<div class="miss">${s.kind==="video"?"Clip":"Image"} not on this device yet</div>`:""}`;
+    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?`<div class="miss" data-miss="${esc(s.img)}">${s.kind==="video"?"Clip":"Image"} not on this device yet</div>`:""}`;
     if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
     else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
     else{vd.hidden=true;try{vd.pause()}catch(e){}
@@ -1012,7 +1034,7 @@ function renderProjMenu(){
   $("projmenu").innerHTML=list.map(p=>{const t=p.title||"Untitled project";
     return `<button type="button" class="mi" role="menuitemradio" tabindex="-1" aria-checked="${p===cur}" data-pid="${esc(p.id)}" title="${esc(t)}">${ico("check")}<span>${esc(t)}</span></button>`}).join("")
     +(cur||SYNC_URL?`<hr role="separator">`:"")
-    +[cur&&["rename","Rename…"],SYNC_URL&&["join","Join collaboration…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["leave","Leave collaboration"]].filter(Boolean)
+    +[cur&&["rename","Rename…"],SYNC_URL&&["join","Join collaboration…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["files","Files…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["leave","Leave collaboration"]].filter(Boolean)
       .map(([a,t])=>`<button type="button" class="mi" role="menuitem" tabindex="-1" data-act="${a}">${ico("check")}<span>${t}</span></button>`).join("");
 }
 const menuItems=()=>[...$("projmenu").querySelectorAll(".mi")];
@@ -1038,6 +1060,7 @@ $("projmenu").onclick=e=>{
   if(b.dataset.act==="rename"){closeProjMenu(false);startRename();return}
   if(b.dataset.act==="join"){closeProjMenu(false);joinFlow(null);return}
   if(b.dataset.act==="leave"){closeProjMenu(true);leaveRoom();return}
+  if(b.dataset.act==="files"){closeProjMenu(false);openFiles();return}
   closeProjMenu(true);const p=projects.find(x=>x.id===b.dataset.pid);
   if(p&&(!cur||p.id!==cur.id)){if(dirty)flush();selectProject(p)}
 };
@@ -1379,7 +1402,7 @@ function takeSig(s,t){return [t.status,t.media,t.cost,t.error,t.note,s.img===t.m
 function takeHTML(s,t,num){
   const incut=!!t.media&&s.img===t.media,busy=isBusy(t);
   const vis=t.media&&mediaURL(t.media)?`<video src="${mediaURL(t.media)}" muted loop playsinline preload="metadata" controls></video>`:
-    isMissing(t.media)?`<div class="tbusy">Video not on this device yet</div>`:
+    isMissing(t.media)?`<div class="tbusy" data-miss="${esc(t.media)}">Video not on this device yet</div>`:
     busy?`<div class="tbusy"><span class="spin"></span><span>${statusLabel(t)}</span><span class="tc" data-since="${t.created}"></span></div>`:
     `<div class="tbusy err">${esc(statusLabel(t))}</div>`;
   const cost=t.cost!=null?fmtUSD(+t.cost):t.est!=null?"≈ "+fmtUSD(t.est):"—";
@@ -1676,6 +1699,7 @@ $("setTest").onclick=async()=>{
    Bindings: settings "collab" = {name, rooms:{projectId:{roomId,token,name}}}, in this browser only. collab.js is
    imported only when a room is joined or already bound; with no binding nothing here touches the network. */
 const SYNC_URL=((document.querySelector('meta[name="cue-sync-url"]')||{}).content||"").trim();
+const ICE_URLS=((document.querySelector('meta[name="cue-ice-urls"]')||{}).content||"").trim();
 const INVITE=/^([A-Za-z0-9_-]{16,64})\.([A-Za-z0-9_-]{16,128})$/;
 let cset={name:"",rooms:{}},cmod=null,csess=null,csessPid=null,peers=[],deviceId="",cunshared=0;
 /* an invite link: https://host/#join=<room>.<token>, the server CLI's ?room=…&token=… link, or just <room>.<token> */
@@ -1689,7 +1713,7 @@ let pendingInvite=takeInvite(),joining=!!pendingInvite;
 /* an invite pasted into the address bar of an open tab only changes the hash */
 window.addEventListener("hashchange",()=>{const inv=takeInvite();if(inv&&store)joinFlow(inv)});
 const saveCset=()=>putSetting("collab",cset);
-async function loadCollab(){if(cmod)return cmod;try{const m=await import("./collab.js");cmod=m.createCollab(collabApp,SYNC_URL)}catch(e){cmod=null}return cmod}
+async function loadCollab(){if(cmod)return cmod;try{const m=await import("./collab.js");cmod=m.createCollab(collabApp,SYNC_URL,{ice:m.parseIce?m.parseIce(ICE_URLS):[]})}catch(e){cmod=null}return cmod}
 const collabApp={
   project:pid=>cur&&cur.id===pid?cur:null,
   applyRemote,
@@ -1702,6 +1726,12 @@ const collabApp={
   onStatus:(pid,s)=>{if(cur&&cur.id===pid&&csessPid===pid)renderCollab(s)},
   onPeers:(pid,l)=>{if(cur&&cur.id===pid&&csessPid===pid){peers=l;renderPresence();renderMarks()}},
   onUnshared:(pid,n)=>{if(cur&&cur.id===pid&&csessPid===pid){cunshared=n;renderCollab(csess.status())}},
+  /* media from collaborators (docs/media-p2p.md): verified against its hash before it gets here */
+  storeMedia:async(blob,mime)=>(await assets.upload(blob,{type:mime||blob.type||"application/octet-stream"})).id,
+  storeSong:async(pid,blob,name)=>{const f=new File([blob],name||"song",{type:blob.type});
+    if(await idbDo("readwrite",st=>st.put({blob:f,name:f.name},pid))===null)throw{code:"write_failed"};if(cur&&cur.id===pid)loadAudio()},
+  onMedia:pid=>{if(cur&&cur.id===pid&&csessPid===pid){renderCollab(csess.status());renderMiss();if($("dlgFiles").open)renderFiles()}},
+  mediaLimits:pid=>{const l=(cset.rooms[pid]&&cset.rooms[pid].limits)||{};return{file:(+l.file||500)*1e6,project:(+l.project||5000)*1e6}},
   onEvent:(pid,t)=>{const b=cset.rooms[pid];if(!b)return;
     if(t==="shared"){delete b.share;saveCset();toast("Shared into the room")}
     else{leaveRoom(pid,true);toast("Someone started working in that room meanwhile, so nothing was shared")}}
@@ -1732,7 +1762,43 @@ function renderCollab(s){const el=$("cstat");
   const [k,t,tip]=CST[s]||CST.syncing;el.hidden=false;el.className="status cchip "+k;el.textContent=t;el.title=tip;el.dataset.state=s;
   /* a file this browser couldn't read or hash: it stays here, the others keep the previous one. Said quietly, on the chip */
   const n=s==="synced"&&csess?cunshared:0;if(n){el.textContent=`Synced, ${n} file${n>1?"s":""} not shared`;el.title="This browser couldn't prepare "+(n>1?"these files":"this file")+" for the room, so the others still see the previous one. Choosing the file again retries.";el.dataset.unshared=""}else delete el.dataset.unshared;
+  const mt=!n&&s==="synced"?mediaChip():null;
+  if(mt){el.textContent=mt[1];el.className="status cchip "+mt[0];el.title=mt[2];el.dataset.media=mt[3]}else delete el.dataset.media;
   if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}}
+/* ---------- media between collaborators (docs/media-p2p.md) ---------- */
+const plural=(k,w)=>k+" file"+(k>1?"s":"")+(w?" "+w:"");
+const fmtMB=b=>b>=1e9?(b/1e9).toFixed(1)+" GB":b>=1e6?(b/1e6).toFixed(1)+" MB":Math.max(1,Math.round(b/1e3))+" KB";
+const cmedia=()=>csess&&csess.media?csess.media():null;
+let persistWarned=false;
+/* the chip while connected: [class, text, tooltip, state], or null for plain "Synced" (a project without files) */
+function mediaChip(){const m=cmedia();if(!m)return null;const x=m.summary();if(!x.total)return null;
+  const low=x.storage.persisted===false?" This browser may clear these files when space runs low; your collaborators keep their copies.":"";
+  if(x.storageFull)return["err","Storage full, downloads paused","This browser is out of space for more files. Free some space, then choose Download all now under Files…"+low,"full"];
+  if(x.failed)return["err",plural(x.failed,"couldn't be verified"),"What arrived didn't match the file's fingerprint, so it was thrown away. Download all now under Files… tries again.","failed"];
+  if(x.active&&!x.paused)return["sync","Syncing "+plural(x.active),"Copying files from collaborators who have them."+low,"syncing"];
+  if(x.paused&&x.active+x.unavailable)return["off","Paused, "+plural(x.active+x.unavailable,"to get"),"Downloads are paused. Files… in the project menu resumes them.","paused"];
+  if(x.unavailable)return["off",plural(x.unavailable,"not available yet: nobody online has them"),"They arrive when someone who has them opens the project."+low,"unavailable"];
+  if(x.skipped)return["off",plural(x.skipped,"skipped: over the size limit"),"Bigger than this project's download limit. Files… in the project menu downloads them anyway.","skipped"];
+  return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
+/* "not on this device yet" placeholders: the file's progress while it's coming */
+function renderMiss(){const m=cmedia();document.querySelectorAll("[data-miss]").forEach(el=>{const id=el.dataset.miss,p=m&&id.startsWith("sha256-")?m.progress(id.slice(7)):null;
+  if(el.dataset.base==null)el.dataset.base=el.textContent;el.textContent=p==null?el.dataset.base:"Arriving · "+Math.floor(p*100)+"%"})}
+const FST={here:"Here",downloading:"Downloading",queued:"Waiting its turn",unavailable:"Nobody online has it",skipped:"Skipped: over the size limit",failed:"Couldn't be verified",paused:"Paused"};
+function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=cur&&cset.rooms[cur.id];
+  $("fList").replaceChildren(...l.map(f=>{const li=document.createElement("li"),n=document.createElement("span"),z=document.createElement("span"),w=document.createElement("span");
+    n.className="fn";n.textContent=f.label;n.title=f.label;z.className="fs";z.textContent=f.state==="downloading"?fmtMB(f.got)+" of "+fmtMB(f.bytes):fmtMB(f.bytes);
+    w.className="fw";w.textContent=(FST[f.state]||"")+(f.who.length?(f.state==="here"?" · also with ":" · with ")+f.who.join(", "):"");li.append(n,z,w);return li}));
+  const warn=[];if(x&&x.storage.persisted===false)warn.push("This browser may clear these files when it runs low on space. Your collaborators keep their copies, and they come back from them.");
+  if(x&&x.storage.free!=null&&x.storage.free<1e9)warn.push("Low on space here: about "+fmtMB(x.storage.free)+" free.");
+  if(x&&x.foreign)warn.push(x.foreign>1?"Some collaborators joined with another invite link, so files can't pass between you.":"Someone joined with another invite link, so files can't pass between you.");
+  $("fWarn").textContent=warn.join(" ");$("fWarn").hidden=!warn.length;
+  $("fPause").textContent=x&&x.paused?"Resume":"Pause";$("fPause").disabled=!m;$("fAll").disabled=!m;
+  const lim=(b&&b.limits)||{};$("fLimF").value=String(lim.file||500);$("fLimP").value=String(lim.project||5000)}
+function openFiles(){renderFiles();$("dlgFiles").showModal()}
+$("fClose").onclick=()=>$("dlgFiles").close();
+$("fAll").onclick=()=>{const m=cmedia();if(m){m.downloadAll();renderFiles()}};
+$("fPause").onclick=()=>{const m=cmedia();if(m){m.pause(!m.summary().paused);renderFiles()}};
+$("fLimF").onchange=$("fLimP").onchange=()=>{const b=cur&&cset.rooms[cur.id];if(!b)return;b.limits={file:+$("fLimF").value,project:+$("fLimP").value};saveCset();const m=cmedia();if(m)m.refresh();renderFiles()};
 function renderPresence(){const el=$("presence"),l=csess?peers:[];
   const chip=(t,title,cls)=>{const c=document.createElement("span");c.className="pchip"+(cls||"");c.textContent=t;c.title=title;return c};
   el.replaceChildren(...l.slice(0,4).map(p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return chip(p.initials,p.name+(i>=0?" · on shot "+pad(i+1):""))}));

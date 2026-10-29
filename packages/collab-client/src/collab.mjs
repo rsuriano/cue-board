@@ -150,11 +150,15 @@ export function parseIce(/** @type {string} */ s) {
 
 /** @param {App} app @param {string} syncUrl e.g. wss://sync.example.dev @param {{ ice?: RTCIceServer[], media?: boolean }} [opts] */
 export function createCollab(app, syncUrl, opts = {}) {
-  const ice = opts.ice || [], mediaOn = opts.media !== false && !!app.storeMedia;
+  // __CUE_MEDIA_TEST.off: design/collab-check.mjs checks doc sync with media transfers off (design/media-check.mjs covers them)
+  const ice = opts.ice || [], mediaOn = opts.media !== false && !!app.storeMedia && !(/** @type {any} */ (globalThis).__CUE_MEDIA_TEST?.off);
   if (mediaOn) setTimeout(() => parts.gc().catch(() => {}), 10000);
   const base = syncUrl.replace(/\/+$/, '') + '/r';
-  const connect = (/** @type {string} */ roomId, /** @type {string} */ token, /** @type {Y.Doc} */ doc, /** @type {boolean} */ now) =>
-    new WebsocketProvider(base, roomId, doc, { protocols: ['cueboard', token], disableBc: true, connect: now, maxBackoffTime: 10000 });
+  const connect = (/** @type {string} */ roomId, /** @type {string} */ token, /** @type {Y.Doc} */ doc, /** @type {boolean} */ now) => {
+    const p = new WebsocketProvider(base, roomId, doc, { protocols: ['cueboard', token], disableBc: true, connect: now, maxBackoffTime: 10000 });
+    p.messageHandlers[10] = () => {};            // media frames (media.mjs takes them over); a probe ignores them
+    return p;
+  };
 
   /** Connect once, read the room, disconnect. */
   async function probe(/** @type {string} */ roomId, /** @type {string} */ token, ms = 8000) {
