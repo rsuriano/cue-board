@@ -2345,7 +2345,8 @@ $("mpanel").addEventListener("keydown",e=>{e.stopPropagation();
   const it=fileNav(),i=it.indexOf(document.activeElement);
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();it[i<0?0:(i+(e.key==="ArrowDown"?1:-1)+it.length)%it.length]?.focus()}
   else if(e.key==="Home"||e.key==="End"){e.preventDefault();it[e.key==="Home"?0:it.length-1]?.focus()}});
-document.addEventListener("pointerdown",e=>{if(!e.target.closest(".mstat"))closeFiles()});
+/* a tap outside closes it, but not one in a dialog over it (the size question it opened) */
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".mstat,dialog[open]"))closeFiles()});
 window.addEventListener("resize",placeFiles);
 $("fAll").onclick=async()=>{const m=cmedia();if(!m)return;
   /* the phone says how much first: it may be on mobile data. Then exactly those files, once: what a collaborator adds
