@@ -376,6 +376,29 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   check(dev, 'no console errors', !errs.length, errs.join(' | '));
   await ctx.close();
 }
+// fractional widths (zoom, a fractional DPR) can be 819.5px: every phone/desktop switch must be (min-width:820px) or
+// its exact complement, so no width is both halves (phone() false with the .m-only tab bar showing) or neither.
+// Headless Chromium rounds an iframe's width to whole CSS px, so the source is checked, and 819/820 in a frame
+{
+  const dev = 'fractional';
+  const src = readFileSync(join(root, 'index.html'), 'utf8');
+  const qs = [...src.matchAll(/(?:@media|matchMedia\()\s*["']?([^{"']*?(?:min|max)-width[^{"']*)/g)].map(m => m[1].trim());
+  const odd = qs.filter(q => /\b8[12]\d(?:\.\d+)?px/.test(q) && q !== '(min-width:820px)' && q !== 'not all and (min-width:820px)');
+  check(dev, 'the 820px switch is (min-width:820px) or "not all and" it everywhere, in the CSS and in JS', !odd.length && qs.filter(q => /820px/.test(q)).length >= 6, JSON.stringify(odd));
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  await ctx.route('**/*', r => (r.request().url().startsWith(origin) ? r.continue() : r.abort()));
+  const p = await ctx.newPage();
+  await p.goto(origin + '/manifest.webmanifest');
+  for (const w of [819, 820]) {
+    await p.setContent(`<iframe id="f" src="${origin}/index.html" style="border:0;width:${w}px;height:800px"></iframe>`);
+    const f = await (await p.$('#f')).contentFrame();
+    await f.waitForSelector('#projname', { timeout: 10000 }); await p.waitForTimeout(300);
+    const st = await f.evaluate(() => ({ w: document.documentElement.getBoundingClientRect().width, phone: matchMedia('not all and (min-width:820px)').matches, desk: matchMedia('(min-width:820px)').matches, oldQuery: matchMedia('(max-width:819px)').matches, tabs: !!document.getElementById('mTabs').getClientRects().length, strip: !!document.getElementById('strip').getClientRects().length }));
+    const ok = st.phone !== st.desk && st.tabs === st.phone && st.strip === st.desk && st.phone === (w < 820);
+    check(dev, `${w}px wide: exactly one layout (${w < 820 ? 'phone' : 'desktop'})`, ok, JSON.stringify(st));
+  }
+  await ctx.close();
+}
 await browser.close(); srv.close();
 const bad = results.filter(r => !r.ok);
 console.log(`\n${results.length - bad.length}/${results.length} passed`);

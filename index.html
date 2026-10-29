@@ -304,7 +304,7 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 .keys kbd,.klist kbd{min-width:0;height:auto;padding:0 var(--sp-1);border:0;background:var(--surface-2);line-height:var(--lh-sm);color:var(--ink-2)}
 .keys .linkbtn{color:var(--ink-3);font-weight:var(--w-regular);text-decoration:none}
 .keys .linkbtn:hover{color:var(--ink)}
-@media (max-width:819px){.keys{display:none}}
+@media not all and (min-width:820px){.keys{display:none}}
 /* shortcuts panel: a modal like the others, wider, sections in two columns when there's room */
 #dlgKeys{max-width:min(var(--dialog-w-wide),calc(100vw - var(--sp-8)))}
 #kBody:focus{outline:none}
@@ -610,7 +610,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
    seeking; cut grips and long-press to move a shot), the selected shot's peek row and toolbar, then Cut / Takes tabs.
    The inspector is a bottom sheet; dialogs and the files panel are bottom sheets. Nothing here applies from 820px up */
 @media (min-width:820px){.m-only{display:none!important}}
-@media (max-width:819px){
+/* "not all and (min-width:820px)", not (max-width:819px): with zoom or a fractional DPR the width can be 819.5px */
+@media not all and (min-width:820px){
   :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
     --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px; --tl-min:150px;
     --grip-w:var(--sp-3); --icon-tool:var(--sp-5); --z-sheet:14;
@@ -743,10 +744,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .mlist{max-height:none}
   .toast{bottom:calc(var(--toolbar-h) + var(--tabbar-h) + var(--sp-3) + var(--safe-b));max-width:calc(100vw - 2 * var(--gutter));white-space:normal;text-align:center}
 }
-@media (max-width:819px) and (max-height:699px){.m-peek{display:none}}
+@media not all and (min-width:820px){@media (max-height:699px){.m-peek{display:none}}}
 /* landscape (or any very short window): no layout of its own, the page just scrolls */
-@media (max-width:819px) and (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.timeline{flex:none;height:var(--tl-min)}}
-@media (max-width:819px) and (prefers-reduced-motion:no-preference){body.m-ed .editor{animation:rise var(--dur-base) var(--ease-out)}}
+@media not all and (min-width:820px){@media (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.timeline{flex:none;height:var(--tl-min)}}}
+@media not all and (min-width:820px){@media (prefers-reduced-motion:no-preference){body.m-ed .editor{animation:rise var(--dur-base) var(--ease-out)}}}
 </style>
 </head>
 <body>
@@ -1109,7 +1110,7 @@ let saveK="busy",saveT="Loading",roomSt="";
 /* the phone hides #status: a save error (and the recovery from one) arrives as a toast, and stays in the Projects sheet while it lasts */
 let saveErr="";
 function setStatus(kind,text){const was=saveErr;saveK=kind;saveT=text;if(kind==="err")saveErr=text;else if(kind==="ok")saveErr="";renderSaved();
-  if(!matchMedia("(max-width:819px)").matches)return;
+  if(!matchMedia("not all and (min-width:820px)").matches)return;
   if(saveErr&&was!==saveErr)toast(saveTip(saveErr),6000);else if(was&&!saveErr)toast("Saved again")}
 function saveTip(t){return t+(t==="Browser storage unavailable"?". This browser blocks local storage, so nothing will be saved.":". Your latest changes are only in this tab; export the project to keep a copy.")}
 function renderSaved(){const s=$("status"),r=SYNC_URL&&cur&&cset.rooms[cur.id]?roomSt:"";let k=saveK,t,tip;
@@ -2506,7 +2507,7 @@ async function joinFlow(inv){
    The canvas is the viewport's size and redrawn on scroll. Cuts have 44px grips (drag to trim, tap for ±0.1 s);
    holding a shot lifts it (drop as on desktop: middle swaps, an edge slides in). The inspector is a bottom sheet, the
    bar's project name opens the Project sheet, and the selected shot gets a peek row and a toolbar at thumb height. */
-const phoneMQ=matchMedia("(max-width:819px)"),phone=()=>phoneMQ.matches;
+const phoneMQ=matchMedia("not all and (min-width:820px)"),phone=()=>phoneMQ.matches;
 const standalone=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
 let wifiOnly=false;
 const onWifi=()=>{const c=navigator.connection;return!!c&&/^(wifi|ethernet)$/.test(c.type||"")};
