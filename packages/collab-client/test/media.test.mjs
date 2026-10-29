@@ -248,6 +248,26 @@ test('races: source leaves mid-transfer (another one finishes it); remote delete
   } finally { peers.forEach(p => p.close()); await srv.close(); }
 });
 
+test('limits: video: false (a phone off Wi-Fi) holds video back, images still come; video: true brings it', async () => {
+  const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3388);
+  const vid = randomBytes(CHUNK * 2), hv = nodeSha(vid), img = randomBytes(CHUNK), hi = nodeSha(img), peers = [];
+  try {
+    const A = mk(srv, r.id, r.token, new Map([[hv, vid.length], [hi, img.length]]), new Map([[hv, new Blob([vid])], [hi, new Blob([img])]])); peers.push(A);
+    const doc = new Y.Doc(), provider = new WebsocketProvider(srv.url, r.id, doc, { WebSocketPolyfill: WebSocket, params: { token: r.token }, disableBc: true });
+    const files = new Map(), landed = [], lim = { file: 500e6, project: 5e9, video: false };
+    const m = createMedia({ provider, roomId: r.id, token: r.token, pid: 'p', ice: [], store: memStore(),
+      wanted: () => new Map([[hv, { bytes: vid.length, mime: 'video/mp4', label: 'take', local: files.has(hv) }], [hi, { bytes: img.length, mime: 'image/jpeg', label: 'frame', local: files.has(hi) }]]), localBlob: async h => files.get(h) || null,
+      landed: async (h, b) => { files.set(h, b); landed.push(h); }, clientName: () => '', limits: () => lim, onChange: () => {} });
+    peers.push({ close() { m.stop(); provider.destroy(); doc.destroy(); } });
+    await until(() => landed.length === 1, 10000, 'the image');
+    await new Promise(ok => setTimeout(ok, 500));
+    assert.deepEqual(landed, [hi]);
+    const f = m.files().find(x => x.hex === hv); assert.equal(f.state, 'skipped'); assert.equal(f.skip, 'video');
+    lim.video = true; m.refresh();
+    await until(() => landed.length === 2, 10000, 'the video once allowed');
+  } finally { peers.forEach(p => p.close()); await srv.close(); }
+});
+
 test('limits: files over the per-file limit are skipped; "Download" fetches just that one, "Download all now" the rest; a peer asking for a hash the doc doesn\'t reference gets nothing', async () => {
   const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3396);
   const data = randomBytes(CHUNK * 3), hex = nodeSha(data), data2 = randomBytes(CHUNK * 2), hex2 = nodeSha(data2), peers = [];

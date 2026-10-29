@@ -34,7 +34,7 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
  *            read(hex: string, count: number): Promise<Blob[] | null>, drop(hex: string): Promise<void> },
  *   wanted(): Map<string, Want>, localBlob(hex: string): Promise<Blob | null>,
  *   landed(hex: string, blob: Blob, w: Want): Promise<void>, clientName(c: number): string,
- *   limits(): { file: number, project: number }, onChange(): void,
+ *   limits(): { file: number, project: number, video?: boolean }, onChange(): void,   video: false holds video files back
  *   storage?(): 'ok' | 'blocked' | 'replaced',   whether the store can be used (another tab may hold the database)
  * }} Ctx
  * store.list?(pid): the files this project has parts of (dropped once the doc no longer references them)
@@ -373,6 +373,8 @@ export function createMedia(ctx) {
       if (!Number.isSafeInteger(v.bytes) || v.bytes <= 0 || v.bytes > MAX_FILE) { skipped.set(h, 'unknown'); continue; }
       const any = override || asked.has(h);
       if (!any && v.bytes > lim.file) { skipped.set(h, 'file'); continue; }
+      // video waits for a tap (the app's "takes only on Wi-Fi", off the Wi-Fi it can see): stored chunks are kept
+      if (!any && lim.video === false && /^video\//.test(v.mime || '')) { skipped.set(h, 'video'); continue; }
       if (!any && used + v.bytes > lim.project) { skipped.set(h, 'project'); continue; }
       used += v.bytes; fetch.push(h);
     }
@@ -425,7 +427,7 @@ export function createMedia(ctx) {
     }
     for (const [h, x] of dls) if (!fetch.includes(h) && !x.finishing) {
       const v = w.get(h), why = skipped.get(h);
-      stopFetch(h, x, !!v && !v.local && !failed.has(h) && (why === 'file' || why === 'project'));
+      stopFetch(h, x, !!v && !v.local && !failed.has(h) && (why === 'file' || why === 'project' || why === 'video'));
     }
     for (const h of fetch) {
       if (dls.size >= MAX_ACTIVE) break;
