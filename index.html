@@ -611,7 +611,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
    The inspector is a bottom sheet; dialogs and the files panel are bottom sheets. Nothing here applies from 820px up */
 @media (min-width:820px){.m-only{display:none!important}}
 @media (max-width:819px){
-  :root{--text-sm:13px; --text-md:15px; --text-input:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
+  :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
     --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px; --tl-min:150px;
     --grip-w:var(--sp-3); --icon-tool:var(--sp-5); --z-sheet:14;
     --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px); --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px)}
@@ -705,10 +705,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #bConn,#fStartGen,#fEndGen,#fEndFrom,.fgen,.genbox,.take [data-act="retry"]{display:none!important}
   .takes{grid-template-columns:minmax(0,1fr)}
   /* sheets: dialogs, the Project sheet and the files panel rise from the bottom, above the keyboard */
-  dialog{width:100%;max-width:100%;margin:auto 0 var(--kb,0px);max-height:calc(100dvh - var(--safe-t) - var(--sp-6) - var(--kb,0px));overflow:auto;overscroll-behavior:contain;border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;padding-bottom:var(--safe-b)}
-  .dlg{padding:var(--inset-panel) calc(var(--gutter) + var(--safe-r)) var(--sp-6) calc(var(--gutter) + var(--safe-l))}
+  dialog{width:100%;max-width:100%;margin:auto 0 var(--kb,0px);max-height:calc(100dvh - var(--safe-t) - var(--sp-6) - var(--kb,0px));overflow:auto;overscroll-behavior:contain;border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;padding:var(--sp-2) var(--gutter) var(--safe-b)}
+  .dlg{padding:var(--sp-2) var(--safe-r) var(--sp-6) var(--safe-l)}
   .dlg .row:has(.field){grid-template-columns:minmax(0,1fr)}
-  .sh{display:grid;gap:var(--gap-block);padding:0 calc(var(--gutter) + var(--safe-r)) var(--sp-6) calc(var(--gutter) + var(--safe-l))}
+  .sh{display:grid;gap:var(--gap-block);padding:0 var(--safe-r) var(--sp-6) var(--safe-l)}
+  .sheet .sh-top{padding-top:var(--sp-1)}
   .m-list{display:grid}
   .m-pi{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-3);min-height:var(--hit);color:var(--ink-2);cursor:pointer}
   .m-pi .ico{visibility:hidden;color:var(--ink)}
