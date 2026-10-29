@@ -64,7 +64,7 @@
   --h-xs:20px; --h-sm:28px; --h-md:32px; --h-lg:36px; --hit:32px;
   --icon-sm:6px; --icon-md:10px; --icon-lg:16px; --stroke:1.5px;
   /* layout */
-  --w-project:220px; --w-project-min:160px; --w-menu-max:360px; --w-menu-min:200px; --w-saved:72px; --menu-max-h:min(420px,60vh); --w-panel:400px; --mlist-max:min(360px,40vh); --mbar-w:120px;--w-play:88px; --w-tc:76px; --h-prompt:96px; --genbox-min:360px; --measure-short:60ch;
+  --w-project:220px; --w-project-min:160px; --w-menu-max:360px; --w-menu-min:200px; --w-saved:100px; --menu-max-h:min(420px,60vh); --w-panel:400px; --mlist-max:min(360px,40vh); --mbar-w:120px;--w-play:88px; --w-tc:76px; --h-prompt:96px; --genbox-min:360px; --measure-short:60ch;
   --app-max:1920px; --gutter:var(--sp-5); --header-h:48px;
   --inspector-w:clamp(320px,26vw,400px); --list-w:248px; --card-w:176px; --thumb-w:72px; --ref-w:100px;
   --monitor-min-h:280px; --stage-h:max(var(--monitor-min-h),calc(100vh - 400px)); --dialog-w:560px; --measure:72ch; --take-min:400px; --var-min:140px;
@@ -99,17 +99,21 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .app{max-width:var(--app-max);margin:0 auto;padding:0 var(--gutter) var(--sp-10);display:grid;gap:var(--gutter)}
 /* app bar: three zones on one row. The two outer columns share the width equally, so the side switch sits on the
    bar's true centre; a zone whose content can't fit its half takes what it needs (min-content) and the switch moves
-   over instead of anything overlapping or wrapping. Labels give way to icons, then to the More menu, by width */
-.top{display:grid;grid-template-columns:minmax(min-content,1fr) auto minmax(min-content,1fr);align-items:center;column-gap:var(--sp-4);min-height:var(--header-h);padding:var(--sp-2) var(--gutter);margin-inline:calc(-1 * var(--gutter));background:var(--surface-1);border-bottom:var(--hairline) solid var(--border-subtle)}
+   over instead of anything overlapping or wrapping. Labels give way to icons, then to the More menu, by width.
+   Spacing goes by what you see: a ghost button's 8px padding counts toward its gaps. Between groups 32px of empty
+   bar (16px between two ghosts, 24px from a ghost to text or a filled control), 16px inside the room group, 20px
+   along a row of ghost buttons (4px apart). The bar ends on Settings' ink at the gutter, as it starts on the logo */
+.top{display:grid;grid-template-columns:minmax(min-content,1fr) auto minmax(min-content,1fr);align-items:center;column-gap:var(--sp-8);min-height:var(--header-h);padding:var(--sp-2) var(--gutter);margin-inline:calc(-1 * var(--gutter));background:var(--surface-1);border-bottom:var(--hairline) solid var(--border-subtle)}
 .tzone{display:flex;align-items:center;gap:var(--sp-4);min-width:0}
 .tzone>*{flex:none}
 .tright{justify-content:flex-end}
 .tgroup{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
 .tgroup.collab{gap:var(--gap-related)}
-.brand{display:flex;align-items:center;gap:var(--sp-2);font:var(--w-semibold) var(--text-lg)/var(--lh-control) var(--font-ui);letter-spacing:var(--track-tight);white-space:nowrap}
+.brand{display:flex;align-items:center;gap:var(--sp-2);margin-right:var(--sp-4);font:var(--w-semibold) var(--text-lg)/var(--lh-control) var(--font-ui);letter-spacing:var(--track-tight);white-space:nowrap}
 .brand i{width:var(--icon-md);height:var(--icon-md);background:var(--accent);clip-path:polygon(0 0,100% 0,50% 100%)}
 .top select,.top input{width:auto;min-width:0}
 /* project: the name (picker) and its rename button read as one group; only the picker gives up width */
+.songops{margin-left:var(--sp-2)}
 .tleft>.projgroup{flex:0 1 calc(var(--w-project) + var(--gap-tight) + var(--h-md))}
 /* inline-size containment: the name's length never widens the zone's minimum, the picker just truncates it */
 .projpick{position:relative;display:flex;flex:1 1 var(--w-project);min-width:var(--w-project-min);contain:inline-size}
@@ -147,8 +151,11 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 /* destructive items: quiet until hovered (same as Delete shot), the two-tap confirm lives in the label */
 #moremenu #delp:hover,#moremenu #delsong:hover,#leaveb:hover,#leaveb[data-armed]{color:var(--error)}
 #leaveb:hover,#leaveb[data-armed]{background:var(--error-subtle);border-color:transparent}
-/* saved state: quiet. A check when this browser (and the room) has every change, dots while saving, red only on failure */
-.saved{display:inline-flex;align-items:center;gap:var(--sp-1-5);min-width:var(--w-saved);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);white-space:nowrap}
+/* saved state: quiet. A check when this browser (and the room) has every change, dots while saving, red only on failure.
+   A fixed width with its words against Settings, so a change of state never moves anything; the rare longer error is
+   cut short (the tooltip has it in full). Text, not a ghost: its margins stand in for a ghost's padding */
+.saved{display:inline-flex;align-items:center;justify-content:flex-end;gap:var(--sp-1-5);width:var(--w-saved);margin-inline:var(--sp-2);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);white-space:nowrap}
+.saved .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .saved .ico{color:var(--ok)}
 .saved[data-k="busy"] .ico,.saved[data-k="local"] .ico{color:var(--ink-3)}
 .saved[data-k="err"],.saved[data-k="err"] .ico{color:var(--error)}
@@ -472,16 +479,21 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .mbar{display:block;width:100%;height:var(--sp-0-5);overflow:hidden;background:var(--border-strong);border-radius:var(--r-xs)}
 .mbar b{display:block;width:var(--w,0);height:100%;background:var(--ink-2)}
 /* who is in the room: you first (a hollow ring), then the others (filled), then +N. Each bubble says its name on
-   hover and on keyboard focus (one tab stop, arrows move along the row), in the same label as the indicator's */
-.presence{display:flex;align-items:center;gap:var(--sp-0-5)}
-.pchip{position:relative;display:inline-grid;place-items:center;width:var(--h-sm);height:var(--h-sm);border-radius:var(--r-round);background:var(--surface-3);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui);cursor:default}
+   hover and on keyboard focus (one tab stop, arrows move along the row), in the same label as the indicator's.
+   They overlap by 4px, each cut out of the one before by a ring of the bar's colour; the one pointed at comes forward */
+.presence{display:flex;align-items:center}
+.pchip+.pchip{margin-left:calc(-1 * var(--sp-1))}
+.pchip:is(:hover,:focus-visible){z-index:var(--z-menu)}
+.pchip{position:relative;display:inline-grid;place-items:center;width:var(--h-sm);height:var(--h-sm);border-radius:var(--r-round);background:var(--surface-3);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong),0 0 0 var(--sp-0-5) var(--surface-1);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui);cursor:default}
 .pchip.self{background:transparent;box-shadow:inset 0 0 0 var(--hairline) var(--border-control);color:var(--ink)}
-.pchip.more{background:transparent;color:var(--ink-3);font-weight:var(--w-medium)}
+.pchip.more{background:var(--surface-1);color:var(--ink-3);font-weight:var(--w-medium)}
 .pchip:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 .pchip::after{content:attr(data-tip);display:none}
 .pchip:is(:hover,:focus-visible)::after{display:block;visibility:visible}
 /* Settings: the gear and its name. Where the name steps back (below 1280) it shows in the same label as the
-   bubbles', on hover and on keyboard focus */
+   bubbles', on hover and on keyboard focus. Its padding hangs into the bar's gutter, so its ink ends where the
+   logo's starts from the other edge (and the zones stay even, the side switch on the centre) */
+#settingsb{margin-right:calc(-1 * var(--sp-2))}
 #settingsb::after{content:attr(data-tip);display:none}
 /* someone else has this shot selected: their initials on the thumbnail, neutral (orange stays "yours") */
 .pmark{position:absolute;right:var(--sp-2);top:var(--sp-2);display:flex;gap:var(--sp-0-5)}
@@ -524,7 +536,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 
 /* ---------- responsive: 1280-1920 primary, down to ~820 ---------- */
 /* the app bar never wraps: as it narrows, labels step back to their icons (still the accessible name, the title on
-   hover), then whole actions move into More. A Leave waiting for its second tap shows its words at any width */
+   hover), then whole actions move into More. A Leave waiting for its second tap shows its words at any width: an
+   icon-only one in the bubbles' label right under it, so the bar doesn't move */
 @media (max-width:1799px){
   .projops .btn:not(.icon){width:var(--h-md);padding:0}
   .projops .btn .ico:first-child{margin:0}
@@ -534,13 +547,15 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #importb,#exportb{display:none}
   #moremenu .mi.narrow{display:flex}
   .more:has(.mi.narrow:not(:disabled,[hidden])){display:block}
-  .collab .btn:not([data-armed]){width:var(--h-md);padding:0}
-  .collab .btn:not([data-armed]) .ico:first-child{margin:0}
+  .collab .btn{width:var(--h-md);padding:0}
+  .collab .btn .ico:first-child{margin:0}
   .collab .btn:not([data-armed]) .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  #leaveb[data-armed] .lbl{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--error);white-space:nowrap;pointer-events:none}
 }
 @media (max-width:1279px){
   .brand .lbl{display:none}
-  .saved{min-width:0}
+  .top{column-gap:var(--sp-4)}
+  .saved{width:auto}
   .saved .lbl,#settingsb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   #settingsb{width:var(--h-md);padding:0}
   #settingsb .ico:first-child{margin:0}
