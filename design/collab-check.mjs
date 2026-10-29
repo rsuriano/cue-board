@@ -78,7 +78,8 @@ const shot = async (page, name) => {
   await page.evaluate(() => scrollTo(0, 0)); await page.waitForFunction(() => document.getElementById('toast').hidden, null, { timeout: 4000 }).catch(() => {});
   await page.screenshot({ path: `${out}/${name}.png` });
 };
-const chip = page => page.evaluate(() => { const c = document.getElementById('cstat'); return c.hidden ? '' : c.textContent; });
+// the room's state in words: the media status indicator's panel header (there whether the panel is open or not)
+const chip = page => page.evaluate(() => (document.getElementById('mstatw').hidden ? '' : document.getElementById('mhead').textContent));
 async function until(fn, ms = 6000) { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) return v; await sleep(80); } }
 const val = (page, id) => page.$eval('#' + id, el => el.value);
 const cards = page => page.$$eval('.card .ct', els => els.map(e => e.textContent));
@@ -398,17 +399,21 @@ try {
   check('leave: B keeps its copy, no chip, and no longer receives edits', JSON.stringify(await cards(B.page)) === JSON.stringify(bKeep) && (await chip(B.page)) === '' && !(await B.page.evaluate(() => performance.getEntriesByType('resource').some(e => /collab\.js/.test(e.name)))), (await cards(B.page))[0]);
   check('C (still in the room) gets the edit made after B left', await until(async () => (await cards(C.page))[0]?.endsWith(' after B left')));
 
-  /* ---- layout with the chip and presence: 1920 to 820 ---- */
+  /* ---- layout with the indicator, its panel and presence: 1920 to 820 ---- */
   const widths = [1920, 1440, 1280, 1100, 900, 820], over = [];
-  // every chip state's label, longest included (the chip's text is set directly here; the states themselves are checked above)
-  const states = [['synced', 'Synced', 'ok'], ['offline', 'Offline, changes will sync', 'off'], ['rejected', "Can't reach the room", 'err'], ['synced', 'Synced, 2 files not shared', 'ok', 1]];
-  for (const [st, label, cls, un] of states) for (const w of widths) {
+  // every state's label, longest included, in the hover label and the open panel (the text is set directly here; the states themselves are checked above)
+  const states = [['synced', 'Synced', 'ok'], ['offline', 'Offline, changes will sync', 'off'], ['rejected', "Can't reach the room", 'err'], ['synced', 'Synced, 2 files not shared', 'off']];
+  for (const [st, label, k] of states) for (const w of widths) {
     await A.page.setViewportSize({ width: w, height: 900 });
-    await A.page.evaluate(([st, label, cls, un]) => { const c = document.getElementById('cstat'); c.dataset.state = st; c.textContent = label; c.className = 'status cchip ' + cls; if (un) c.dataset.unshared = ''; else delete c.dataset.unshared; }, [st, label, cls, un]);
-    await sleep(120); const o = await A.page.evaluate(() => document.documentElement.scrollWidth - innerWidth); if (o > 0) over.push(`${st}@${w}:${o}`);
+    await A.page.click('#mstat');
+    await A.page.evaluate(([st, label, k]) => { const b = document.getElementById('mstat'); b.dataset.state = st; b.dataset.k = k; document.getElementById('mhead').textContent = label; const l = document.getElementById('mlabel'); l.textContent = label; l.style.visibility = 'visible'; dispatchEvent(new Event('resize')); }, [st, label, k]);
+    await sleep(120);
+    const o = await A.page.evaluate(() => { const p = document.getElementById('mpanel').getBoundingClientRect(), l = document.getElementById('mlabel').getBoundingClientRect(); return Math.max(document.documentElement.scrollWidth - innerWidth, -Math.min(p.left, l.left), Math.max(p.right, l.right) - innerWidth); });
+    if (o > 0) over.push(`${st}@${w}:${o}`);
+    await A.page.keyboard.press('Escape'); await A.page.evaluate(() => document.getElementById('mlabel').style.removeProperty('visibility'));
   }
   await A.page.setViewportSize({ width: 1440, height: 900 });
-  check('no horizontal overflow 1920 to 820 px with collaboration on', !over.length, over.join(' ') || widths.join(','));
+  check('no horizontal overflow 1920 to 820 px with collaboration on (indicator label and open panel included)', !over.length, over.join(' ') || widths.join(','));
 
   /* ---- a first visit through an invite link, join cancelled: the example opens, the app isn't left empty ---- */
   {

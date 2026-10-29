@@ -11,14 +11,14 @@ User-facing summary and limits: README, "Collaboration v1". Server and doc layou
 | `packages/collab-client/src/convert.mjs` | Project ⇄ doc. Doc → project is the sync server's `docToCueboard()` plus `sanitizeProject()`. Project → doc is `pushProject()`, a field-level diff; writing a whole project into an empty doc gives the same doc as the server's `cueboardToDoc()` (tested). |
 | `collab.js` | The two above, Yjs and y-websocket bundled by esbuild (`npm run build:collab`), committed. |
 
-**Media** (frames, clips, takes, the song) now travels between collaborators, peer to peer, encrypted, verified by hash: `docs/media-p2p.md`. `packages/collab-client/src/media.mjs` and `media-core.mjs`, `packages/sync-server/src/media-relay.mjs`, `<meta name="cue-ice-urls">`, and **Files…** in the project menu.
+**Media** (frames, clips, takes, the song) now travels between collaborators, peer to peer, encrypted, verified by hash: `docs/media-p2p.md`. `packages/collab-client/src/media.mjs` and `media-core.mjs`, `packages/sync-server/src/media-relay.mjs`, `<meta name="cue-ice-urls">`, and the files panel (the icon next to Settings).
 
 ## Storage (all in the browser)
 
 - `cueboard-local` (the app's own database, schema unchanged): projects as before. A bound project is an ordinary local project; leaving the room leaves it as it is.
 - `cueboard-local` / `settings` / `collab`: `{ name, rooms: { <projectId>: { roomId, token, name, share? } } }`. `share` is set until a "Share into the room" has gone through, so a reload in between retries the share instead of pulling the empty room over the project.
 - `cueboard-local` / `settings` / `deviceId`: a random id for this browser. Takes record it (`take.dev`) so only the browser that started a generation polls OpenRouter for it, and presence hides this browser's other tabs and stale sessions. In a project bound to a room, a take without `dev` (older, or imported) is polled by nobody, and a 404 never marks someone else's take failed. Outside a room every pending take is polled, whatever its `dev` (a project imported from another device or origin). Sharing a project into a room first stamps this browser's id on its takes that have none.
-- `cueboard-local` / `settings` / `collab`, per room: `limits` (`{ file, project }` in MB) once set in Files….
+- `cueboard-local` / `settings` / `collab`, per room: `limits` (`{ file, project }` in MB) once set in the files panel.
 - `cueboard-collab` version 2 adds `parts` and `chunks` (files being received from peers; `docs/media-p2p.md`). Leaving a room drops that project's parts.
 - `cueboard-collab` (new database): `docs` (projectId → `{ u, base }`: the Y.Doc state, saved 300 ms after each change, and the push base that goes with the app's saved project; see "Reopening") and `hashes` (local media id → `{ sha256, bytes, mime }`). A bare Y.Doc state (written by `seed()`, or by an older version) has no base. Leaving a room deletes its `docs` entry, also from a tab that never loaded `collab.js` (`index.html` deletes it directly and never creates the database), and a save still in flight never writes it back.
 - Presence is one person per browser: awareness states with the same device id (two tabs, or a tab and its session from before a reload) show once.
@@ -39,15 +39,17 @@ User-facing summary and limits: README, "Collaboration v1". Server and doc layou
 
 Everything in the doc and in awareness came from another browser. `sanitizeProject()` keeps known fields only with the right type and within limits (500 shots, 200 takes per shot, 20,000 characters per text field, media ids must be `sha256-<hex>` or a plain id), drops unknown non-scalar keys, and returns `null` for anything that isn't a project; a pull that fails validation is ignored and the last good state stays. Names in awareness are stripped of control and bidi characters and cut to 40 characters; shot ids are checked before use. All of it is rendered with `textContent` or `esc()`.
 
-## Status chip
+## Status (the media status indicator)
 
-| Chip | When |
+The top-left chip is gone: the room's state is the header line of the files panel, opened from the icon next to Settings (`DESIGN.md`, "Icon button with progress ring", "Dropdown panel"). The icon shows the worst state: quiet, a ring while files arrive, a hollow dot (offline, a file not shared or not here), an error dot (can't reach the room, a file failed). Its words show on hover and keyboard focus.
+
+| Text | When |
 |---|---|
 | Synced | connected and the first sync is done |
 | Synced, N file(s) not shared | as Synced, but N media files couldn't be read or hashed here (see "Pending hash") |
 | Syncing… | connecting, or connected and waiting for the first sync |
 | Offline, changes will sync | the browser is offline (the provider is disconnected until it's back) |
-| Syncing N files · All files here · N files not available yet: nobody online has them · N files skipped: over the size limit · … | as Synced, in a project with media files: their transfer state (`docs/media-p2p.md`, "Limits and UX") |
+| Downloading N files · All files here · N files not available yet · N files skipped: over the size limit · … | as Synced, in a project with media files: their transfer state (`docs/media-p2p.md`, "Limits and UX") |
 | Can't reach the room | the connection fails (it keeps retrying, up to every 10 s), or the server refused the token or room (4400/4401/4404: it stops retrying) |
 
 ## Server change

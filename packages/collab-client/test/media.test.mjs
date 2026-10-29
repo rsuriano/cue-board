@@ -248,29 +248,33 @@ test('races: source leaves mid-transfer (another one finishes it); remote delete
   } finally { peers.forEach(p => p.close()); await srv.close(); }
 });
 
-test('limits: a file over the per-file limit is skipped until "Download all now"; a peer asking for a hash the doc doesn\'t reference gets nothing', async () => {
+test('limits: files over the per-file limit are skipped; "Download" fetches just that one, "Download all now" the rest; a peer asking for a hash the doc doesn\'t reference gets nothing', async () => {
   const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3396);
-  const data = randomBytes(CHUNK * 3), hex = nodeSha(data), peers = [];
+  const data = randomBytes(CHUNK * 3), hex = nodeSha(data), data2 = randomBytes(CHUNK * 2), hex2 = nodeSha(data2), peers = [];
   try {
-    const A = mk(srv, r.id, r.token, new Map([[hex, data.length]]), new Map([[hex, new Blob([data])]])); peers.push(A);
+    const A = mk(srv, r.id, r.token, new Map([[hex, data.length], [hex2, data2.length]]), new Map([[hex, new Blob([data])], [hex2, new Blob([data2])]])); peers.push(A);
     // B: a per-file limit of 1000 bytes
     const doc = new Y.Doc(), provider = new WebsocketProvider(srv.url, r.id, doc, { WebSocketPolyfill: WebSocket, params: { token: r.token }, disableBc: true });
     const files = new Map(), landed = [];
     const m = createMedia({ provider, roomId: r.id, token: r.token, pid: 'p', ice: [], store: memStore(),
-      wanted: () => new Map([[hex, { bytes: data.length, mime: '', label: 'f', local: files.has(hex) }]]), localBlob: async h => files.get(h) || null,
+      wanted: () => new Map([[hex, { bytes: data.length, mime: '', label: 'f', local: files.has(hex) }], [hex2, { bytes: data2.length, mime: '', label: 'g', local: files.has(hex2) }]]), localBlob: async h => files.get(h) || null,
       landed: async (h, b) => { files.set(h, b); landed.push(h); }, clientName: () => '', limits: () => ({ file: 1000, project: 5e9 }), onChange: () => {} });
     peers.push({ close() { m.stop(); provider.destroy(); doc.destroy(); } });
-    await until(() => m.summary().skipped === 1, 5000, 'skipped');
+    await until(() => m.summary().skipped === 2, 5000, 'skipped');
     await new Promise(ok => setTimeout(ok, 500));
     assert.equal(landed.length, 0);
+    m.download(hex2);
+    await until(() => landed.length === 1, 10000, 'the one asked for');
+    await new Promise(ok => setTimeout(ok, 500));
+    assert.deepEqual(landed, [hex2]); assert.equal(m.files().find(f => f.hex === hex).state, 'skipped');
     m.downloadAll();
-    await until(() => landed.length === 1, 10000, 'downloaded on request');
+    await until(() => landed.length === 2, 10000, 'downloaded on request');
     // an unreferenced hash: A answers "not found" and serves nothing
     const other = nodeSha(Buffer.from('not in the doc'));
-    assert.equal(A.m.stats.sent, data.length);
+    assert.equal(A.m.stats.sent, data.length + data2.length);
     const X = mk(srv, r.id, r.token, new Map([[other, 10]])); peers.push(X);
     await new Promise(ok => setTimeout(ok, 800));
-    assert.equal(X.landed.length, 0); assert.equal(A.m.stats.sent, data.length, 'A sent nothing more');
+    assert.equal(X.landed.length, 0); assert.equal(A.m.stats.sent, data.length + data2.length, 'A sent nothing more');
   } finally { peers.forEach(p => p.close()); await srv.close(); }
 });
 

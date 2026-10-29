@@ -64,12 +64,18 @@ async function open(name, init = {}, q = '') {
   const page = await ctx.newPage();
   page.on('console', m => { if (m.type() === 'error') cons.push(`${name}: ${m.text()}`); });
   page.on('pageerror', e => cons.push(`${name} pageerror: ${e.message}`));
-  const chips = new Set(), arriving = { seen: false };
+  const chips = new Set(), arriving = { seen: false, ring: false };
   const pg = { name, ctx, page, chips, arriving, timer: null };
   pg.timer = setInterval(async () => {
     try {
-      const [c, a] = await page.evaluate(() => { const c = document.getElementById('cstat'); return [c && !c.hidden ? c.textContent : '', [...document.querySelectorAll('[data-miss]')].some(e => /^Arriving · \d+%$/.test(e.textContent))]; });
-      if (c) chips.add(c); if (a) arriving.seen = true;
+      // the indicator's state in words (its panel header) and look; in place, "Arriving · N%" with a progress line on a file that is on its way
+      const [c, a, r] = await page.evaluate(() => {
+        const w = document.getElementById('mstatw'), b = document.getElementById('mstat'), m = window.__CUE_MEDIA_TEST.app.cmedia();
+        const on = new Set((m ? m.files() : []).filter(f => f.state === 'downloading' || f.state === 'queued').map(f => 'sha256-' + f.hex));
+        const arr = [...document.querySelectorAll('[data-miss]')].filter(e => /^Arriving · \d+%$/.test(e.querySelector('.mpt')?.textContent || ''));
+        return [w && !w.hidden ? document.getElementById('mhead').textContent : '', arr.length > 0 && arr.every(e => e.querySelector('.mbar b') && on.has(e.dataset.miss)), b.dataset.k === 'ring' && !!b.style.getPropertyValue('--p')];
+      });
+      if (c) chips.add(c); if (a) arriving.seen = true; if (r) arriving.ring = true;
     } catch { /* navigating */ }
   }, 150);
   pages[name] = pg;
@@ -141,7 +147,7 @@ try {
   // the app may re-encode an uploaded frame, so it's found by its label, not its size
   const frameHex = await until(async () => (await media(A))?.files.find(f => f.state === 'here' && f.hex !== takeHex && /^Shot 01 · image$/.test(f.label))?.hex, 20000);
   check('A: both new files are hashed and announced', !!frameHex && (await fileState(A, takeHex)) === 'here', `frame ${(frameBytes / 1e6).toFixed(1)} MB, take ${(TAKE / 1e6).toFixed(1)} MB`);
-  check('A: chip says All files here', await until(async () => (await A.page.$eval('#cstat', e => e.textContent)) === 'All files here', 10000));
+  check('A: the indicator is quiet and says All files here', await until(async () => (await A.page.$eval('#mhead', e => e.textContent)) === 'All files here' && (await A.page.$eval('#mstat', e => e.dataset.k)) === 'ok', 10000));
 
   /* ---- B replicates both automatically; the placeholders turn into the media ---- */
   B = await open('B');
@@ -155,8 +161,8 @@ try {
   measure('throughput, A -> B, frame + 30 MB take (join to verified)', `${((TAKE + frameBytes) / 1e6 / bSecs).toFixed(1)} MB/s over ${bm.s.direct ? 'WebRTC' : 'the relay'}`);
   measure('B JS heap peak while receiving', `${bHeap.toFixed(0)} MB`);
   check('B: the bytes hash to the content id and the app shows them under a local id', (await landedOk(B, takeHex)) && (await landedOk(B, frameHex)));
-  check('B: the placeholder showed progress while the file was arriving', B.arriving.seen);
-  check('B: chip went Syncing N files -> All files here', [...B.chips].some(c => /^Syncing \d files?$/.test(c)) && (await B.page.$eval('#cstat', e => e.textContent)) === 'All files here', [...B.chips].join(' | '));
+  check('B: the placeholder of the file arriving showed its progress (text and line)', B.arriving.seen);
+  check('B: the indicator showed its ring and went Downloading N files -> All files here', B.arriving.ring && [...B.chips].some(c => /^Downloading \d files?$/.test(c)) && (await B.page.$eval('#mhead', e => e.textContent)) === 'All files here', [...B.chips].join(' | '));
   check('B: no "not on this device yet" placeholder left', await B.page.evaluate(() => !document.querySelector('[data-miss]')));
 
   /* ---- the song: A loads one and B gets it; A replaces it and B gets the new one, never playing the old one under the
@@ -234,7 +240,10 @@ try {
   const eBan = await until(async () => (await media(E))?.stats.banned >= 1, 60000);
   check('E: a corrupted chunk fails authentication and its sender is dropped for the session', !!eBan, JSON.stringify((await media(E))?.stats));
   // with D dropped by E, nobody else E trusts has the files: the chip says so
-  check('E: chip says files are not available while nobody online it trusts has them', !!(await until(async () => /^\d files? not available yet: nobody online has them$/.test(await E.page.$eval('#cstat', e => e.textContent)), 20000)), await E.page.$eval('#cstat', e => e.textContent));
+  const eNobody = () => E.page.evaluate(() => ({ head: document.getElementById('mhead').textContent, k: document.getElementById('mstat').dataset.k,
+    ph: [...document.querySelectorAll('[data-miss] .mpt.nob')].map(e => e.textContent) }));
+  check('E: while nobody online it trusts has the files: hollow dot, "N files not available yet", "Nobody online has it" in place',
+    !!(await until(async () => { const s = await eNobody(); return /^\d files? not available yet$/.test(s.head) && s.k === 'off' && s.ph.length && s.ph.every(t => t === 'Nobody online has it'); }, 20000)), JSON.stringify(await eNobody()));
 
   /* ---- F: direct WebRTC blocked (no ICE candidates at all): everything goes through the relay, which only sees ciphertext ---- */
   F = await open('F', { noDirect: true }, '?sync=tap');
@@ -260,15 +269,24 @@ try {
   G = await open('G', { denyPersist: true });
   await joinRoom(G, 'Gus Hale');
   await got(G, [takeHex]);
-  await G.page.click('#proj'); await G.page.click('#projmenu [data-act="files"]');
-  await G.page.waitForSelector('#dlgFiles[open]');
+  // the files panel from the keyboard: Enter opens it onto the first file, arrows move, Escape closes it back onto the indicator
+  await G.page.focus('#mstat'); await G.page.keyboard.press('Enter');
+  const kb1 = await G.page.evaluate(() => !document.getElementById('mpanel').hidden && !!document.activeElement?.classList.contains('mrow') && document.getElementById('mstat').getAttribute('aria-expanded') === 'true');
+  await G.page.keyboard.press('ArrowDown');
+  const kb2 = await G.page.evaluate(() => !!document.activeElement?.closest('#mpanel') && document.activeElement !== document.querySelector('#fList li'));
+  await G.page.keyboard.press('Escape');
+  const kb3 = await G.page.evaluate(() => document.getElementById('mpanel').hidden && document.activeElement?.id === 'mstat');
+  check('G: the files panel opens from the keyboard onto the first file, arrows move, Escape closes it onto the indicator', kb1 && kb2 && kb3, JSON.stringify([kb1, kb2, kb3]));
+  await G.page.click('#mstat'); await G.page.waitForSelector('#mpanel:not([hidden])');
   await G.page.selectOption('#fLimF', '100');
   const warn = await G.page.$eval('#fWarn', e => (e.hidden ? '' : e.textContent));
-  check('G: persistent storage denied: a quiet warning in Files', /may clear these files/.test(warn), warn);
+  check('G: persistent storage denied: a quiet warning in the files panel', /may clear these files/.test(warn), warn);
   const list = await G.page.$$eval('#fList li', l => l.map(li => li.textContent));
   check('G: the files list shows name, size, state and who has it', list.length >= 2 && list.some(t => /take 1/.test(t) && /MB/.test(t) && /Here/.test(t) && /also with/.test(t)), list.join(' / ').slice(0, 200));
-  await G.page.screenshot({ path: `${out}/files-dialog.png` });
-  await G.page.click('#fClose');
+  await G.page.screenshot({ path: `${out}/files-panel.png` });
+  await G.page.click('.brand');
+  check('G: a click outside closes the panel', await G.page.$eval('#mpanel', e => e.hidden));
+  for (const p of [D, F]) await p.page.evaluate(() => { window.__CUE_MEDIA_TEST.chunkDelay = 10; });
   const bigHex = await D.page.evaluate(async () => {
     window.__CUE_MEDIA_TEST.corrupt = null;
     const n = 110 * 1024 * 1024, u = new Uint8Array(n);
@@ -278,12 +296,28 @@ try {
     window.__CUE_MEDIA_TEST.app.scheduleSave(); window.__CUE_MEDIA_TEST.app.renderAll();
     return [...new Uint8Array(await crypto.subtle.digest('SHA-256', u))].map(x => x.toString(16).padStart(2, '0')).join('');
   });
-  const skipped = await until(async () => (await fileState(G, bigHex)) === 'skipped' && /^1 file skipped: over the size limit$/.test(await G.page.$eval('#cstat', e => e.textContent)), 30000);
-  check('G: a file over its 100 MB limit is skipped, the chip says so', !!skipped, await G.page.$eval('#cstat', e => e.textContent));
+  const skipped = await until(async () => (await fileState(G, bigHex)) === 'skipped' && /^1 file skipped: over the size limit$/.test(await G.page.$eval('#mhead', e => e.textContent)), 30000);
+  check('G: a file over its 100 MB limit is skipped, the indicator says so', !!skipped, await G.page.$eval('#mhead', e => e.textContent));
   await sleep(1500);
   check('G: nothing of the skipped file was fetched', (await progress(G, bigHex)) === null);
-  await G.page.click('#proj'); await G.page.click('#projmenu [data-act="files"]'); await G.page.click('#fAll'); await G.page.click('#fClose');
-  check('G: "Download all now" fetches it anyway', !!(await got(G, [bigHex])));
+  // in place: the take's placeholder on side B offers Download, which fetches just that file
+  await G.page.click('.sidetab[data-side="b"]'); await G.page.locator('.bitem').nth(2).click();
+  const dl = `.take [data-miss="sha256-${bigHex}"] [data-mact="download"]`;
+  const offered = await until(() => G.page.$(dl), 10000);
+  check('G: the skipped take\'s placeholder says "Over the size limit" and offers Download', !!offered && /^Over the size limit$/.test(await G.page.$eval(`.take [data-miss="sha256-${bigHex}"] .mpt`, e => e.textContent)));
+  const r0 = (await media(G)).stats.recv;
+  if (offered) await G.page.click(dl);
+  check('G: Download in place starts it', !!(await until(async () => (await progress(G, bigHex)) > 0.05, 30000)));
+  // Pause in the panel: no new requests, the stored chunks stay, the placeholder says "Paused · N%"
+  await G.page.click('#mstat'); await G.page.waitForSelector('#mpanel:not([hidden])'); await G.page.click('#fPause');
+  await sleep(1500); const q1 = await progress(G, bigHex); await sleep(1500); const q2 = await progress(G, bigHex);
+  const pausedTxt = await G.page.$eval(`.take [data-miss="sha256-${bigHex}"] .mpt`, e => e.textContent).catch(() => '');
+  check('G: Pause keeps the partial file and asks for nothing more', q1 != null && q2 != null && q2 - q1 < 0.02 && q2 < 1 && /^Paused · \d+%$/.test(pausedTxt) && (await G.page.$eval('#fPause', e => e.textContent)) === 'Resume', `${q1} -> ${q2}, "${pausedTxt}"`);
+  for (const p of [D, F]) await p.page.evaluate(() => { window.__CUE_MEDIA_TEST.chunkDelay = 0; });
+  await G.page.click('#fAll');
+  const bigOk = await got(G, [bigHex]), r1 = (await media(G)).stats.recv;
+  check('G: "Download all now" resumes it from the stored chunks and it lands', !!bigOk && r1 - r0 < 110 * 1024 * 1024 + 4 * 1024 * 1024, `${((r1 - r0) / 1e6).toFixed(1)} MB received for a 115.3 MB file`);
+  check('G: the placeholder is gone once it landed', !!(await until(() => G.page.evaluate(h => !document.querySelector(`[data-miss="sha256-${h}"]`), bigHex), 10000)));
 
   check('server log: no token, no file name, no plaintext', !serverLog.includes(room.token) && !serverLog.includes('secret-frame-name') && !serverLog.includes(MARK) && !/take 1|Shot 0/.test(serverLog), `${serverLog.split('\n').length} lines`);
   // as in collab-check: requests the route blocks (OpenRouter) and 404 probes are not errors of the app
