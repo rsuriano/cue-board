@@ -613,7 +613,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 /* "not all and (min-width:820px)", not (max-width:819px): with zoom or a fractional DPR the width can be 819.5px */
 @media not all and (min-width:820px){
   :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
-    --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px; --tl-min:150px;
+    --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px;
+    /* the timeline's rows: the ruler (the zoom on its right), the shot strip, the waveform. A fixed height; the preview takes the rest */
+    --tl-ruler-h:var(--hit); --tl-strip:56px; --tl-wave:clamp(72px,12dvh,120px);
+    --tl-h:calc(var(--tl-ruler-h) + var(--sp-1) + var(--tl-strip) + var(--sp-2) + var(--tl-wave) + var(--sp-2) + 2 * var(--hairline));
     --grip-w:var(--sp-3); --icon-tool:var(--sp-5); --z-sheet:14;
     --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px); --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px)}
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
@@ -631,23 +634,23 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #sideA{display:flex;flex-direction:column;gap:0}
   .sideB{display:grid;align-content:start;overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-3) calc(var(--gutter) + var(--safe-r)) var(--sp-6) calc(var(--gutter) + var(--safe-l))}
   .songbar{flex:none;margin:var(--sp-2) var(--gutter) 0}
-  /* the monitor: full width, 16:9, never taller than a third of the screen */
-  .stage{display:block;flex:none}
-  .monitor{height:auto;max-height:34dvh;aspect-ratio:16/9;min-height:0;margin-inline:auto;border:0;border-radius:0}
+  /* the monitor: full width and all the height the deck leaves (the image is contained: letterboxed when taller than 16:9) */
+  .stage{display:block;flex:1 1 0;min-height:0}
+  .monitor{height:100%;min-height:0;border:0;border-radius:0}
   .slate{padding:var(--sp-4)}
   .slate.cap{padding:var(--sp-8) var(--sp-4) var(--sp-3)}
   .slate .t{font-size:var(--text-xl);line-height:var(--lh-xl)}
   .slate p{font-size:var(--text-md);line-height:var(--lh-md);-webkit-line-clamp:2}
-  /* transport: Play, the time, Loop and Speed in one row; zoom sits on the timeline's corner */
-  .deck{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;gap:0}
+  /* transport: Play, the time, Loop and Speed in one row; zoom sits on the right of the timeline's ruler row */
+  .deck{position:relative;flex:none;display:flex;flex-direction:column;gap:0}
   .transport{flex:none;flex-wrap:nowrap;gap:var(--sp-2);padding:var(--sp-1) calc(var(--gutter) + var(--safe-r)) var(--sp-1) calc(var(--gutter) + var(--safe-l))}
   .transport .tgroup{display:contents}
   #play{min-width:0;padding:0 var(--sp-4)}
   #tc{flex:1;min-width:0}
   #speed{width:auto}
-  .transport .seg{position:absolute;right:calc(var(--sp-2) + var(--safe-r));bottom:var(--sp-2);z-index:2}
+  .transport .seg{position:absolute;right:calc(var(--sp-2) + var(--safe-r));bottom:calc(var(--tl-h) - var(--hairline) - var(--tl-ruler-h));z-index:2}
   /* the timeline: a native horizontal scroller under a fixed playhead. The canvas is the viewport's size */
-  .timeline{flex:1;min-height:var(--tl-min);border-width:var(--hairline) 0;border-radius:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .timeline{flex:none;height:var(--tl-h);border-width:var(--hairline) 0;border-radius:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
   #tl-scroll{position:static;display:flex;height:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;scrollbar-width:none;touch-action:pan-x}
   #tl-scroll::-webkit-scrollbar{display:none}
   #tl{position:sticky;left:0;flex:none;cursor:default;touch-action:pan-x}
@@ -746,7 +749,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 }
 @media not all and (min-width:820px){@media (max-height:699px){.m-peek{display:none}}}
 /* landscape (or any very short window): no layout of its own, the page just scrolls */
-@media not all and (min-width:820px){@media (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.timeline{flex:none;height:var(--tl-min)}}}
+@media not all and (min-width:820px){@media (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.stage{flex:none}.monitor{height:auto;max-height:34dvh;aspect-ratio:16/9;margin-inline:auto}}}
 @media not all and (min-width:820px){@media (prefers-reduced-motion:no-preference){body.m-ed .editor{animation:rise var(--dur-base) var(--ease-out)}}}
 </style>
 </head>
@@ -2394,7 +2397,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:H=>mBand(H),cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -2539,12 +2542,14 @@ function renderTimelineM(){
 /* the scroll position is the time, except while a finger (or its fling) moves it */
 function mSync(){if(!phone()||mTouch||mLift||performance.now()-mScrollAt<200)return;const x=Math.round(now()*P);
   if(Math.abs(scroller.scrollLeft-x)>1){mProg=x;scroller.scrollLeft=x}}
-const mBand=H=>{const top=24,h=Math.max(36,Math.min(56,Math.round((H-24)*.32)));return{top,h,wave:top+h+8}};
+/* the rows, as --tl-h in the CSS: a 44px ruler that holds the zoom, the shot strip, the waveform */
+const MRU=44,mBand=H=>{const top=MRU+4,h=Math.max(44,Math.min(56,H-top-8-72-8));return{top,h,wave:top+h+8,waveH:H-8-(top+h+8)}};
 function mDraw(){
   if(!phone()||!cv.width)return;const cw=cv.clientWidth,H=cv.clientHeight,dpr=window.devicePixelRatio||1,g=cv.getContext("2d");
   g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,cw,H);
-  const off=scroller.scrollLeft-cw/2,X=t=>t*P-off,d=dur(),RU=20,b=mBand(H),t0=Math.max(0,off/P),t1=Math.min(d,(off+cw)/P);
-  g.fillStyle=T["--tl-ruler"];g.fillRect(Math.max(0,X(0)),0,Math.min(cw,X(d))-Math.max(0,X(0)),RU);
+  const off=scroller.scrollLeft-cw/2,X=t=>t*P-off,d=dur(),RU=MRU,b=mBand(H),t0=Math.max(0,off/P),t1=Math.min(d,(off+cw)/P);
+  /* the ruler spans the whole width, before the song's start and after its end too: no empty column beside the centre playhead */
+  g.fillStyle=T["--tl-ruler"];g.fillRect(0,0,cw,RU);
   const st=[1,2,5,10,15,30,60,120].find(s=>s*P>=64)||120;
   g.font="500 11px 'JetBrains Mono', monospace";g.textBaseline="middle";g.textAlign="left";g.lineWidth=1;
   for(let t=Math.floor(t0/st)*st;t<=t1+1e-6;t+=st){const x=Math.round(X(t))+.5;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
