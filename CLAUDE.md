@@ -20,6 +20,10 @@ After changing `index.html`, `collab.js`, `example/` or `fonts/` here (`collab.j
 
 Only `index.html`, `collab.js`, `example/` and `fonts/` go to hephaestus (without `fonts/` the hosted copy falls back to system fonts; without `collab.js` joining a room fails, everything else works).
 
+Media between collaborators (`docs/media-p2p.md`) uses `<meta name="cue-ice-urls" content="">` for WebRTC ICE servers. Empty (this repo and, until the owner picks an option, the hosted copy) means no STUN/TURN: peers on one network connect directly, everyone else goes through the sync server's encrypted relay. If the owner picks STUN or coturn, set it in the hephaestus copy only, like the sync URL: `sed -i 's|<meta name="cue-ice-urls" content="[^"]*">|<meta name="cue-ice-urls" content="stun:…">|' hephaestus/pages/cue/index.html`.
+
+**Sync server changes need a redeploy in `/opt/cue-sync`** (hephaestus doesn't deploy it): `packages/sync-server/src/media-relay.mjs` and `media-limits.mjs` are new and `server.mjs` / `main.mjs` changed (message type 10: media signaling and relay). Update the checkout there and restart the service; no new dependency, no data migration. Optional env: `RELAY_ROOM_BYTES_PER_SEC` (8 MiB), `RELAY_IP_BYTES_PER_SEC` (4 MiB), `RELAY_MAX_TRANSFER_BYTES` (2 GiB: the largest file relayed; the server tells clients, so don't set it below 2000 MB or files the app downloads automatically would need a direct connection). Behind the proxy keep `TRUST_PROXY=1` so the per-IP relay cap sees real client IPs. An old server still syncs the doc with the new app; only media transfers won't happen (no peer ids).
+
 The sync server URL is set by `<meta name="cue-sync-url" content="">` in `index.html`. It's empty in this repo, which turns collaboration off (no network, `collab.js` never loads). The hosted copy sets it, in hephaestus only, to `wss://sync.bedrocklabs.dev`. The sync server itself (`packages/sync-server`) is not deployed by hephaestus' pages; see its `SPIKE.md`. Never deploy `server.mjs` or `.env`: the hosted copy is static, and each visitor uses their own OpenRouter key, stored in their browser.
 
 ## Don't commit
