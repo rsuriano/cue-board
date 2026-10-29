@@ -64,7 +64,7 @@
   --h-xs:20px; --h-sm:28px; --h-md:32px; --h-lg:36px; --hit:32px;
   --icon-sm:6px; --icon-md:10px; --icon-lg:16px; --stroke:1.5px;
   /* layout */
-  --w-project:220px; --w-project-min:160px; --w-menu-max:360px; --menu-max-h:min(420px,60vh);--w-play:88px; --w-tc:76px; --h-prompt:96px; --genbox-min:360px; --measure-short:60ch;
+  --w-project:220px; --w-project-min:160px; --w-menu-max:360px; --menu-max-h:min(420px,60vh); --w-panel:400px; --mlist-max:min(360px,40vh); --mbar-w:120px;--w-play:88px; --w-tc:76px; --h-prompt:96px; --genbox-min:360px; --measure-short:60ch;
   --app-max:1920px; --gutter:var(--sp-5); --header-h:48px;
   --inspector-w:clamp(320px,26vw,400px); --list-w:248px; --card-w:176px; --thumb-w:72px; --ref-w:100px;
   --monitor-min-h:280px; --stage-h:max(var(--monitor-min-h),calc(100vh - 400px)); --dialog-w:560px; --measure:72ch; --take-min:400px; --var-min:140px;
@@ -154,7 +154,7 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .btn.small{height:var(--h-sm);padding:0 var(--sp-3);font-size:var(--text-sm)}
 .btn.small.ghost{padding:0 var(--sp-2)}
 .btn.icon{width:var(--h-md);padding:0}
-.btn.small::after,.chip::after,.sidetab::after,.ref button::after{content:"";position:absolute;inset:calc((var(--h-sm) - var(--hit)) / 2) 0}
+.btn.small::after,.chip::after,.sidetab::after,.ref>button::after{content:"";position:absolute;inset:calc((var(--h-sm) - var(--hit)) / 2) 0}
 .btn[aria-pressed="true"]{background:var(--accent-subtle);border-color:var(--accent-border);color:var(--accent)}
 .btn[disabled],.btn[disabled]:hover{opacity:var(--o-disabled);cursor:not-allowed;background:var(--surface-2);border-color:var(--border)}
 .btn.primary[disabled],.btn.primary[disabled]:hover{background:var(--accent);border-color:var(--accent)}
@@ -335,10 +335,10 @@ dialog::backdrop{background:var(--backdrop)}
 .refs .linkbtn{display:inline-flex;align-items:center;gap:var(--sp-1)}
 .ref{position:relative;width:var(--ref-w);aspect-ratio:16/9;overflow:hidden;background:var(--screen);border:var(--hairline) solid var(--border);border-radius:var(--r-sm)}
 .ref img{width:100%;height:100%;object-fit:cover;display:block}
-.ref button{all:unset;box-sizing:border-box;position:absolute;top:var(--sp-0-5);right:var(--sp-0-5);display:grid;place-items:center;width:var(--h-xs);height:var(--h-xs);border-radius:var(--r-xs);background:var(--on-media);color:var(--ink);cursor:pointer}
-.ref button .ico{width:var(--sp-3);height:var(--sp-3)}
-.ref button:hover{background:var(--error);color:var(--accent-ink)}
-.ref button:focus-visible{outline:var(--ring) solid var(--accent)}
+.ref>button{all:unset;box-sizing:border-box;position:absolute;top:var(--sp-0-5);right:var(--sp-0-5);display:grid;place-items:center;width:var(--h-xs);height:var(--h-xs);border-radius:var(--r-xs);background:var(--on-media);color:var(--ink);cursor:pointer}
+.ref>button .ico{width:var(--sp-3);height:var(--sp-3)}
+.ref>button:hover{background:var(--error);color:var(--accent-ink)}
+.ref>button:focus-visible{outline:var(--ring) solid var(--accent)}
 
 /* frames */
 .frames{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap-block);align-items:start}
@@ -403,14 +403,48 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .take .btn.primary:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .incut-badge{position:absolute;right:var(--sp-2);top:var(--sp-2);padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--ok);color:var(--ok-ink);font:var(--w-semibold) var(--text-sm)/var(--h-xs) var(--font-ui)}
 
-/* ---------- collaboration: status chip, who else is here, their selections, the join dialog ---------- */
-.cchip{height:var(--h-sm);padding:0 var(--sp-2);border:var(--hairline) solid var(--border);border-radius:var(--r-sm)}
-/* in a shared project the chip speaks for saving too; the header status only shows up to report a local save error */
-.top:has(#cstat:not([hidden])) #status:not(.err){display:none}
-/* the long states don't fit one header row below 1600px: the groups wrap whole, as they already do below 1360px */
-@media (max-width:1599px){.top:has(#cstat[data-state="offline"]:not([hidden]),#cstat[data-state="unreachable"]:not([hidden]),#cstat[data-state="rejected"]:not([hidden]),#cstat[data-unshared]:not([hidden]),#cstat[data-media]:not([hidden])){flex-wrap:wrap}}
-.status.sync::before{background:var(--ink-3)}
-.status.off::before{background:transparent;box-shadow:inset 0 0 0 var(--hairline) var(--ink-3)}
+/* ---------- collaboration: media status indicator and its panel, who else is here, their selections, the join dialog ---------- */
+/* in a shared project the indicator speaks for saving too; the header status only shows up to report a local save error */
+.top:has(#mstatw:not([hidden])) #status:not(.err){display:none}
+/* the indicator: a quiet icon button. A thin neutral ring while files arrive, a dot when something is missing or wrong */
+.mstat{position:relative}
+.top .mstat>.btn.icon{padding:0}
+.mring{position:absolute;inset:var(--sp-0-5);display:none;width:calc(100% - 2 * var(--sp-0-5));height:calc(100% - 2 * var(--sp-0-5));fill:none;stroke-width:var(--stroke);rotate:-90deg;pointer-events:none}
+.mring circle{stroke:var(--border-strong)}
+.mring .arc{stroke:var(--ink-2);stroke-dasharray:var(--p,0) 100;stroke-linecap:round}
+#mstat[data-k="ring"] .mring{display:block}
+.mdot{position:absolute;top:var(--sp-1);right:var(--sp-1);display:none;width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round)}
+#mstat[data-k="off"] .mdot{display:block;box-shadow:inset 0 0 0 var(--hairline) var(--ink-2)}
+#mstat[data-k="err"] .mdot{display:block;background:var(--error)}
+/* its state in words on hover and keyboard focus (the panel says it once open) */
+.mlabel{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink);white-space:nowrap;pointer-events:none;visibility:hidden}
+#mstat[aria-expanded="false"]:is(:hover,:focus-visible)~.mlabel{visibility:visible}
+/* the dropdown panel: non-modal, anchored under the indicator, right edges aligned (script keeps it on screen) */
+.mpanel{position:absolute;top:calc(100% + var(--sp-1));right:var(--mp-shift,0);z-index:var(--z-menu);display:grid;gap:var(--gap-block);width:var(--w-panel);max-width:calc(100vw - 2 * var(--gutter));max-height:var(--mp-max,var(--menu-max-h));overflow:auto;padding:var(--inset-panel);background:var(--surface-2);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-md);box-shadow:var(--shadow-float)}
+.mp-head{display:grid;gap:var(--sp-0-5);padding-bottom:var(--sp-3);border-bottom:var(--hairline) solid var(--border)}
+.mp-head h3{margin:0;font:var(--w-semibold) var(--text-md)/var(--lh-md) var(--font-ui);color:var(--ink)}
+.mp-head h3[data-k="err"]{color:var(--error)}
+.mp-head p{margin:0}
+.mp-head p:empty{display:none}
+.mpanel:focus{outline:none}
+.mp-foot{display:grid;gap:var(--sp-3);padding-top:var(--sp-3);border-top:var(--hairline) solid var(--border)}
+.lims{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-3)}
+.mlist{display:block;margin:0 calc(-1 * var(--sp-2));padding:0;list-style:none;max-height:var(--mlist-max);overflow:auto}
+.mlist:empty::before{content:"No files in this project yet.";display:block;padding:0 var(--sp-2);color:var(--ink-3)}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-0-5) var(--sp-3);min-height:var(--hit);padding:var(--sp-2);border-radius:var(--r-xs)}
+.mrow+.mrow{box-shadow:inset 0 var(--hairline) var(--border-subtle)}
+.mrow:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
+.mrow .fn{overflow:hidden;color:var(--ink);text-overflow:ellipsis;white-space:nowrap}
+.mrow .fs{font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-3);text-align:right}
+.mrow .fw{display:flex;align-items:center;gap:var(--sp-1-5);min-width:0;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm)}
+.mrow .fw.err{color:var(--error)}
+.mrow .btn{justify-self:end}
+.mrow .mbar{grid-column:1/-1}
+/* nobody online has it: the same hollow dot as the indicator */
+.nob::before{content:"";flex:none;width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round);box-shadow:inset 0 0 0 var(--hairline) var(--ink-2)}
+/* a thin neutral progress line: files arriving, in the panel and in place */
+.mbar{display:block;width:100%;height:var(--sp-0-5);overflow:hidden;background:var(--border-strong);border-radius:var(--r-xs)}
+.mbar b{display:block;width:var(--w,0);height:100%;background:var(--ink-2)}
 .presence{display:flex;align-items:center;gap:var(--sp-0-5)}
 .pchip{display:inline-grid;place-items:center;width:var(--h-sm);height:var(--h-sm);border-radius:var(--r-round);background:var(--surface-3);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui)}
 .pchip.more{background:transparent;color:var(--ink-3);font-weight:var(--w-medium)}
@@ -419,24 +453,24 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .bitem .bt{position:relative}
 .bitem .pmark{right:var(--sp-0-5);top:var(--sp-0-5)}
 .pmark b{display:inline-grid;place-items:center;min-width:var(--h-xs);height:var(--h-xs);padding:0 var(--sp-1);border-radius:var(--r-xs);background:var(--on-media);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui)}
-/* a media file another device has and this one doesn't (yet): quiet, never an error */
-.thumb .tn.miss{padding:0 var(--sp-3);font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);text-align:center}
-.slate .miss{font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-3)}
-.opts{display:grid;gap:var(--sp-2)}
+/* a media file another device has and this one doesn't (yet): quiet, never an error. Its state, a progress line while
+   it arrives, and one small action when there's something to do (Download past the limit, Retry) */
+.mph{display:grid;justify-items:center;align-content:center;gap:var(--sp-1-5);min-width:0;padding:0 var(--sp-3);font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);text-align:center}
+.mph .mpt{display:inline-flex;align-items:center;gap:var(--sp-1-5)}
+.mph .mbar{width:min(100%,var(--mbar-w))}
+.thumb .tn.mph{font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3)}
+.slate .mph{justify-items:start;padding:0;text-align:left}
+/* a reference is 100px wide: one line under its remove button, or just the action */
+.ref .mph{position:absolute;inset:0;padding:var(--sp-5) var(--sp-1) 0}
+.ref .mph .mpt{display:block;overflow:hidden;max-width:100%;text-overflow:ellipsis;white-space:nowrap}
+.ref .mph:has(.btn) .mpt{display:none}
+.songbar .mph{justify-items:start;padding:0}.opts{display:grid;gap:var(--sp-2)}
 .opt{all:unset;box-sizing:border-box;display:grid;gap:var(--sp-0-5);padding:var(--inset-card) var(--inset-panel);background:var(--surface-2);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-md);cursor:pointer}
 .opt b{font-weight:var(--w-semibold);color:var(--ink)}
 .opt span{font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-2)}
 .opt:hover{background:var(--surface-3);border-color:var(--border-control)}
 .opt:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 .opt:disabled,.opt:disabled:hover{opacity:var(--o-disabled);cursor:not-allowed;background:var(--surface-2);border-color:var(--border-strong)}
-.flist{display:grid;margin:0;padding:0;list-style:none;max-height:min(50vh,420px);overflow:auto}
-.flist li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-0-5) var(--sp-3);padding:var(--sp-2) 0;border-top:var(--hairline) solid var(--border)}
-.flist li:first-child{border-top:0}
-.flist .fn{overflow:hidden;color:var(--ink);font-size:var(--text-md);line-height:var(--lh-md);text-overflow:ellipsis;white-space:nowrap}
-.flist .fs{font:var(--w-regular) var(--text-sm)/var(--lh-md) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-3)}
-.flist .fw{grid-column:1/-1;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm)}
-.flist:empty::before{content:"No files in this project yet.";color:var(--ink-3);font-size:var(--text-md)}
-.dlg .lims{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-3)}
 .jmsg{margin:0;color:var(--error);font-size:var(--text-sm);line-height:var(--lh-sm)}
 .jmsg:empty{display:none}
 
@@ -445,10 +479,13 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .btn,.chip,.sidetab,.card,.bitem,.opt,input,select,textarea,.linkbtn{transition:background-color var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out)}
   details.prompts summary::before{transition:transform var(--dur-fast) var(--ease-out)}
   .toast:not([hidden]){animation:rise var(--dur-base) var(--ease-out)}
-  dialog[open]{animation:rise var(--dur-base) var(--ease-out)}
+  dialog[open],.mpanel:not([hidden]){animation:rise var(--dur-base) var(--ease-out)}
   .spin{animation:spin var(--dur-spin) linear infinite}
+  #mstat[data-busy] .mring{animation:mspin var(--dur-spin) linear infinite}
+  .mbar b{transition:width var(--dur-base) var(--ease-out)}
 }
 @keyframes rise{from{opacity:0;translate:0 var(--sp-1)}}
+@keyframes mspin{from{rotate:-90deg}to{rotate:270deg}}
 
 /* ---------- responsive: 1280-1920 primary, down to ~820 ---------- */
 @media (max-width:1359px){.top{flex-wrap:wrap}}
@@ -474,6 +511,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-arrow-right" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
   <symbol id="i-swap" viewBox="0 0 16 16"><path d="M3 5.5h10M10 2.5l3 3-3 3M13 10.5H3M6 7.5l-3 3 3 3"/></symbol>
   <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+  <symbol id="i-tray" viewBox="0 0 16 16"><path d="M8 2.5v7M5 6.5l3 3 3-3M2.5 10v2.5h11V10"/></symbol>
   <symbol id="i-x"viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
 </defs></svg>
 <div class="app">
@@ -486,7 +524,6 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
         <input id="ptitle" aria-label="Project name" placeholder="Project name" hidden>
         <div id="projmenu" class="menu" role="menu" aria-label="Projects" hidden></div>
       </div>
-      <span id="cstat" class="status cchip" role="status" hidden></span>
       <span id="presence" class="presence" role="group" hidden></span>
       <button type="button" id="newp" class="btn ghost">New</button>
       <button type="button" id="delp" class="btn ghost">Delete</button>
@@ -502,6 +539,23 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       <label class="btn ghost" for="importf">Import</label><input id="importf" type="file" accept=".json,application/json" hidden>
       <button type="button" id="exportb" class="btn ghost">Export</button>
       <button type="button" id="settingsb" class="btn ghost">Settings</button>
+      <div class="mstat" id="mstatw" hidden>
+        <button type="button" id="mstat" class="btn ghost icon" aria-haspopup="dialog" aria-expanded="false" aria-controls="mpanel" aria-label="Files"><svg class="ico" aria-hidden="true"><use href="#i-tray"/></svg><svg class="mring" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="13" pathLength="100"/><circle class="arc" cx="14" cy="14" r="13" pathLength="100"/></svg><span class="mdot"></span></button>
+        <span class="mlabel" id="mlabel" aria-hidden="true"></span>
+        <div class="mpanel" id="mpanel" role="dialog" tabindex="-1" aria-labelledby="mhead" aria-describedby="mtip" hidden>
+          <div class="mp-head"><h3 id="mhead" aria-live="polite"></h3><p class="muted" id="mtip"></p></div>
+          <p class="hint" id="fWarn" hidden></p>
+          <ul class="mlist" id="fList" aria-label="Files"></ul>
+          <div class="mp-foot">
+            <div class="lims">
+              <div class="field"><label for="fLimF">Download automatically</label><select id="fLimF"><option value="100">Files up to 100 MB</option><option value="500">Files up to 500 MB</option><option value="2000">Files up to 2 GB</option></select></div>
+              <div class="field"><label for="fLimP">For the whole project</label><select id="fLimP"><option value="5000">Up to 5 GB</option><option value="20000">Up to 20 GB</option><option value="50000">Up to 50 GB</option></select></div>
+            </div>
+            <div class="row"><button type="button" id="fPause" class="btn small ghost">Pause</button><span class="grow"></span><button type="button" id="fAll" class="btn small">Download all now</button></div>
+            <p class="hint">Everyone in the room keeps a copy of every file. Files go straight from one collaborator to another, encrypted; the sync server never stores them.</p>
+          </div>
+        </div>
+      </div>
     </div>
     <span id="status" class="status">Loading</span>
   </header>
@@ -666,17 +720,6 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <p class="jmsg" id="jMsg" role="alert"></p>
   <div class="row"><span class="grow"></span><button type="button" id="jCancel" class="btn ghost">Cancel</button><button type="submit" id="jGo" class="btn primary">Join</button></div>
 </form></dialog>
-<dialog id="dlgFiles" aria-labelledby="fTitle"><div class="dlg">
-  <h3 id="fTitle">Files in this project</h3>
-  <p class="muted">Everyone in the room keeps a copy of every file. Files go straight from one collaborator to another, encrypted; the sync server never stores them.</p>
-  <p class="hint" id="fWarn" role="status" hidden></p>
-  <ul class="flist" id="fList" aria-label="Files"></ul>
-  <div class="lims">
-    <div class="field"><label for="fLimF">Download automatically</label><select id="fLimF"><option value="100">Files up to 100 MB</option><option value="500">Files up to 500 MB</option><option value="2000">Files up to 2 GB</option></select></div>
-    <div class="field"><label for="fLimP">For the whole project</label><select id="fLimP"><option value="5000">Up to 5 GB</option><option value="20000">Up to 20 GB</option><option value="50000">Up to 50 GB</option></select></div>
-  </div>
-  <div class="row"><button type="button" id="fPause" class="btn ghost">Pause</button><span class="grow"></span><button type="button" id="fClose" class="btn ghost">Close</button><button type="button" id="fAll" class="btn primary">Download all now</button></div>
-</div></dialog>
 <audio id="audio" preload="auto"></audio>
 <div class="toast" id="toast" hidden></div>
 
@@ -855,8 +898,10 @@ function renderProjSelect(){
 function renderSongbar(){
   const el=$("songbar");
   if(cur&&cur.song&&cur.song.name&&!hasAudio){el.hidden=false;el.dataset.stale=songStale?"1":"";
-    el.innerHTML=songStale?`<span>The song was replaced with <b>${esc(cur.song.name)}</b>. It plays once it arrives from your collaborators; Files… shows its progress.</span><label class="btn small" for="song">Load it yourself</label>`
-      :`<span>This project uses <b>${esc(cur.song.name)}</b>. Load it here to hear it.</span><label class="btn small" for="song">Load ${esc(cur.song.name)}</label>`}
+    /* in a room the song comes from collaborators like any file: its state and progress in place */
+    const ph=csess?`<span class="mph" id="songph" hidden></span>`:"";
+    el.innerHTML=songStale?`<span>The song was replaced with <b>${esc(cur.song.name)}</b>. It plays once it arrives from your collaborators.</span>${ph}<label class="btn small" for="song">Load it yourself</label>`
+      :`<span>This project uses <b>${esc(cur.song.name)}</b>. Load it here to hear it.</span>${ph}<label class="btn small" for="song">Load ${esc(cur.song.name)}</label>`;missSoon()}
   else el.hidden=true;
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
   $("delsong").hidden=!has;$("songlbl").textContent=has?"Replace song":"Load song";
@@ -908,12 +953,13 @@ function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
   const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
   const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
-    const media=!mediaURL(s.img)?(isMissing(s.img)?`<span class="tn miss" data-miss="${esc(s.img)}">Not on this device yet</span>`:`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${mediaURL(s.img)}" alt="">`;
+    const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${mediaURL(s.img)}" alt="">`;
     return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${esc(s.shot||clipHint(d))}</div>${clipLine(s,d)}</div></button>`});
   const cards=[...el.children],fresh=[];
   if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
   else{el.innerHTML=html.join("");[...el.children].forEach((c,i)=>{c._h=html[i];fresh.push(c)})}
   fresh.forEach(c=>c.querySelectorAll("img,video").forEach(im=>im.onerror=()=>{const sp=document.createElement("span");sp.className="tn";sp.textContent="?";im.replaceWith(sp)}));
+  if(fresh.length)missSoon();
   if(fid&&document.activeElement!==ae){const c=el.querySelector(`.card[data-id="${CSS.escape(fid)}"]`);if(c)c.focus({preventScroll:true})}
   renderMarks();if(csess)csess.select(selId);
 }
@@ -946,7 +992,7 @@ function renderMonitor(force){
   const miss=isMissing(s.img),key=[s.id,i,s.img,s.kind,s.title,s.shot,s.notes,miss].join("|");
   if(force||key!==lastKey){lastKey=key;
     const vd=$("mvid");
-    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?`<div class="miss" data-miss="${esc(s.img)}">${s.kind==="video"?"Clip":"Image"} not on this device yet</div>`:""}`;
+    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?missHTML("div","miss",s.img,(s.kind==="video"?"Clip":"Image")+" not on this device yet"):""}`;missSoon();
     if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
     else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
     else{vd.hidden=true;try{vd.pause()}catch(e){}
@@ -1042,7 +1088,7 @@ function renderProjMenu(){
   $("projmenu").innerHTML=list.map(p=>{const t=p.title||"Untitled project";
     return `<button type="button" class="mi" role="menuitemradio" tabindex="-1" aria-checked="${p===cur}" data-pid="${esc(p.id)}" title="${esc(t)}">${ico("check")}<span>${esc(t)}</span></button>`}).join("")
     +(cur||SYNC_URL?`<hr role="separator">`:"")
-    +[cur&&["rename","Rename…"],SYNC_URL&&["join","Join collaboration…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["files","Files…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["leave","Leave collaboration"]].filter(Boolean)
+    +[cur&&["rename","Rename…"],SYNC_URL&&["join","Join collaboration…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["leave","Leave collaboration"]].filter(Boolean)
       .map(([a,t])=>`<button type="button" class="mi" role="menuitem" tabindex="-1" data-act="${a}">${ico("check")}<span>${t}</span></button>`).join("");
 }
 const menuItems=()=>[...$("projmenu").querySelectorAll(".mi")];
@@ -1068,7 +1114,6 @@ $("projmenu").onclick=e=>{
   if(b.dataset.act==="rename"){closeProjMenu(false);startRename();return}
   if(b.dataset.act==="join"){closeProjMenu(false);joinFlow(null);return}
   if(b.dataset.act==="leave"){closeProjMenu(true);leaveRoom();return}
-  if(b.dataset.act==="files"){closeProjMenu(false);openFiles();return}
   closeProjMenu(true);const p=projects.find(x=>x.id===b.dataset.pid);
   if(p&&(!cur||p.id!==cur.id)){if(dirty)flush();selectProject(p)}
 };
@@ -1376,7 +1421,7 @@ function renderBShot(){
 }
 function fillFrame(pre,id,note,enabled,clearLabel){
   const box=$(pre),img=$(pre+"Img");box.classList.toggle("has",!!id);box.classList.toggle("off",!enabled);
-  img.innerHTML=id&&mediaURL(id)?`<img src="${mediaURL(id)}" alt="">`:`<span>${isMissing(id)?"Not on this device yet":enabled?"Drop an image here":"This model can't take an end frame"}</span>`;
+  img.innerHTML=id&&mediaURL(id)?`<img src="${mediaURL(id)}" alt="">`:isMissing(id)?missHTML("span","",id,"Not on this device yet"):`<span>${enabled?"Drop an image here":"This model can't take an end frame"}</span>`;missSoon();
   $(pre+"Note").textContent=note;$(pre+"Clr").hidden=!id;$(pre+"Clr").textContent=clearLabel||"Clear";$(pre+"Warn").textContent="";
   const im=img.querySelector("img");if(im)im.onload=()=>{const r=im.naturalWidth/im.naturalHeight;$(pre+"Warn").textContent=Math.abs(r-16/9)>.06?`${im.naturalWidth}×${im.naturalHeight}, not 16:9: it may get cropped`:""};
 }
@@ -1406,11 +1451,11 @@ function updateEst(){
   $("gGo").textContent=gen.count>1?`Generate ${gen.count} takes`:"Generate take";
 }
 const statusLabel=t=>({submitting:"Sending",pending:"Queued",in_progress:"Rendering",downloading:"Downloading",failed:"Failed",cancelled:"Cancelled",expired:"Expired"}[t.status]||t.status);
-function takeSig(s,t){return [t.status,t.media,t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1]].join("|")}
+function takeSig(s,t){return [t.status,t.media,!!mediaURL(t.media),t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1]].join("|")}
 function takeHTML(s,t,num){
   const incut=!!t.media&&s.img===t.media,busy=isBusy(t);
   const vis=t.media&&mediaURL(t.media)?`<video src="${mediaURL(t.media)}" muted loop playsinline preload="metadata" controls></video>`:
-    isMissing(t.media)?`<div class="tbusy" data-miss="${esc(t.media)}">Video not on this device yet</div>`:
+    isMissing(t.media)?missHTML("div","tbusy",t.media,"Video not on this device yet"):
     busy?`<div class="tbusy"><span class="spin"></span><span>${statusLabel(t)}</span><span class="tc" data-since="${t.created}"></span></div>`:
     `<div class="tbusy err">${esc(statusLabel(t))}</div>`;
   const cost=t.cost!=null?fmtUSD(+t.cost):t.est!=null?"≈ "+fmtUSD(t.est):"—";
@@ -1436,7 +1481,7 @@ function renderBTakes(){
   const build=(t,i)=>{const n=document.createElement("div");n.className="take"+(t.media&&s.img===t.media?" incut":"");n.dataset.id=t.id;n.dataset.sig=takeSig(s,t);n.innerHTML=takeHTML(s,t,tk.length-i);return n};
   if(sameOrder){tk.forEach((t,i)=>{if(nodes[i].dataset.sig!==takeSig(s,t))nodes[i].replaceWith(build(t,i))})}
   else el.replaceChildren(...tk.map(build));
-  tickElapsed();
+  tickElapsed();missSoon();
 }
 function tickElapsed(){document.querySelectorAll("[data-since]").forEach(x=>{const s=Math.max(0,Math.round((Date.now()-+x.dataset.since)/1000));x.textContent=Math.floor(s/60)+":"+pad(s%60)})}
 setInterval(()=>{if(side==="b")tickElapsed()},1000);
@@ -1621,10 +1666,11 @@ function renderPanels(){
 }
 function renderRefs(){
   const el=$("bRefs");if(!cur){el.innerHTML="";return}
-  const refs=(cur.refs||[]).filter(id=>mediaURL(id));
+  /* a collaborator's reference that isn't here yet keeps its place, with its state */
+  const refs=(cur.refs||[]).filter(id=>mediaURL(id)||isMissing(id));
   if(!refs.length){el.innerHTML=`<label class="linkbtn" for="refIn">${ico("plus")}Add reference images</label><span class="muted">character sheet, portrait, horse… sent with every generated frame in this project</span>`;return}
-  el.innerHTML=`<span class="muted">References</span>`+refs.map(id=>`<span class="ref"><img src="${mediaURL(id)}" alt=""><button type="button" data-ref="${esc(id)}" aria-label="Remove reference">${ico("x")}</button></span>`).join("")+
-    (refs.length<MAX_REFS?`<label class="btn small ghost" for="refIn">Add</label>`:"");
+  el.innerHTML=`<span class="muted">References</span>`+refs.map(id=>`<span class="ref">${mediaURL(id)?`<img src="${mediaURL(id)}" alt="">`:missHTML("span","",id,"Not here yet")}<button type="button" data-ref="${esc(id)}" aria-label="Remove reference">${ico("x")}</button></span>`).join("")+
+    (refs.length<MAX_REFS?`<label class="btn small ghost" for="refIn">Add</label>`:"");missSoon();
 }
 $("refIn").onchange=async e=>{
   const fs=[...e.target.files].filter(f=>/^image\//.test(f.type));e.target.value="";if(!cur||!fs.length)return;
@@ -1743,7 +1789,7 @@ const collabApp={
      new one arriving */
   onSong:(pid,stale)=>{if(!cur||cur.id!==pid||csessPid!==pid)return;songStale=stale;
     if(stale){if(hasAudio){stop();detachAudio()}renderAll()}else if(!hasAudio)loadAudio();else renderSongbar()},
-  onMedia:pid=>{if(cur&&cur.id===pid&&csessPid===pid){renderCollab(csess.status());renderMiss();if($("dlgFiles").open)renderFiles()}},
+  onMedia:pid=>{if(cur&&cur.id===pid&&csessPid===pid){renderCollab(csess.status());renderMiss()}},
   mediaLimits:pid=>{const l=(cset.rooms[pid]&&cset.rooms[pid].limits)||{};return{file:(+l.file||500)*1e6,project:(+l.project||5000)*1e6}},
   onEvent:(pid,t)=>{const b=cset.rooms[pid];if(!b)return;
     if(t==="shared"){delete b.share;saveCset();toast("Shared into the room")}
@@ -1768,56 +1814,125 @@ function applyRemote(pid,p){
   const draw=()=>{lastKey="";renderAll();if(side==="b")renderB()};draw();
   loadProjectMedia(cur).then(n=>{if(n&&cur&&cur.id===pid)draw()});
 }
-const CST={synced:["ok","Synced",""],syncing:["sync","Syncing…",""],offline:["off","Offline, changes will sync","Your edits are kept in this browser and go to the room when you're back online."],
+/* ---------- media status: one indicator next to Settings, its panel, and the files' state in place ----------
+   The indicator shows the worst state: quiet when everything is here, a thin ring while files arrive, a hollow dot
+   when something isn't here (offline, nobody has it, skipped, paused), an error dot when something went wrong. */
+const CST={synced:["ok","Synced",""],syncing:["ok","Syncing…",""],offline:["off","Offline, changes will sync","Your edits are kept in this browser and go to the room when you're back online."],
   unreachable:["err","Can't reach the room","Retrying. Your edits are kept in this browser."],rejected:["err","Can't reach the room","The room didn't accept this invite link. Your project is still here."]};
-function renderCollab(s){const el=$("cstat");
-  if(!s){el.hidden=true;el.textContent="";delete el.dataset.unshared;peers=[];renderPresence();return}
-  const [k,t,tip]=CST[s]||CST.syncing;el.hidden=false;el.className="status cchip "+k;el.textContent=t;el.title=tip;el.dataset.state=s;
-  /* a file this browser couldn't read or hash: it stays here, the others keep the previous one. Said quietly, on the chip */
-  const n=s==="synced"&&csess?cunshared:0;if(n){el.textContent=`Synced, ${n} file${n>1?"s":""} not shared`;el.title="This browser couldn't prepare "+(n>1?"these files":"this file")+" for the room, so the others still see the previous one. Choosing the file again retries.";el.dataset.unshared=""}else delete el.dataset.unshared;
-  const mt=!n&&s==="synced"?mediaChip():null;
-  if(mt){el.textContent=mt[1];el.className="status cchip "+mt[0];el.title=mt[2];el.dataset.media=mt[3]}else delete el.dataset.media;
-  if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}}
-/* ---------- media between collaborators (docs/media-p2p.md) ---------- */
 const plural=(k,w)=>k+" file"+(k>1?"s":"")+(w?" "+w:"");
 const fmtMB=b=>b>=1e9?(b/1e9).toFixed(1)+" GB":b>=1e6?(b/1e6).toFixed(1)+" MB":Math.max(1,Math.round(b/1e3))+" KB";
 const cmedia=()=>csess&&csess.media?csess.media():null;
-let persistWarned=false;
-/* the chip while connected: [class, text, tooltip, state], or null for plain "Synced" (a project without files) */
-function mediaChip(){const m=cmedia();if(!m)return null;const x=m.summary();if(!x.total)return null;
+/* the media side while connected: [look, text, explanation, state], or null for plain "Synced" (a project without files) */
+function mediaChip(x){if(!x||!x.total)return null;
   const low=x.storage.persisted===false?" This browser may clear these files when space runs low; your collaborators keep their copies.":"";
   if(x.storageBusy==="blocked")return["off","Storage busy, close other tabs","Another Cue Board tab, still on the previous version, is holding this browser's storage. Close or reload the other tabs and files start arriving. Edits sync as usual.","busy"];
   if(x.storageBusy==="replaced")return["off","Storage busy, reload this tab","Cue Board was updated in another tab, so this one let go of the browser's storage. Reload this tab to keep receiving files. Edits sync as usual.","busy"];
-  if(x.storageFull)return["err","Storage full, downloads paused","This browser is out of space for more files. Free some space, then choose Download all now under Files…"+low,"full"];
-  if(x.failed)return["err",plural(x.failed,"couldn't be verified"),"What arrived didn't match the file's fingerprint, so it was thrown away. Download all now under Files… tries again.","failed"];
-  if(x.active&&!x.paused)return["sync","Syncing "+plural(x.active),"Copying files from collaborators who have them."+low,"syncing"];
-  if(x.paused&&x.active+x.unavailable)return["off","Paused, "+plural(x.active+x.unavailable,"to get"),"Downloads are paused. Files… in the project menu resumes them.","paused"];
-  if(x.unavailable)return["off",plural(x.unavailable,"not available yet: nobody online has them"),"They arrive when someone who has them opens the project."+low,"unavailable"];
-  if(x.relay)return["off",plural(x.relay,"too large to relay: needs a direct connection"),"Too big to pass through the sync server. It arrives when you and someone who has it can connect directly (for example, on the same network).","relay"];
-  if(x.skipped)return["off",plural(x.skipped,"skipped: over the size limit"),"Bigger than this project's download limit. Files… in the project menu downloads them anyway.","skipped"];
+  if(x.storageFull)return["err","Storage full, downloads paused","This browser is out of space for more files. Free some space, then choose Download all now."+low,"full"];
+  if(x.failed)return["err",plural(x.failed,"couldn't be verified"),"What arrived didn't match the file's fingerprint, so it was thrown away. Retry tries again.","failed"];
+  if(x.active&&!x.paused)return["ring","Downloading "+plural(x.active),"Copying files from collaborators who have them."+low,"syncing"];
+  if(x.paused&&x.active+x.unavailable)return["off","Paused, "+plural(x.active+x.unavailable,"to get"),"Downloads are paused. Resume picks up where they stopped.","paused"];
+  if(x.unavailable)return["off",plural(x.unavailable,"not available yet"),"Nobody online has "+(x.unavailable>1?"them":"it")+". "+(x.unavailable>1?"They arrive":"It arrives")+" when someone who has "+(x.unavailable>1?"them":"it")+" opens the project."+low,"unavailable"];
+  if(x.relay)return["off",plural(x.relay,"too large to relay"),"Too big to pass through the sync server. It arrives when you and someone who has it can connect directly (for example, on the same network).","relay"];
+  if(x.skipped)return["off",plural(x.skipped,"skipped: over the size limit"),"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
   return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
-/* "not on this device yet" placeholders: the file's progress while it's coming */
-function renderMiss(){const m=cmedia();document.querySelectorAll("[data-miss]").forEach(el=>{const id=el.dataset.miss,p=m&&id.startsWith("sha256-")?m.progress(id.slice(7)):null;
-  if(el.dataset.base==null)el.dataset.base=el.textContent;el.textContent=p==null?el.dataset.base:"Arriving · "+Math.floor(p*100)+"%"})}
+function renderCollab(s){const w=$("mstatw"),b=$("mstat");
+  if(!s){w.hidden=true;closeFiles();for(const k of ["state","media","unshared","k"])delete b.dataset[k];peers=[];renderPresence();return}
+  let [k,t,tip]=CST[s]||CST.syncing,media="";
+  const m=cmedia(),x=s==="synced"&&m?m.summary():null;
+  /* a file this browser couldn't read or hash: it stays here, the others keep the previous one */
+  const n=s==="synced"&&csess?cunshared:0;
+  if(n){k="off";t=`Synced, ${n} file${n>1?"s":""} not shared`;tip="This browser couldn't prepare "+(n>1?"these files":"this file")+" for the room, so the others still see the previous one. Choosing the file again retries."}
+  else{const mt=mediaChip(x);if(mt){[k,t,tip,media]=mt}}
+  w.hidden=false;b.dataset.state=s;b.dataset.k=k;if(media)b.dataset.media=media;else delete b.dataset.media;if(n)b.dataset.unshared="";else delete b.dataset.unshared;
+  /* the ring: bytes here of the files on their way; unknown (nothing started yet) spins a quarter */
+  let p=null;if(k==="ring"){let got=0,all=0;m.files().forEach(f=>{if(f.state==="downloading"||f.state==="queued"){got+=f.got;all+=f.bytes}});p=all&&got?got/all:null}
+  b.style.setProperty("--p",k!=="ring"?0:p==null?25:Math.max(4,Math.round(p*100)));if(k==="ring"&&p==null)b.dataset.busy="";else delete b.dataset.busy;
+  b.setAttribute("aria-label","Files: "+t);$("mlabel").textContent=t;
+  const h=$("mhead");h.textContent=t;h.dataset.k=k;$("mtip").textContent=tip;
+  if(!$("mpanel").hidden)renderFiles();
+  if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}}
 const FST={here:"Here",downloading:"Downloading",queued:"Waiting its turn",unavailable:"Nobody online has it",skipped:"Skipped: over the size limit",failed:"Couldn't be verified",paused:"Paused",relay:"Too large to relay: needs a direct connection"};
-function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=cur&&cset.rooms[cur.id];
-  $("fList").replaceChildren(...l.map(f=>{const li=document.createElement("li"),n=document.createElement("span"),z=document.createElement("span"),w=document.createElement("span");
-    n.className="fn";n.textContent=f.label;n.title=f.label;z.className="fs";z.textContent=f.state==="downloading"?fmtMB(f.got)+" of "+fmtMB(f.bytes):fmtMB(f.bytes);
-    w.className="fw";w.textContent=(FST[f.state]||"")+(f.who.length?(f.state==="here"?" · also with ":" · with ")+f.who.join(", "):"");li.append(n,z,w);return li}));
+/* a per-file action: ghost in the panel's list, secondary in place (it sits on black media, where a ghost reads as text) */
+const mactHTML=(act,hex,ghost=true)=>`<button type="button" class="btn small${ghost?" ghost":""}" data-mact="${act}" data-hex="${esc(hex)}">${act==="retry"?"Retry":"Download"}</button>`;
+/* rows are patched in place, by file, so focus and the open state survive the live updates */
+function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=cur&&cset.rooms[cur.id],ul=$("fList");
+  const old=new Map([...ul.children].map(li=>[li.dataset.hex,li]));
+  const rows=l.map(f=>{let li=old.get(f.hex);old.delete(f.hex);
+    if(x.paused&&/downloading|queued/.test(f.state))f={...f,state:"paused"};
+    const act=f.state==="failed"?"retry":f.state==="skipped"?"download":"",pct=f.state==="downloading"?Math.floor(f.got/Math.max(1,f.bytes)*100):null;
+    const sig=[f.label,act,pct!=null,f.state].join("|");
+    if(!li||li._sig!==sig){const n=document.createElement("li");n.className="mrow";n.tabIndex=-1;n.dataset.hex=f.hex;n._sig=sig;
+      n.innerHTML=`<span class="fn" title="${esc(f.label)}">${esc(f.label)}</span><span class="fs"></span><span class="fw${f.state==="failed"?" err":f.state==="unavailable"?" nob":""}"></span>${act?mactHTML(act,f.hex):""}${pct!=null?`<span class="mbar"><b></b></span>`:""}`;
+      if(li){const foc=li.contains(document.activeElement);li.replaceWith(n);if(foc)n.focus()}li=n}
+    li.querySelector(".fs").textContent=f.got&&f.state!=="here"?fmtMB(f.got)+" of "+fmtMB(f.bytes):fmtMB(f.bytes);
+    li.querySelector(".fw").textContent=(FST[f.state]||"")+(pct!=null?" · "+pct+"%":"")+(f.who.length?(f.state==="here"?" · also with ":" · with ")+f.who.join(", "):"");
+    const bar=li.querySelector(".mbar b");if(bar)bar.style.setProperty("--w",pct+"%");
+    li.dataset.state=f.state;return li});
+  old.forEach(li=>{if(li.contains(document.activeElement))$("mpanel").focus();li.remove()});
+  rows.forEach((li,i)=>{if(ul.children[i]!==li)ul.insertBefore(li,ul.children[i]||null)});
   const warn=[];if(x&&x.storage.persisted===false)warn.push("This browser may clear these files when it runs low on space. Your collaborators keep their copies, and they come back from them.");
   if(x&&x.storage.free!=null&&x.storage.free<1e9)warn.push("Low on space here: about "+fmtMB(x.storage.free)+" free.");
   if(x&&x.foreign)warn.push(x.foreign>1?"Some collaborators joined with another invite link, so files can't pass between you.":"Someone joined with another invite link, so files can't pass between you.");
   $("fWarn").textContent=warn.join(" ");$("fWarn").hidden=!warn.length;
   $("fPause").textContent=x&&x.paused?"Resume":"Pause";$("fPause").disabled=!m;$("fAll").disabled=!m;
-  const lim=(b&&b.limits)||{};$("fLimF").value=String(lim.file||500);$("fLimP").value=String(lim.project||5000)}
-function openFiles(){renderFiles();$("dlgFiles").showModal()}
-/* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,
-  song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
-$("fClose").onclick=()=>$("dlgFiles").close();
+  const lim=(b&&b.limits)||{},sv=(id,v)=>{if($(id).value!==v)$(id).value=v};sv("fLimF",String(lim.file||500));sv("fLimP",String(lim.project||5000))}
+/* the panel: non-modal. Escape or a click outside closes it, focus goes back to the indicator; arrows move through it */
+function placeFiles(){const p=$("mpanel");if(p.hidden)return;p.style.removeProperty("--mp-shift");
+  const g=parseFloat(getComputedStyle(document.querySelector(".app")).paddingLeft)||0,r=p.getBoundingClientRect();
+  if(r.left<g)p.style.setProperty("--mp-shift",Math.round(r.left-g)+"px");
+  p.style.setProperty("--mp-max",Math.max(240,Math.floor(innerHeight-$("mstat").getBoundingClientRect().bottom-g))+"px")}
+/* from the keyboard focus lands on the first file; from a click on the panel itself, so no ring shows */
+function openFiles(key){if($("mstatw").hidden)return;const p=$("mpanel");renderFiles();p.hidden=false;$("mstat").setAttribute("aria-expanded","true");placeFiles();((key&&fileNav()[0])||p).focus()}
+function closeFiles(refocus){const p=$("mpanel");if(p.hidden)return;const inside=p.contains(document.activeElement);
+  p.hidden=true;$("mstat").setAttribute("aria-expanded","false");if(refocus||inside){if(!$("mstatw").hidden)$("mstat").focus();else if(inside)document.activeElement.blur()}}
+const fileNav=()=>[...$("mpanel").querySelectorAll(".mrow,button:not([disabled])")];
+$("mstat").onclick=e=>$("mpanel").hidden?openFiles(e.detail===0):closeFiles(true);
+$("mstat").addEventListener("keydown",e=>{
+  if(e.key==="ArrowDown"&&$("mpanel").hidden){e.preventDefault();e.stopPropagation();openFiles(true)}
+  else if(e.key===" "||e.key==="Enter")e.stopPropagation();
+  else if(e.key==="Escape"&&!$("mpanel").hidden){e.preventDefault();closeFiles(true)}});
+$("mpanel").addEventListener("keydown",e=>{e.stopPropagation();
+  if(e.key==="Escape"){e.preventDefault();closeFiles(true);return}
+  if(e.target.tagName==="SELECT")return;
+  const it=fileNav(),i=it.indexOf(document.activeElement);
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();it[i<0?0:(i+(e.key==="ArrowDown"?1:-1)+it.length)%it.length]?.focus()}
+  else if(e.key==="Home"||e.key==="End"){e.preventDefault();it[e.key==="Home"?0:it.length-1]?.focus()}});
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".mstat"))closeFiles()});
+window.addEventListener("resize",placeFiles);
 $("fAll").onclick=()=>{const m=cmedia();if(m){m.downloadAll();renderFiles()}};
 $("fPause").onclick=()=>{const m=cmedia();if(m){m.pause(!m.summary().paused);renderFiles()}};
 $("fLimF").onchange=$("fLimP").onchange=()=>{const b=cur&&cset.rooms[cur.id];if(!b)return;b.limits={file:+$("fLimF").value,project:+$("fLimP").value};saveCset();const m=cmedia();if(m)m.refresh();renderFiles()};
+/* Download (past the limit) and Retry, in the panel and in place. The file may have landed, failed or been deleted
+   since it was drawn: the client ignores a hash it no longer wants */
+document.addEventListener("click",e=>{const a=e.target.closest("[data-mact]");if(!a)return;e.stopPropagation();const m=cmedia();if(!m)return;
+  if(a.dataset.mact==="retry")m.retry(a.dataset.hex);else m.download(a.dataset.hex);
+  /* the button goes away with the state it answered: focus stays on its placeholder */
+  const ph=a.closest(".mph");if(ph&&a===document.activeElement){ph.tabIndex=-1;ph.focus()}renderMiss();if(!$("mpanel").hidden)renderFiles()},true);
+/* in place: a file this device doesn't have (yet) says where it is. act=false inside a control (a strip card is a button) */
+const missHTML=(tag,cls,id,base,act=true)=>`<${tag} class="${cls?cls+" ":""}mph" data-miss="${esc(id)}" data-base="${esc(base)}"${act?"":" data-noact"}><span class="mpt">${esc(base)}</span></${tag}>`;
+const MST={queued:"Waiting its turn",unavailable:"Nobody online has it",skipped:"Over the size limit",failed:"Couldn't be verified",relay:"Needs a direct connection"};
+let missQ=false;function missSoon(){if(!missQ){missQ=true;queueMicrotask(()=>{missQ=false;renderMiss()})}}
+function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp=$("songph");if(!els.length&&!sp)return;
+  const m=cmedia(),l=m?m.files():[],by=new Map(l.map(f=>[f.hex,f])),paused=!!m&&m.summary().paused;
+  const fill=(el,f,base,noact)=>{
+    /* a file started before Pause still counts as downloading in the client: here it says Paused */
+    const st=!f||f.state==="here"?"":paused&&/downloading|queued/.test(f.state)?"paused":f.state;
+    const p=st&&m?m.progress(f.hex):null,pct=p!=null&&/downloading|queued|paused/.test(st)?Math.floor(p*100):null;
+    const t=!st?base:pct!=null?(st==="paused"?"Paused · ":"Arriving · ")+pct+"%":st==="paused"?"Paused":MST[st]||base;
+    const act=st&&!noact?(st==="failed"?"retry":st==="skipped"?"download":""):"";
+    const sig=[st,pct!=null,act,f?f.hex:""].join("|");
+    if(el._sig!==sig){const foc=el.contains(document.activeElement);el._sig=sig;
+      el.innerHTML=`<span class="mpt${st==="unavailable"?" nob":""}"></span>${pct!=null?`<span class="mbar"><b></b></span>`:""}${act?mactHTML(act,f.hex,false):""}`;
+      if(foc)(el.querySelector("button")||el).focus()}
+    el.firstChild.textContent=t;el.title=t;el.dataset.state=st;
+    const b=el.querySelector(".mbar b");if(b)b.style.setProperty("--w",pct+"%");return st};
+  els.forEach(el=>{const id=el.dataset.miss;fill(el,id.startsWith("sha256-")?by.get(id.slice(7)):null,el.dataset.base||"","noact" in el.dataset)});
+  /* the song bar: the room's song file while it isn't here, nothing otherwise */
+  if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
+/* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,
+  song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
+
 function renderPresence(){const el=$("presence"),l=csess?peers:[];
   const chip=(t,title,cls)=>{const c=document.createElement("span");c.className="pchip"+(cls||"");c.textContent=t;c.title=title;return c};
   el.replaceChildren(...l.slice(0,4).map(p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return chip(p.initials,p.name+(i>=0?" · on shot "+pad(i+1):""))}));
@@ -1835,7 +1950,8 @@ function renderMarks(){
 /* start or stop the room session for the open project */
 async function collabFor(p){
   const b=p&&SYNC_URL?cset.rooms[p.id]:null;
-  if(csess&&csessPid!==(b&&p.id)){csess.stop();csess=null;csessPid=null;cunshared=0;songStale=false;peers=[];renderMarks()}
+  /* another project (or none): its files' panel closes with the old session */
+  if(csess&&csessPid!==(b&&p.id)){csess.stop();csess=null;csessPid=null;cunshared=0;songStale=false;peers=[];renderMarks();closeFiles()}
   if(!b){renderCollab(null);return}
   if(csessPid===p.id)return;
   renderCollab("syncing");
