@@ -73,7 +73,7 @@ const filesHidden = page => page.evaluate(() => document.getElementById('mpanel'
 const openFiles = async page => { if (await filesHidden(page)) { await page.tap('#mstat'); await page.waitForTimeout(200); } };
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
 const app = page => page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(); return { n: s.length, ids: s.map(x => x.id), starts: s.map(x => x.start), img: s.map(x => x.img), sel: document.querySelector('#mPeek .ed-n')?.textContent }; });
-const tl = page => page.evaluate(() => { const r = document.querySelector('.timeline').getBoundingClientRect(), c = document.getElementById('tl').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, band: c.y + 24 + 20 }; });
+const tl = page => page.evaluate(() => { const r = document.querySelector('.timeline').getBoundingClientRect(), c = document.getElementById('tl').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, band: c.y + window.__CUE_MEDIA_TEST.app.mLayout(c.height).top + 20 }; });
 
 for (const [dev, opts] of Object.entries(DEVICES)) {
   const ctx = await browser.newContext({ ...opts });

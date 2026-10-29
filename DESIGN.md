@@ -219,6 +219,8 @@ Small and consistent: 3px for badges and kbd, 5px for controls, 7px for panels, 
 
 **Monitor.** `screen` black with a 2px progress line for the current shot in orange. The monitor doesn't repeat the timecode (it's in the transport) or a shot count (the timeline and strip show it). The slate keeps the playhead shot's number, type and title. Over media, the caption uses a bottom scrim (`scrim`), which is a legibility device, not decoration.
 
+**Phone timeline (below 820px).** A fixed height, top to bottom: the ruler row, 44px (`--tl-ruler-h`, `--hit`), which holds the **− Fit +** zoom on its right, off the shots and cuts; 4px; the shot strip, 56px (`--tl-strip-h`: thumbnails and 44px-wide cut grips); 8px; the waveform, `clamp(72px, 12dvh, 120px)` (`--tl-wave-h`: 77px at 640 tall, 101px at 844, 112px at 932); 8px. The total is `--tl-h`, and `mBand()` in the script lays the canvas out the same way. The preview takes every pixel left over (at least 30% of the screen from 360×640 to 430×932; the image is contained, letterboxed when taller than 16:9). The timeline uses the full width: the ruler is drawn edge to edge, before the song's start too, and the playhead stays at its centre. Checked at six sizes by `design/mobile-sizes-check.mjs` (screenshots in `design/shots/mobile-sizes/`).
+
 **Modal.** `surface-1`, `border-strong`, 10px radius, overlay shadow, backdrop `backdrop`. 24px inset on all sides, 16px between blocks. Title 16/24 semibold. A field's hint sits 6px under it, linked with `aria-describedby`. Actions are 32px, right-aligned, primary last, 24px below the content. There is no footer band.
 
 **Toast.** Bottom centre, `surface-3`, `border-strong`, float shadow, 13px medium; rises 4px in 200ms (no motion with reduced motion).
