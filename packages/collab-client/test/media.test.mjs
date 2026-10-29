@@ -119,16 +119,16 @@ function memStore() {
   };
 }
 /** a peer: `files` (hex -> Blob) is what it has, `refs` (hex -> size) what the doc references */
-function mk(srv, room, token, refs, files = new Map(), { test: T = null, store = memStore() } = {}) {
+function mk(srv, room, token, refs, files = new Map(), { test: T = null, store = memStore(), limits = { file: 500e6, project: 5e9 }, url = srv.url } = {}) {
   globalThis.__CUE_MEDIA_TEST = T || undefined;
-  const doc = new Y.Doc(), provider = new WebsocketProvider(srv.url, room, doc, { WebSocketPolyfill: WebSocket, params: { token }, disableBc: true, maxBackoffTime: 200 });
+  const doc = new Y.Doc(), provider = new WebsocketProvider(url, room, doc, { WebSocketPolyfill: WebSocket, params: { token }, disableBc: true, maxBackoffTime: 200 });
   const landed = [];
   const m = createMedia({
     provider, roomId: room, token, pid: 'p1', ice: [], store,
     wanted: () => new Map([...refs].map(([h, bytes]) => [h, { bytes, mime: 'application/octet-stream', label: 'f', local: files.has(h) }])),
     localBlob: async h => files.get(h) || null,
     landed: async (h, blob) => { files.set(h, blob); landed.push(h); m.refresh(); },
-    clientName: () => 'x', limits: () => ({ file: 500e6, project: 5e9 }), onChange: () => {},
+    clientName: () => 'x', limits: () => limits, onChange: () => {},
   });
   globalThis.__CUE_MEDIA_TEST = undefined;
   return { m, provider, doc, files, landed, store, close() { m.stop(); provider.destroy(); doc.destroy(); } };
@@ -240,4 +240,161 @@ test('limits: a file over the per-file limit is skipped until "Download all now"
     await new Promise(ok => setTimeout(ok, 800));
     assert.equal(X.landed.length, 0); assert.equal(A.m.stats.sent, data.length, 'A sent nothing more');
   } finally { peers.forEach(p => p.close()); await srv.close(); }
+});
+
+const sleep = ms => new Promise(ok => setTimeout(ok, ms));
+
+test('"Download all now", then Pause, a lowered limit, or a smaller file taking the budget: the chunks stored so far are kept and the file resumes from them', async () => {
+  const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3397);
+  const big = randomBytes(CHUNK * 40), hb = nodeSha(big), small = randomBytes(CHUNK * 2), hs = nodeSha(small), peers = [];
+  try {
+    const refs = new Map([[hb, big.length]]);
+    const A = mk(srv, r.id, r.token, refs, new Map([[hb, new Blob([big])], [hs, new Blob([small])]]), { test: { chunkDelay: 30 } }); peers.push(A);
+    // 1. over B's per-file limit: skipped; "Download all now"; Pause halfway: what's stored stays, Resume finishes it
+    const lim = { file: 1000, project: 5e9 }, B = mk(srv, r.id, r.token, refs, new Map(), { limits: lim }); peers.push(B);
+    await until(() => B.m.summary().skipped === 1, 5000, 'skipped');
+    B.m.downloadAll();
+    await until(() => B.store.chunks.size >= 8, 20000, 'B halfway');
+    B.m.pause(true);
+    await sleep(1500);
+    const kept = B.store.chunks.size;
+    assert.ok(kept >= 8 && B.store.parts.has(hb), 'paused: the partial download is still stored (' + kept + ' chunks)');
+    B.m.pause(false);
+    await until(() => B.landed.length === 1, 30000, 'B resumed and finished');
+    assert.ok((await bytesOf(B.files.get(hb))).equals(big));
+    assert.equal(B.store.puts, 40, 'every chunk fetched once: nothing stored was thrown away');
+    // 2. no override, the limit is lowered mid-download: stopped with its chunks kept; raised again: resumes from them
+    const lim2 = { file: 500e6, project: 5e9 }, C = mk(srv, r.id, r.token, refs, new Map(), { limits: lim2 }); peers.push(C);
+    await until(() => C.store.chunks.size >= 8, 20000, 'C halfway');
+    lim2.file = 1000; C.m.refresh();
+    await until(() => C.m.summary().skipped === 1, 5000, 'C skips it now');
+    await sleep(800);
+    assert.ok(C.store.chunks.size >= 8 && C.store.parts.has(hb), 'lowered limit: chunks kept');
+    lim2.file = 500e6; C.m.refresh();
+    await until(() => C.landed.length === 1, 30000, 'C resumed');
+    assert.ok((await bytesOf(C.files.get(hb))).equals(big));
+    assert.equal(C.store.puts, 40);
+    // 3. a smaller file added to the doc takes the project budget: the big one stops, keeps its chunks, resumes later
+    const refs3 = new Map(refs), lim3 = { file: 500e6, project: big.length + 1000 }, D = mk(srv, r.id, r.token, refs3, new Map(), { limits: lim3 }); peers.push(D);
+    await until(() => D.store.chunks.size >= 8, 20000, 'D halfway');
+    refs.set(hs, small.length); refs3.set(hs, small.length); A.m.refresh(); D.m.refresh();
+    await until(() => D.landed.includes(hs), 20000, 'D got the small file');
+    assert.equal(D.m.files().find(f => f.hex === hb).state, 'skipped');
+    assert.ok(D.store.chunks.size >= 8 && D.store.parts.has(hb), 'over the budget now: chunks kept');
+    lim3.project = 5e9; D.m.refresh();
+    await until(() => D.landed.includes(hb), 30000, 'D resumed the big one');
+    assert.ok((await bytesOf(D.files.get(hb))).equals(big));
+    assert.equal(D.store.puts, 42);
+    // 4. the doc lets go of a file whose chunks were kept: they're dropped
+    const refs4 = new Map([[hb, big.length]]), lim4 = { file: 500e6, project: 5e9 }, E = mk(srv, r.id, r.token, refs4, new Map(), { limits: lim4 }); peers.push(E);
+    await until(() => E.store.chunks.size >= 4, 20000, 'E started');
+    lim4.file = 1000; E.m.refresh();
+    await until(() => E.m.summary().skipped === 1, 5000, 'E skips it');
+    refs4.clear(); E.m.refresh();
+    await until(() => E.store.chunks.size === 0 && !E.store.parts.has(hb), 5000, 'kept chunks of a file nobody references are dropped');
+  } finally { peers.forEach(p => p.close()); await srv.close(); }
+});
+
+test('a file bigger than the relay\'s cap is not asked for over the relay: "too large to relay", not "Downloading" forever; smaller files still come', async () => {
+  const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3398, { media: { relayMaxTransferBytes: 4 * CHUNK } });
+  const big = randomBytes(CHUNK * 10), hb = nodeSha(big), small = randomBytes(CHUNK * 3), hs = nodeSha(small), peers = [];
+  try {
+    const refs = new Map([[hb, big.length], [hs, small.length]]);
+    const A = mk(srv, r.id, r.token, refs, new Map([[hb, new Blob([big])], [hs, new Blob([small])]])); peers.push(A);
+    const B = mk(srv, r.id, r.token, refs); peers.push(B);
+    await until(() => B.landed.includes(hs), 20000, 'the small file came through the relay');
+    await until(() => B.m.summary().relay === 1, 5000, 'the big one is reported as too large to relay');
+    assert.equal(B.m.files().find(f => f.hex === hb).state, 'relay');
+    await sleep(1500);
+    assert.equal(B.store.parts.has(hb), false, 'never started');
+    assert.equal(A.m.stats.sent, small.length, 'nothing of the big file was sent');
+    assert.equal(B.m.summary().active, 0, 'not "Syncing" forever');
+    // "Download all now" doesn't change that: it still needs a direct connection
+    B.m.downloadAll(); await sleep(1500);
+    assert.equal(B.m.summary().relay, 1); assert.equal(A.m.stats.sent, small.length);
+  } finally { peers.forEach(p => p.close()); await srv.close(); }
+});
+
+/** A pass-through between clients and the server that drops relayed control frames (type 1) while `drop` is on,
+    silently or, with `tell`, answering DROPPED like the server does when a receiver's queue is full. */
+async function faultyRelay(srv, port) {
+  const { WebSocketServer } = await import('ws');
+  const enc = await import('lib0/encoding'), dec = await import('lib0/decoding');
+  const st = { drop: false, tell: false, dropped: 0 }, wss = new WebSocketServer({ port, host: '127.0.0.1' });
+  wss.on('connection', (c, req) => {
+    const up = new WebSocket(srv.url.replace(/\/r$/, '') + req.url), q = [];
+    up.on('open', () => { for (const m of q) up.send(m); q.length = 0; });
+    up.on('message', m => { if (c.readyState === 1) c.send(m); });
+    up.on('close', () => c.close()); up.on('error', () => c.close());
+    c.on('close', () => up.close()); c.on('error', () => up.close());
+    c.on('message', m => {
+      const b = new Uint8Array(m);
+      try {
+        const d = dec.createDecoder(b);
+        if (st.drop && dec.readVarUint(d) === 10 && dec.readVarUint(d) === 3) {
+          const to = dec.readVarUint(d), p = dec.readVarUint8Array(d);
+          if (p[0] === 1) {
+            st.dropped++;
+            if (st.tell) { const e = enc.createEncoder(); enc.writeVarUint(e, 10); enc.writeVarUint(e, 6); enc.writeVarUint(e, to); enc.writeVarUint8Array(e, Uint8Array.of(3, ...p.subarray(1, 9))); c.send(enc.toUint8Array(e)); }
+            return;
+          }
+        }
+      } catch { /* not ours to judge */ }
+      if (up.readyState === 1) up.send(m); else q.push(m);
+    });
+  });
+  await new Promise(ok => wss.on('listening', ok));
+  return { st, url: `ws://127.0.0.1:${port}/r`, close: () => new Promise(ok => { for (const c of wss.clients) c.terminate(); wss.close(ok); }) };
+}
+
+test('relayed control frames the server drops (have, get, cancel) are sent again: the transfer still completes, with or without DROPPED', async () => {
+  const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3399), fr = await faultyRelay(srv, 3388);
+  const data = randomBytes(CHUNK * 6), hex = nodeSha(data), refs = new Map([[hex, data.length]]), peers = [];
+  try {
+    // 1. silent loss (a reconnect, a cap the sender isn't told about): only the periodic re-announce can heal it
+    fr.st.drop = true;
+    const A = mk(srv, r.id, r.token, refs, new Map([[hex, new Blob([data])]]), { test: { reannounceMs: 1500 }, url: fr.url }); peers.push(A);
+    const B = mk(srv, r.id, r.token, refs, new Map(), { test: { reannounceMs: 1500 }, url: fr.url }); peers.push(B);
+    await until(() => fr.st.dropped >= 1 && B.m.summary().unavailable === 1, 10000, 'A\'s `have` dropped: B thinks nobody has it');
+    await sleep(2000);
+    fr.st.drop = false;
+    await until(() => B.landed.length === 1, 15000, 'B got it once frames went through again');
+    assert.ok((await bytesOf(B.files.get(hex))).equals(data));
+    A.close(); B.close();
+    // 2. the server says DROPPED: the sender re-announces soon, not only on the (here: 60 s) period
+    fr.st.drop = true; fr.st.tell = true; const n0 = fr.st.dropped;
+    const A2 = mk(srv, r.id, r.token, refs, new Map([[hex, new Blob([data])]]), { test: { reannounceMs: 60000 }, url: fr.url }); peers.push(A2);
+    const C = mk(srv, r.id, r.token, refs, new Map(), { test: { reannounceMs: 60000 }, url: fr.url }); peers.push(C);
+    await until(() => fr.st.dropped > n0, 10000, 'dropped and told');
+    await sleep(1500);
+    fr.st.drop = false;
+    await until(() => C.landed.length === 1, 15000, 'C got it within seconds');
+    assert.ok((await bytesOf(C.files.get(hex))).equals(data));
+  } finally { peers.forEach(p => p.close()); await fr.close(); await srv.close(); }
+});
+
+test('the scheduler runs one tick at a time and leaves at most one timer behind, however often it is poked', async () => {
+  const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3387), peers = [];
+  const files = [1, 2, 3, 4].map(n => randomBytes(CHUNK * 4 + n)), hexes = files.map(nodeSha), refs = new Map(hexes.map((h, i) => [h, files[i].length]));
+  const pend = new Set(), oS = globalThis.setTimeout, oC = globalThis.clearTimeout;
+  let maxPend = 0;
+  globalThis.setTimeout = (fn, ms, ...a) => {
+    if (fn && fn.name === 'tick') { const h = oS(() => { pend.delete(h); fn(...a); }, ms); pend.add(h); maxPend = Math.max(maxPend, pend.size); return h; }
+    return oS(fn, ms, ...a);
+  };
+  globalThis.clearTimeout = h => { pend.delete(h); return oC(h); };
+  try {
+    const A = mk(srv, r.id, r.token, refs, new Map(hexes.map((h, i) => [h, new Blob([files[i]])]))); peers.push(A);
+    const store = memStore(), open = store.open.bind(store);
+    let opening = 0, maxOpening = 0;
+    store.open = async (h, meta) => { opening++; maxOpening = Math.max(maxOpening, opening); await sleep(150); try { return await open(h, meta); } finally { opening--; } };
+    const B = mk(srv, r.id, r.token, refs, new Map(), { store }); peers.push(B);
+    const poke = setInterval(() => B.m.refresh(), 5);
+    try { await until(() => B.landed.length === 4, 30000, 'all four landed'); } finally { clearInterval(poke); }
+    for (const [i, h] of hexes.entries()) assert.ok((await bytesOf(B.files.get(h))).equals(files[i]));
+    assert.equal(maxOpening, 1, 'never two ticks opening files at once');
+    assert.ok(maxPend <= 1, 'at most one tick timer pending, saw ' + maxPend);
+    B.close(); await sleep(50);
+    assert.equal(pend.size, 0, 'stop() leaves no tick timer behind');
+  } finally { globalThis.setTimeout = oS; globalThis.clearTimeout = oC; peers.forEach(p => p.close()); await srv.close(); }
 });

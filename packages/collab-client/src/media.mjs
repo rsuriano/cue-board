@@ -11,8 +11,12 @@ import {
   CHUNK, WINDOW, MAX_QUEUE, MAX_HAVE, MAX_FILE, HEX, roomKeys, sealCtl, openCtl, checkCtl, SeqGuard, sealChunk, openChunk,
   chunkFrame, parseChunk, chunkLen, chunkCount, Download, drain, sha256Blob, F_CTL, F_CHUNK,
 } from './media-core.mjs';
+import { relayable } from '@cue-board/sync-server/media-limits';
 
-const MSG_MEDIA = 10, K = { WELCOME: 1, SIGNAL: 2, RELAY: 3, JOINED: 4, LEFT: 5, DROPPED: 6 };
+const MSG_MEDIA = 10, K = { WELCOME: 1, SIGNAL: 2, RELAY: 3, JOINED: 4, LEFT: 5, DROPPED: 6 }, DROP = { RATE: 1, TRANSFER: 2, BUSY: 3 };
+const OLD_RELAY_MAX = 500 * 1024 * 1024;  // a server that doesn't say its cap (before RELAY_MAX_FILE): 600 MiB counted with re-sends
+const REANNOUNCE_MS = 20000;       // `have` again to every peer this often: a relayed control frame can be dropped
+const CANCEL_GRACE_MS = 30000;     // chunks of a cancelled file arriving this long after are expected, not hostile
 const HIGH = 1024 * 1024;          // a transport's queue we keep under (backpressure)
 const MAX_ACTIVE = 3;              // files downloading at once
 const STALE_MS = 8000;             // a request unanswered this long is asked again (elsewhere if possible)
@@ -31,7 +35,9 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
  *   wanted(): Map<string, Want>, localBlob(hex: string): Promise<Blob | null>,
  *   landed(hex: string, blob: Blob, w: Want): Promise<void>, clientName(c: number): string,
  *   limits(): { file: number, project: number }, onChange(): void,
+ *   storage?(): 'ok' | 'blocked' | 'replaced',   whether the store can be used (another tab may hold the database)
  * }} Ctx
+ * store.list?(pid): the files this project has parts of (dropped once the doc no longer references them)
  */
 
 /** @param {Ctx} ctx */
@@ -40,7 +46,10 @@ export function createMedia(ctx) {
   const prov = ctx.provider;
   /** @type {CryptoKey | null} */ let key = null;
   const keyP = roomKeys(ctx.token, ctx.roomId).then(k => { key = k.key; });
-  let myId = 0, sseq = 0, stopped = false, paused = false, override = false, storageFull = false;
+  let myId = 0, sseq = 0, stopped = false, paused = false, override = false, storageFull = false, relayMax = OLD_RELAY_MAX;
+  const reMs = () => T.reannounceMs || REANNOUNCE_MS;
+  const storeState = () => (ctx.storage ? ctx.storage() : 'ok');
+  /** @type {Map<string, { until: number, sent: number }>} */ const cancelled = new Map();   // hex -> late chunks are expected
   /** @type {Map<number, any>} */ const peers = new Map();
   /** @type {Map<string, any>} */ const dls = new Map();          // hex -> { d: Download, src, fails, state, finishing }
   /** @type {Set<string>} */ const failed = new Set();
@@ -64,12 +73,24 @@ export function createMedia(ctx) {
       if (kind === K.WELCOME) {
         reset();
         myId = from;
-        const pd = decoding.createDecoder(payload), n = Math.min(decoding.readVarUint(pd), 64);
-        for (let i = 0; i < n; i++) { const p = addPeer(decoding.readVarUint(pd)); keyP.then(() => hello(p, false)); }
+        const pd = decoding.createDecoder(payload), n = decoding.readVarUint(pd), ids = [];
+        for (let i = 0; i < n && i < 4096; i++) ids.push(decoding.readVarUint(pd));
+        // the relay's per-file cap follows the ids; a server too old to send it gets the old, smaller one
+        relayMax = n <= 4096 && decoding.hasContent(pd) ? decoding.readVarUint(pd) : OLD_RELAY_MAX;
+        for (const id of ids.slice(0, 64)) { const p = addPeer(id); keyP.then(() => hello(p, false)); }
       } else if (kind === K.JOINED) addPeer(from);
       else if (kind === K.LEFT) removePeer(from);
       else if (kind === K.SIGNAL || kind === K.RELAY) { const p = peers.get(from); if (p) frameIn(p, payload.slice(), kind === K.SIGNAL); }
-      else if (kind === K.DROPPED) { const p = peers.get(from); if (p) p.backoff = Date.now() + 300; }
+      else if (kind === K.DROPPED) {
+        const p = peers.get(from); if (!p) return;
+        const now = Date.now();
+        p.backoff = now + 300;
+        if (payload[0] === DROP.TRANSFER && payload.length >= 9) {
+          // too big for the relay: stop sending that file to them (they don't ask for it over the relay themselves)
+          const tag = [...payload.subarray(1, 9)].map(x => x.toString(16).padStart(2, '0')).join('');
+          p.queue = p.queue.filter((/** @type {any} */ q) => !q.h.startsWith(tag));
+        } else p.reannounceAt = Math.min(p.reannounceAt, Math.max(now + 1000, p.announced + 3000));   // maybe a control frame
+      }
     } catch { /* a malformed frame from the server: ignored */ }
   };
 
@@ -80,7 +101,7 @@ export function createMedia(ctx) {
     if (!p && peers.size < 32) {                 // a room is a handful of people; past 32 the rest are ignored
       p = { id, client: -1, guard: new SeqGuard(), have: new Set(), pc: null, dc: null, direct: 'none', saidHi: false, heard: false,
         foreign: false, banned: false, gone: false, queue: [], pumping: false, strikes: 0, pending: 0, chain: Promise.resolve(),
-        blobs: new Map(), backoff: 0 };
+        blobs: new Map(), backoff: 0, hiAt: Date.now(), heardAt: 0, announced: 0, reannounceAt: Infinity };
       peers.set(id, p);
     }
     return p;
@@ -88,19 +109,19 @@ export function createMedia(ctx) {
   function removePeer(/** @type {number} */ id) {
     const p = peers.get(id); if (!p) return;
     p.gone = true; closeRtc(p); peers.delete(id);
-    for (const x of dls.values()) { x.d.release(id); if (x.src === p) x.src = null; }
+    for (const x of dls.values()) { if (x.d) x.d.release(id); if (x.src === p) x.src = null; }
     changed(); schedule();
   }
   function reset() {
     for (const p of peers.values()) { p.gone = true; closeRtc(p); }
     peers.clear();
-    for (const x of dls.values()) { x.d.inflight.clear(); x.src = null; }
+    for (const x of dls.values()) { if (x.d) x.d.inflight.clear(); x.src = null; }
   }
   function ban(/** @type {any} */ p, /** @type {string} */ why) {
     if (p.banned) return;
     p.banned = true; p.queue.length = 0; p.have.clear(); stats.banned++;
     closeRtc(p);
-    for (const x of dls.values()) { x.d.release(p.id); if (x.src === p) x.src = null; }
+    for (const x of dls.values()) { if (x.d) x.d.release(p.id); if (x.src === p) x.src = null; }
     if (T.log) T.log.push('dropped peer: ' + why);
     changed(); schedule();
   }
@@ -133,13 +154,27 @@ export function createMedia(ctx) {
   }
   function hello(/** @type {any} */ p, /** @type {boolean} */ re) {
     if (!p || p.gone) return;
-    p.saidHi = true;
+    p.saidHi = true; p.hiAt = Date.now();
     ctl(p, { t: 'hi', c: prov.awareness ? prov.awareness.clientID : 0, re }, true);
   }
+  /** everything we have, to `p`. Idempotent on their side, so it's also sent again now and then (upkeep()) */
   function announce(/** @type {any} */ p) {
     const w = ctx.wanted(), mine = [...w].filter(([, v]) => v.local).map(([h]) => h);
-    p.told = new Set(mine);
+    p.told = new Set(mine); p.announced = Date.now(); p.reannounceAt = p.announced + reMs();
     for (let i = 0; i < mine.length; i += 200) ctl(p, { t: 'have', h: mine.slice(i, i + 200) });
+  }
+  /* A relayed control frame can be dropped by the server (rate caps, the receiver's queue) or lost in a reconnect, and
+     nothing answers `have`, `hi` or `cancel`. So, once a second: `have` again to each peer every REANNOUNCE_MS (sooner
+     after the server said it dropped one of our frames to them), `hi` again to a peer we never heard from. Bounded:
+     a handful of small frames per peer per period. `nf` and `lost` answer a `get`, which is itself asked again. */
+  function upkeep() {
+    const now = Date.now();
+    for (const p of peers.values()) {
+      if (p.gone || p.banned || p.foreign) continue;
+      if (p.heard) { if (now >= p.reannounceAt) announce(p); }
+      else if (now - p.hiAt >= reMs()) hello(p, false);
+    }
+    for (const [h, c] of cancelled) if (now > c.until) cancelled.delete(h);
   }
 
   /* ---------- WebRTC: optional, the relay carries everything until a data channel opens ---------- */
@@ -223,7 +258,7 @@ export function createMedia(ctx) {
   function onCtl(/** @type {any} */ p, /** @type {any} */ m) {
     switch (m.t) {
       case 'hi':
-        p.client = m.c;
+        p.client = m.c; p.heardAt = p.heardAt || Date.now();
         if (!m.re || !p.saidHi) hello(p, true);
         if (myId < p.id && !T.noRtc) startRtc(p, true);
         announce(p); changed();
@@ -231,7 +266,7 @@ export function createMedia(ctx) {
       case 'offer': case 'answer': case 'ice': return onRtcSignal(p, m);
       case 'have': for (const h of m.h) if (p.have.size < MAX_HAVE) p.have.add(h); changed(); schedule(); return;
       case 'lost': case 'nf':
-        for (const h of m.t === 'nf' ? [m.h] : m.h) { p.have.delete(h); const x = dls.get(h); if (x) { x.d.release(p.id); if (x.src === p) x.src = null; } }
+        for (const h of m.t === 'nf' ? [m.h] : m.h) { p.have.delete(h); const x = dls.get(h); if (x) { if (x.d) x.d.release(p.id); if (x.src === p) x.src = null; } }
         changed(); schedule(); return;
       case 'cancel': p.queue = p.queue.filter((/** @type {any} */ q) => q.h !== m.h); return;
       case 'get': return onGet(p, m);
@@ -252,16 +287,23 @@ export function createMedia(ctx) {
   async function onChunk(/** @type {any} */ p, /** @type {Uint8Array} */ f) {
     const c = parseChunk(f);
     if (!c) { strike(p, 'bad chunk frame'); return; }
-    const x = [...dls.values()].find(v => v.d.hex.startsWith(c.tag));
-    if (!x) { strike(p, 'chunk for nothing'); return; }
+    const x = [...dls.values()].find(v => v.d && v.d.hex.startsWith(c.tag));
+    if (!x) {
+      // a file we cancelled: what was asked before still arrives. Not hostile; tell them again (once a second at most)
+      const k = [...cancelled.keys()].find(h => h.startsWith(c.tag)), cc = k && cancelled.get(k);
+      if (!k || !cc) { strike(p, 'chunk for nothing'); return; }
+      if (Date.now() - cc.sent > 1000) { cc.sent = Date.now(); ctl(p, { t: 'cancel', h: k }); }
+      return;
+    }
     const d = x.d, why = d.accept(p.id, c.i);
+    if (why === 'late') { d.late.delete(c.i); return; }       // asked of them, given up on (timeout), arriving now
     if (why !== 'ok') { strike(p, 'chunk ' + why); return; }
     const plain = await openChunk(/** @type {CryptoKey} */ (key), d.hex, d.size, c.i, c.base, c.ct);
     if (!plain || plain.length !== chunkLen(d.size, c.i)) { ban(p, 'chunk failed authentication'); return; }
     if (dls.get(d.hex) !== x || x.d !== d || d.accept(p.id, c.i) !== 'ok') return;   // cancelled or reset meanwhile
     const ok = await ctx.store.put(d.hex, c.i, plain);
     if (dls.get(d.hex) !== x || x.d !== d) return;
-    if (!ok) { d.release(p.id); storageFull = true; changed(); return; }
+    if (!ok) { d.release(p.id); if (storeState() === 'ok') storageFull = true; changed(); return; }   // busy: not "full"
     d.stored(p.id, c.i); stats.recv += plain.length;
     if (d.done) finish(x); else schedule();
     changedSoon();
@@ -310,8 +352,13 @@ export function createMedia(ctx) {
   /* ---------- scheduling ---------- */
   /* run the scheduler now. The 1 s fallback timer it leaves behind (stale requests, new holders) must not stand in the
      way: refilling the window only once a second capped every transfer at 16 chunks/s. */
-  let tickSoon = false;
-  function schedule() { if (stopped || tickSoon) return; clearTimeout(tickTimer); tickSoon = true; tickTimer = setTimeout(tick, 0); }
+  let tickSoon = false, ticking = false, again = false, sweptParts = false;
+  function schedule() {
+    if (stopped) return;
+    if (ticking) { again = true; return; }       // one tick at a time: the running one goes again when it ends
+    if (tickSoon) return;
+    clearTimeout(tickTimer); tickSoon = true; tickTimer = setTimeout(tick, 0);
+  }
   let changeTimer = /** @type {any} */ (0);
   const changed = () => { clearTimeout(changeTimer); changeTimer = 0; if (!stopped) ctx.onChange(); };
   const changedSoon = () => { if (!changeTimer) changeTimer = setTimeout(changed, 250); };
@@ -330,23 +377,58 @@ export function createMedia(ctx) {
     return { w, fetch, skipped };
   }
   const holders = (/** @type {string} */ h) => [...peers.values()].filter(p => p.heard && !p.banned && !p.gone && p.have.has(h));
+  /* A file bigger than the relay's cap (only "Download all now" asks for those) comes only over a data channel. */
+  const viaRelay = (/** @type {number} */ bytes) => relayable(bytes, relayMax);
+  const canServe = (/** @type {any} */ p, /** @type {number} */ bytes) => viaRelay(bytes) || dcOpen(p);
+  const usable = (/** @type {string} */ h, /** @type {number} */ bytes) => holders(h).filter(p => canServe(p, bytes));
+  /** a data channel to `p` may still open: the attempt is running, or about to start */
+  const mayDirect = (/** @type {any} */ p) => !T.noRtc && typeof RTCPeerConnection === 'function' &&
+    (p.direct === 'trying' || (p.direct === 'none' && Date.now() - p.heardAt < RTC_TIMEOUT + 2000));
+  /** stop fetching `h`. keep: only the limits skip it now (paused, lowered, the budget went to another file): its
+      chunks stay stored and it resumes from them when it's allowed again. Else (deleted, here already): dropped. */
+  function stopFetch(/** @type {string} */ h, /** @type {any} */ x, /** @type {boolean} */ keep) {
+    dls.delete(h);
+    const to = new Set(x.d ? [...x.d.inflight.values()].map(v => v.peer) : []); if (x.src) to.add(x.src.id);
+    for (const id of to) { const p = peers.get(id); if (p) ctl(p, { t: 'cancel', h }); }
+    const now = Date.now(); cancelled.set(h, { until: now + CANCEL_GRACE_MS, sent: now });
+    if (keep) kept.add(h); else { kept.delete(h); ctx.store.drop(h); }
+  }
+  /** @type {Set<string>} */ const kept = new Set();   // stopped with their chunks kept: dropped if the doc lets go of them
   async function tick() {
-    tickTimer = 0; tickSoon = false;
+    clearTimeout(tickTimer); tickTimer = 0; tickSoon = false;
     if (stopped) return;
-    const { w, fetch } = plan();
+    if (ticking) { again = true; return; }
+    ticking = true; again = false;
+    let more = true;
+    try { more = await step(); } catch { /* storage threw: the next tick tries again */ } finally { ticking = false; }
+    if (stopped) return;
+    clearTimeout(tickTimer); tickTimer = 0;
+    if (again) schedule(); else if (more) tickTimer = setTimeout(tick, 1000);
+  }
+  /** one pass of the scheduler; true while there's something to come back for */
+  async function step() {
+    const { w, fetch, skipped } = plan(), busy = storeState() !== 'ok';
     // a crash after a file landed and before its parts were dropped leaves them behind: drop them for files that are here
-    if (!swept) { swept = true; for (const [h, v] of w) if (v.local) ctx.store.drop(h); }
-    // files nobody references anymore (deleted elsewhere, or now here): stop, and drop what was stored of them
+    if (!swept && !busy) { swept = true; for (const [h, v] of w) if (v.local) ctx.store.drop(h); }
+    // parts of files the doc no longer references (deleted while this browser was away), once the doc is in
+    if (!sweptParts && !busy && prov.synced && ctx.store.list) {
+      sweptParts = true;
+      for (const h of await ctx.store.list(ctx.pid)) if (!ctx.wanted().has(h) && !dls.has(h)) ctx.store.drop(h);
+    }
+    for (const h of kept) {
+      const v = w.get(h);
+      if (dls.has(h)) kept.delete(h); else if (!busy && (!v || v.local)) { kept.delete(h); ctx.store.drop(h); }
+    }
     for (const [h, x] of dls) if (!fetch.includes(h) && !x.finishing) {
-      dls.delete(h);
-      if (x.src) ctl(x.src, { t: 'cancel', h });
-      ctx.store.drop(h);
+      const v = w.get(h), why = skipped.get(h);
+      stopFetch(h, x, !!v && !v.local && !failed.has(h) && (why === 'file' || why === 'project'));
     }
     for (const h of fetch) {
       if (dls.size >= MAX_ACTIVE) break;
-      if (dls.has(h) || !holders(h).length || paused || storageFull) continue;
-      const v = /** @type {Want} */ (w.get(h)), x = { d: /** @type {Download | null} */ (null), src: null, fails: 0, finishing: false, opening: true };
-      dls.set(h, /** @type {any} */ (x));
+      const v = /** @type {Want} */ (w.get(h));
+      if (dls.has(h) || paused || storageFull || busy || !usable(h, v.bytes).length) continue;
+      const x = { d: /** @type {Download | null} */ (null), src: null, fails: 0, finishing: false, opening: true };
+      dls.set(h, /** @type {any} */ (x)); cancelled.delete(h);
       const have = await ctx.store.open(h, { size: v.bytes, mime: v.mime, pid: ctx.pid, t: Date.now() });
       if (dls.get(h) !== x || stopped) continue;
       x.d = new Download(h, v.bytes, have); x.opening = false;
@@ -356,13 +438,17 @@ export function createMedia(ctx) {
       if (!x.d || x.finishing) continue;
       if (x.d.done) { if (!storageFull) finish(x); continue; } // all stored, landing interrupted: again (not while full)
       for (const pid of x.d.stale(STALE_MS)) { x.d.release(pid); if (x.src && x.src.id === pid) x.src = null; }
-      if (x.src && (x.src.gone || x.src.banned || !x.src.have.has(x.d.hex))) x.src = null;
-      if (paused || storageFull) continue;
+      if (x.src && (x.src.gone || x.src.banned || !x.src.have.has(x.d.hex) || !canServe(x.src, x.d.size))) x.src = null;
+      if (paused || storageFull || busy) continue;
       if (!x.src) {
-        const hs = holders(x.d.hex).sort((a, b) => load(a) - load(b));
+        const hs = usable(x.d.hex, x.d.size).sort((a, b) => load(a) - load(b));
         x.src = hs[0] || null;
       }
-      if (!x.src) continue;
+      if (!x.src) {
+        // too big for the relay and its data channel closed: free the slot for another file, keep what's stored
+        if (!viaRelay(x.d.size) && !x.d.inflight.size) stopFetch(x.d.hex, x, true);
+        continue;
+      }
       const want = WINDOW - x.d.inflightFrom(x.src.id);
       if (want >= 4 || (want > 0 && x.d.count - x.d.n <= WINDOW)) {
         const idx = x.d.take(x.src.id, Math.min(want, 32));
@@ -370,7 +456,7 @@ export function createMedia(ctx) {
       }
     }
     changedSoon();
-    if ([...dls.values()].some(x => x.d && !x.finishing) || fetch.some(h => !dls.has(h))) tickTimer = setTimeout(tick, 1000);
+    return [...dls.values()].some(x => x.d && !x.finishing) || fetch.some(h => !dls.has(h));
   }
   const load = (/** @type {any} */ p) => [...dls.values()].filter(x => x.src === p).length;
   async function finish(/** @type {any} */ x) {
@@ -379,6 +465,7 @@ export function createMedia(ctx) {
     const d = /** @type {Download} */ (x.d), w = ctx.wanted().get(d.hex);
     try {
       const parts = await ctx.store.read(d.hex, d.count);
+      if (!parts && storeState() !== 'ok') { x.finishing = false; return; }   // storage closed under us: not the file's fault
       const blob = parts && parts.length === d.count ? new Blob(parts, { type: (w && w.mime) || '' }) : null;
       const ok = !!blob && blob.size === d.size && (await sha256Blob(blob)) === d.hex;
       if (stopped || dls.get(d.hex) !== x) return;            // left, deleted, or cancelled while verifying
@@ -416,8 +503,10 @@ export function createMedia(ctx) {
     const { w, skipped } = plan(), out = [];
     for (const [h, v] of w) {
       const x = dls.get(h), who = holders(h).map(p => ctx.clientName(p.client)).filter(Boolean);
+      // relay: only a direct connection can bring it (bigger than the relay's cap), and none is open or coming
+      const relay = !viaRelay(v.bytes) && !usable(h, v.bytes).length && !holders(h).some(mayDirect);
       const state = v.local ? 'here' : failed.has(h) ? 'failed' : skipped.has(h) ? 'skipped' : x && x.d && x.d.n ? 'downloading'
-        : who.length ? (paused || storageFull ? 'paused' : 'queued') : 'unavailable';
+        : who.length ? (paused || storageFull || storeState() !== 'ok' ? 'paused' : relay ? 'relay' : 'queued') : 'unavailable';
       out.push({ hex: h, label: v.label, bytes: v.bytes, song: !!v.song, state, skip: skipped.get(h) || '', got: v.local ? v.bytes : x && x.d ? x.d.bytes : 0, who });
     }
     return out;
@@ -425,12 +514,13 @@ export function createMedia(ctx) {
   function summary() {
     const l = files(), n = (/** @type {string} */ s) => l.filter(f => f.state === s).length;
     return { total: l.length, here: n('here'), active: n('downloading') + n('queued'), unavailable: n('unavailable'), skipped: n('skipped'),
-      failed: n('failed'), paused, storageFull, storage: { ...storage }, foreign: [...peers.values()].filter(p => p.foreign).length,
+      failed: n('failed'), relay: n('relay'), paused, storageFull, storageBusy: storeState() === 'ok' ? '' : storeState(), storage: { ...storage }, foreign: [...peers.values()].filter(p => p.foreign).length,
       direct: [...peers.values()].filter(p => p.direct === 'open').length, relayed: [...peers.values()].filter(p => p.heard && p.direct !== 'open').length };
   }
 
   checkStorage();
-  const idle = setInterval(() => { if (!stopped) schedule(); }, 5000);
+  let beats = 0;
+  const idle = setInterval(() => { if (stopped) return; upkeep(); if (++beats % 5 === 0) schedule(); }, 1000);
   return {
     files, summary, stats,
     /** progress of a missing file, 0..1, or null if nothing is coming */
@@ -446,9 +536,10 @@ export function createMedia(ctx) {
       }
       schedule(); changedSoon();
     },
-    /** no new requests; chunks already asked for still land (dropping them would count against an honest peer) */
-    pause(/** @type {boolean} */ on) { paused = on; if (on) override = false; changed(); schedule(); },
-    /** fetch everything now, the size limits too; also retries after "storage full" */
+    /** no new requests; chunks already asked for still land (dropping them would count against an honest peer).
+        "Download all now" stays on: resuming continues the files it started, from their stored chunks */
+    pause(/** @type {boolean} */ on) { paused = on; changed(); schedule(); },
+    /** fetch everything now, the size limits too, for the rest of the session; also retries after "storage full" */
     downloadAll() { override = true; paused = false; storageFull = false; failed.clear(); changed(); schedule(); },
     retryStorage() { storageFull = false; schedule(); },
     stop() {

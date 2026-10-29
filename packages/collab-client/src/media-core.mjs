@@ -158,6 +158,8 @@ export class Download {
     this.bits = new Uint8Array(Math.ceil(this.count / 8)); this.n = 0;
     /** @type {Map<number, { peer: number, t: number }>} */ this.inflight = new Map();
     /** @type {Set<number>} peers whose chunks are in the current attempt */ this.sources = new Set();
+    /** @type {Map<number, number>} requests given up on (index -> peer): one late answer each is expected, not hostile */
+    this.late = new Map();
     for (const i of have) if (isIdx(i) && i < this.count) this.#set(i);
   }
   has(/** @type {number} */ i) { return !!(this.bits[i >> 3] & (1 << (i & 7))); }
@@ -171,22 +173,27 @@ export class Download {
     return out;
   }
   inflightFrom(/** @type {number} */ peer) { let n = 0; for (const v of this.inflight.values()) if (v.peer === peer) n++; return n; }
-  /** A chunk arrived from `peer`: 'ok' to store it, else why it's refused ('range', 'unasked', 'dup'). */
+  /** A chunk arrived from `peer`: 'ok' to store it, 'late' (released before it came: ignore it), else why it's refused
+      ('range', 'unasked', 'dup'). */
   accept(/** @type {number} */ peer, /** @type {number} */ i) {
     if (!isIdx(i) || i >= this.count) return 'range';
-    if (this.has(i)) return 'dup';
     const f = this.inflight.get(i);
-    if (!f || f.peer !== peer) return 'unasked';
-    return 'ok';
+    if (f && f.peer === peer && !this.has(i)) return 'ok';
+    if (this.late.get(i) === peer) return 'late';
+    return this.has(i) ? 'dup' : 'unasked';
   }
   /** Stored and verified. */
   stored(/** @type {number} */ peer, /** @type {number} */ i) { this.inflight.delete(i); this.#set(i); this.sources.add(peer); }
   /** Forget what was asked of `peer` (it left, timed out or was dropped); returns how many. */
-  release(/** @type {number} */ peer) { let n = 0; for (const [i, v] of this.inflight) if (v.peer === peer) { this.inflight.delete(i); n++; } return n; }
+  release(/** @type {number} */ peer) {
+    let n = 0;
+    for (const [i, v] of this.inflight) if (v.peer === peer) { this.inflight.delete(i); if (this.late.size < 4096) this.late.set(i, peer); n++; }
+    return n;
+  }
   /** Requests older than `ms`: their peers. */
   stale(/** @type {number} */ ms, now = Date.now()) { const s = new Set(); for (const v of this.inflight.values()) if (now - v.t > ms) s.add(v.peer); return s; }
   /** The whole file failed its hash: start over. */
-  reset() { this.bits.fill(0); this.n = 0; this.inflight.clear(); this.sources.clear(); }
+  reset() { this.bits.fill(0); this.n = 0; this.inflight.clear(); this.sources.clear(); this.late.clear(); }
 }
 
 /* ---------- SHA-256, incremental (WebCrypto has no streaming digest; a 500 MB take must not be read at once) ---------- */

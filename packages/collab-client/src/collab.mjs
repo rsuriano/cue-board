@@ -23,13 +23,31 @@ const SHOT_ID = /^[\w-]{1,64}$/;
 
 /* ---------- IndexedDB ---------- */
 /** @type {Promise<IDBDatabase | null> | null} */ let dbP = null;
+const BLOCKED_MS = 2500;
+/* 'ok' · 'blocked': a tab still running an older version holds the database at version 1, so the upgrade waits until that
+   tab closes or reloads. After BLOCKED_MS this tab goes on without it (the doc syncs, without the offline copy; file
+   transfers wait, the chip says why) and switches to it once it opens · 'replaced': a newer version opened in another
+   tab and this one let go of the database (reloading fixes it) · 'failed': no IndexedDB here */
+/** @type {'ok' | 'blocked' | 'replaced' | 'failed'} */ let dbState = 'ok';
+/** @type {Set<() => void>} */ const dbWatch = new Set();      // open sessions: the database opened late or went away
 function db() {
   if (!dbP) dbP = new Promise(res => {
+    let settled = false, timer = /** @type {any} */ (0);
+    const settle = (/** @type {IDBDatabase | null} */ d) => { if (!settled) { settled = true; clearTimeout(timer); res(d); } };
     try {
       const r = indexedDB.open('cueboard-collab', 2);
       r.onupgradeneeded = () => { for (const n of ['docs', 'hashes', 'parts', 'chunks']) if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n); };
-      r.onsuccess = () => res(r.result); r.onerror = () => res(null);
-    } catch { res(null); }
+      r.onsuccess = () => {
+        const d = r.result;
+        // a later version opening in another tab: let go at once instead of blocking it like we were blocked
+        d.onversionchange = () => { d.close(); dbState = 'replaced'; dbP = Promise.resolve(null); dbWatch.forEach(f => f()); };
+        dbState = 'ok';
+        if (settled) { dbP = Promise.resolve(d); loadHashes().finally(() => dbWatch.forEach(f => f())); }   // opened late
+        else settle(d);
+      };
+      r.onerror = () => { if (!settled) dbState = 'failed'; settle(null); };
+      r.onblocked = () => { if (!timer) timer = setTimeout(() => { dbState = 'blocked'; settle(null); dbWatch.forEach(f => f()); }, BLOCKED_MS); };
+    } catch { dbState = 'failed'; res(null); }
   });
   return dbP;
 }
@@ -50,10 +68,11 @@ async function op(name, mode, fn) {
 /** @type {Set<string>} */ const noFile = new Set();
 /** a hash's local id, unless that one is gone: then the newest copy wins */
 const noteHash = (/** @type {string} */ hex, /** @type {string} */ id) => { const was = bySha.get(hex); if (!was || noFile.has(was)) bySha.set(hex, id); };
-const hashesLoaded = (async () => {
+async function loadHashes() {
   const [keys, vals] = await Promise.all([op('hashes', 'readonly', st => st.getAllKeys()), op('hashes', 'readonly', st => st.getAll())]);
-  (keys || []).forEach((/** @type {any} */ k, /** @type {number} */ i) => { const v = vals && vals[i]; if (typeof k === 'string' && v && typeof v.sha256 === 'string') { hashes.set(k, v); noteHash(v.sha256, k); } });
-})();
+  (keys || []).forEach((/** @type {any} */ k, /** @type {number} */ i) => { const v = vals && vals[i]; if (typeof k === 'string' && v && typeof v.sha256 === 'string' && !hashes.has(k) && !noFile.has(k)) { hashes.set(k, v); noteHash(v.sha256, k); } });
+}
+const hashesLoaded = loadHashes();
 const canHash = () => !!(globalThis.crypto && crypto.subtle);
 async function sha256(/** @type {Blob} */ b) {
   const h = await crypto.subtle.digest('SHA-256', await b.arrayBuffer());
@@ -95,6 +114,11 @@ const parts = {
   async read(/** @type {string} */ hex, /** @type {number} */ count) {
     const r = range(hex), v = r && await op('chunks', 'readonly', st => st.getAll(r));
     return Array.isArray(v) && v.length === count && v.every(b => b instanceof Blob) ? v : null;
+  },
+  /** the files project `pid` has parts of */
+  async list(/** @type {string} */ pid) {
+    const [keys, vals] = await Promise.all([op('parts', 'readonly', st => st.getAllKeys()), op('parts', 'readonly', st => st.getAll())]);
+    return (keys || []).filter((/** @type {any} */ k, /** @type {number} */ i) => typeof k === 'string' && vals && vals[i] && vals[i].pid === pid);
   },
   async drop(/** @type {string} */ hex) {
     const r = range(hex); if (!r) return;
@@ -233,6 +257,7 @@ export function createCollab(app, syncUrl, opts = {}) {
       return (wantCache = m);
     }
     const mediaChanged = () => { wantCache = null; if (media) media.refresh(); };
+    dbWatch.add(mediaChanged);                    // the database opened late (hashes loaded) or went away: the chip, transfers
     async function landed(/** @type {string} */ hex, /** @type {Blob} */ blob, /** @type {any} */ w) {
       if (stopped) throw new Error('session stopped');
       if (w.song) {
@@ -421,6 +446,7 @@ export function createCollab(app, syncUrl, opts = {}) {
         clientName: c => { const st = prov && prov.awareness.getStates().get(c); return st ? sanitizeName(st.user && st.user.name) : ''; },
         limits: () => (app.mediaLimits ? app.mediaLimits(pid) : { file: 500e6, project: 5e9 }),
         onChange: () => { if (!stopped && app.onMedia) app.onMedia(pid); },
+        storage: () => (dbState === 'blocked' || dbState === 'replaced' ? dbState : 'ok'),
       });
       report();
     })();
@@ -469,6 +495,7 @@ export function createCollab(app, syncUrl, opts = {}) {
         window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline);
         window.removeEventListener('pagehide', onHide); globalThis.document?.removeEventListener('visibilitychange', onVis);
         if (!marks) unlist();
+        dbWatch.delete(mediaChanged);
         if (media) media.stop();
         if (prov) { prov.awareness.setLocalState(null); prov.destroy(); }
         setTimeout(() => doc.destroy(), 0);

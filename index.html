@@ -1773,17 +1773,20 @@ let persistWarned=false;
 /* the chip while connected: [class, text, tooltip, state], or null for plain "Synced" (a project without files) */
 function mediaChip(){const m=cmedia();if(!m)return null;const x=m.summary();if(!x.total)return null;
   const low=x.storage.persisted===false?" This browser may clear these files when space runs low; your collaborators keep their copies.":"";
+  if(x.storageBusy==="blocked")return["off","Storage busy, close other tabs","Another Cue Board tab, still on the previous version, is holding this browser's storage. Close or reload the other tabs and files start arriving. Edits sync as usual.","busy"];
+  if(x.storageBusy==="replaced")return["off","Storage busy, reload this tab","Cue Board was updated in another tab, so this one let go of the browser's storage. Reload this tab to keep receiving files. Edits sync as usual.","busy"];
   if(x.storageFull)return["err","Storage full, downloads paused","This browser is out of space for more files. Free some space, then choose Download all now under Files…"+low,"full"];
   if(x.failed)return["err",plural(x.failed,"couldn't be verified"),"What arrived didn't match the file's fingerprint, so it was thrown away. Download all now under Files… tries again.","failed"];
   if(x.active&&!x.paused)return["sync","Syncing "+plural(x.active),"Copying files from collaborators who have them."+low,"syncing"];
   if(x.paused&&x.active+x.unavailable)return["off","Paused, "+plural(x.active+x.unavailable,"to get"),"Downloads are paused. Files… in the project menu resumes them.","paused"];
   if(x.unavailable)return["off",plural(x.unavailable,"not available yet: nobody online has them"),"They arrive when someone who has them opens the project."+low,"unavailable"];
+  if(x.relay)return["off",plural(x.relay,"too large to relay: needs a direct connection"),"Too big to pass through the sync server. It arrives when you and someone who has it can connect directly (for example, on the same network).","relay"];
   if(x.skipped)return["off",plural(x.skipped,"skipped: over the size limit"),"Bigger than this project's download limit. Files… in the project menu downloads them anyway.","skipped"];
   return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
 /* "not on this device yet" placeholders: the file's progress while it's coming */
 function renderMiss(){const m=cmedia();document.querySelectorAll("[data-miss]").forEach(el=>{const id=el.dataset.miss,p=m&&id.startsWith("sha256-")?m.progress(id.slice(7)):null;
   if(el.dataset.base==null)el.dataset.base=el.textContent;el.textContent=p==null?el.dataset.base:"Arriving · "+Math.floor(p*100)+"%"})}
-const FST={here:"Here",downloading:"Downloading",queued:"Waiting its turn",unavailable:"Nobody online has it",skipped:"Skipped: over the size limit",failed:"Couldn't be verified",paused:"Paused"};
+const FST={here:"Here",downloading:"Downloading",queued:"Waiting its turn",unavailable:"Nobody online has it",skipped:"Skipped: over the size limit",failed:"Couldn't be verified",paused:"Paused",relay:"Too large to relay: needs a direct connection"};
 function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=cur&&cset.rooms[cur.id];
   $("fList").replaceChildren(...l.map(f=>{const li=document.createElement("li"),n=document.createElement("span"),z=document.createElement("span"),w=document.createElement("span");
     n.className="fn";n.textContent=f.label;n.title=f.label;z.className="fs";z.textContent=f.state==="downloading"?fmtMB(f.got)+" of "+fmtMB(f.bytes):fmtMB(f.bytes);
