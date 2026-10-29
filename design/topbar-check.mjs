@@ -197,7 +197,7 @@ try {
       font: getComputedStyle(s).font === getComputedStyle(j).font && getComputedStyle(s).color === getComputedStyle(m).color,
       sw: getComputedStyle(s.querySelector('.ico')).strokeWidth, msw: getComputedStyle(m.querySelector('.ico')).strokeWidth, tag: s.tagName, last: s === document.querySelector('.tright').lastElementChild }; });
   const gear = await gearAt(), named = await page.getByRole('button', { name: 'Settings', exact: true }).count();
-  check('Settings: the gear then the word "Settings" (its accessible name), styled like Join, same height and stroke as More, last in the bar', gear.ico === '#i-gear' && gear.text === 'Settings' && gear.lw > 40 && named === 1 && !gear.aria && !gear.title && gear.font
+  check('Settings: the gear then the word "Settings" (aria-label matches the word), styled like Join, same height and stroke as More, last in the bar', gear.ico === '#i-gear' && gear.text === 'Settings' && gear.lw > 40 && named === 1 && gear.aria === "Settings" && !gear.title && gear.font
     && gear.tag === 'BUTTON' && gear.h === gear.mh && gear.sw === gear.msw && gear.last && await page.locator('#i-sliders').count() === 0, JSON.stringify(gear));
   await page.hover('#settingsb'); await sleep(150);
   check('with its word showing, no tooltip on Settings (at rest or on hover)', await tip('#settingsb') === '');
