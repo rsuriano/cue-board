@@ -799,16 +799,22 @@ function selectProject(p){
   const pid=cur.id;loadProjectMedia(cur).then(()=>{if(!cur||cur.id!==pid)return;lastKey="";renderAll();renderB();ensurePolling();refreshCredits()});
   collabFor(cur);
 }
+function detachAudio(){hasAudio=false;audioName="";if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}
+  audio.removeAttribute("src");try{audio.load()}catch(e){}}
+/* songStale: the room has a newer song than the one stored here (a collaborator replaced it). The stored one isn't
+   played until the new one arrives and replaces it (collabApp.onSong) */
+let songStale=false,audioName="";
 function loadAudio(){
-  hasAudio=false;if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}
-  audio.removeAttribute("src");try{audio.load()}catch(e){}
+  detachAudio();
   const pid=cur.id;
-  idbDo("readonly",st=>st.get(pid)).then(rec=>{if(rec&&rec.blob&&cur&&cur.id===pid)attachAudio(rec.blob);renderSongbar()});
+  idbDo("readonly",st=>st.get(pid)).then(rec=>{if(rec&&rec.blob&&cur&&cur.id===pid&&!(songStale&&csessPid===pid))attachAudio(rec.blob,rec.name);renderSongbar()});
 }
-function attachAudio(blob){audioUrl=URL.createObjectURL(blob);audio.src=audioUrl;hasAudio=true;renderTransport();renderSongbar()}
+function attachAudio(blob,name){audioUrl=URL.createObjectURL(blob);audio.src=audioUrl;audioName=name||"";hasAudio=true;renderTransport();renderSongbar()}
 audio.addEventListener("loadedmetadata",()=>{if(!cur||!isFinite(audio.duration))return;
   if(!cur.song)cur.song={name:"",duration:0,peaks:[]};
-  if(Math.abs((cur.song.duration||0)-audio.duration)>.3){cur.song.duration=audio.duration;scheduleSave()}
+  /* another file than the project's song (stored under another name): its length isn't the song's */
+  const other=songStale||!!(audioName&&cur.song.name&&audioName!==cur.song.name);
+  if(!other&&Math.abs((cur.song.duration||0)-audio.duration)>.3){cur.song.duration=audio.duration;scheduleSave()}
   renderTimeline();renderStrip();renderEdHead()});
 const base=n=>n.replace(/\.[^.]+$/,"");
 async function loadSongFile(file){
@@ -816,7 +822,7 @@ async function loadSongFile(file){
   if(!cur){selectProject(makeProject(base(file.name)));}
   else if(!cur.title||cur.title==="Untitled project"||cur.title==="Proyecto sin título"){cur.title=base(file.name)}
   stop();if(audioUrl)URL.revokeObjectURL(audioUrl);
-  attachAudio(file);
+  songStale=false;attachAudio(file,file.name);
   idbDo("readwrite",st=>st.put({blob:file,name:file.name},cur.id));
   toast("Analyzing the song…");
   try{
@@ -848,7 +854,9 @@ function renderProjSelect(){
 }
 function renderSongbar(){
   const el=$("songbar");
-  if(cur&&cur.song&&cur.song.name&&!hasAudio){el.hidden=false;el.innerHTML=`<span>This project uses <b>${esc(cur.song.name)}</b>. Load it here to hear it.</span><label class="btn small" for="song">Load ${esc(cur.song.name)}</label>`}
+  if(cur&&cur.song&&cur.song.name&&!hasAudio){el.hidden=false;el.dataset.stale=songStale?"1":"";
+    el.innerHTML=songStale?`<span>The song was replaced with <b>${esc(cur.song.name)}</b>. It plays once it arrives from your collaborators; Files… shows its progress.</span><label class="btn small" for="song">Load it yourself</label>`
+      :`<span>This project uses <b>${esc(cur.song.name)}</b>. Load it here to hear it.</span><label class="btn small" for="song">Load ${esc(cur.song.name)}</label>`}
   else el.hidden=true;
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
   $("delsong").hidden=!has;$("songlbl").textContent=has?"Replace song":"Load song";
@@ -1730,6 +1738,11 @@ const collabApp={
   storeMedia:async(blob,mime)=>(await assets.upload(blob,{type:mime||blob.type||"application/octet-stream"})).id,
   storeSong:async(pid,blob,name)=>{const f=new File([blob],name||"song",{type:blob.type});
     if(await idbDo("readwrite",st=>st.put({blob:f,name:f.name},pid))===null)throw{code:"write_failed"};if(cur&&cur.id===pid)loadAudio()},
+  /* stale: a collaborator replaced the song and the new file isn't here yet. The old one stays stored (replaced by
+     storeSong once the new one is verified) but isn't played under the new name; the Files list and the chip show the
+     new one arriving */
+  onSong:(pid,stale)=>{if(!cur||cur.id!==pid||csessPid!==pid)return;songStale=stale;
+    if(stale){if(hasAudio){stop();detachAudio()}renderAll()}else if(!hasAudio)loadAudio();else renderSongbar()},
   onMedia:pid=>{if(cur&&cur.id===pid&&csessPid===pid){renderCollab(csess.status());renderMiss();if($("dlgFiles").open)renderFiles()}},
   mediaLimits:pid=>{const l=(cset.rooms[pid]&&cset.rooms[pid].limits)||{};return{file:(+l.file||500)*1e6,project:(+l.project||5000)*1e6}},
   onEvent:(pid,t)=>{const b=cset.rooms[pid];if(!b)return;
@@ -1799,7 +1812,8 @@ function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=
   const lim=(b&&b.limits)||{};$("fLimF").value=String(lim.file||500);$("fLimP").value=String(lim.project||5000)}
 function openFiles(){renderFiles();$("dlgFiles").showModal()}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId};
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,
+  song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 $("fClose").onclick=()=>$("dlgFiles").close();
 $("fAll").onclick=()=>{const m=cmedia();if(m){m.downloadAll();renderFiles()}};
 $("fPause").onclick=()=>{const m=cmedia();if(m){m.pause(!m.summary().paused);renderFiles()}};
@@ -1821,7 +1835,7 @@ function renderMarks(){
 /* start or stop the room session for the open project */
 async function collabFor(p){
   const b=p&&SYNC_URL?cset.rooms[p.id]:null;
-  if(csess&&csessPid!==(b&&p.id)){csess.stop();csess=null;csessPid=null;cunshared=0;peers=[];renderMarks()}
+  if(csess&&csessPid!==(b&&p.id)){csess.stop();csess=null;csessPid=null;cunshared=0;songStale=false;peers=[];renderMarks()}
   if(!b){renderCollab(null);return}
   if(csessPid===p.id)return;
   renderCollab("syncing");

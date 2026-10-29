@@ -166,7 +166,9 @@ export function parseIce(/** @type {string} */ s) {
  *   onEvent(pid: string, type: 'shared' | 'not-empty'): void,
  *   onUnshared?(pid: string, n: number): void, n media fields whose file couldn't be read or hashed: kept here, not in the room
  *   storeMedia?(blob: Blob, mime: string): Promise<string>,   a file received from a peer, verified: keep it, return its new media id
- *   storeSong?(pid: string, blob: Blob, name: string): Promise<void>,
+ *   storeSong?(pid: string, blob: Blob, name: string): Promise<void>,   replaces the stored song in one write
+ *   onSong?(pid: string, stale: boolean): void, stale: the stored song is an older file than the room's (replaced by someone
+ *                                              else): don't play it; false once the new one is stored (or the stale state ends)
  *   onMedia?(pid: string): void,               transfer state changed (chip, placeholders, files list)
  *   mediaLimits?(pid: string): { file: number, project: number },
  * }} App
@@ -237,6 +239,7 @@ export function createCollab(app, syncUrl, opts = {}) {
     let unshared = 0;
     /** @type {ReturnType<typeof createMedia> | null} */ let media = null;
     /** @type {Map<string, any> | null} */ let wantCache = null;
+    let songStale = false, songShown = false;     // the stored song is an older file than the doc's (wanted), as last told to the app
     /* every file the doc references: hash -> size, type, a label for the files list, and whether this device has it */
     function wanted() {
       if (wantCache) return wantCache;
@@ -252,11 +255,20 @@ export function createCollab(app, syncUrl, opts = {}) {
       });
       (v.project.refs || []).forEach((/** @type {string} */ id) => name(hexOf(id), 'Reference image'));
       for (const [hex, r] of v.refs) m.set(hex, { bytes: r.bytes, mime: r.mime, label: label.get(hex) || 'File', local: !!localIdFor(hex) });
+      /* The doc names another song file than the one stored here, and no replacement made here is waiting to go out
+         (that one is 'pending' while it's hashed, then written at once; before the first sync nothing is decided): the
+         doc's is newer, by the doc's own order (a collaborator replaced it, or won a concurrent replace). It's fetched
+         like any file; the stored one stays, unplayed (app.onSong), until the new one is verified and storeSong replaces it. */
       const sf = v.songFile, sl = songLocal;
-      if (sf && sl !== 'pending' && (!sl || sl.sha256 === sf.sha256)) m.set(sf.sha256, { bytes: sf.bytes, mime: sf.mime, label: 'Song' + (sf.name ? ' · ' + sf.name : ''), song: true, local: !!sl });
+      songStale = !!(ready && sf && sl && sl !== 'pending' && sl.sha256 !== sf.sha256);
+      if (sf && sl !== 'pending' && (!sl || sl.sha256 === sf.sha256 || songStale)) m.set(sf.sha256, { bytes: sf.bytes, mime: sf.mime, label: 'Song' + (sf.name ? ' · ' + sf.name : ''), song: true, local: !!sl && !songStale });
       return (wantCache = m);
     }
-    const mediaChanged = () => { wantCache = null; if (media) media.refresh(); };
+    const mediaChanged = () => {
+      wantCache = null; if (media) media.refresh();
+      wanted();
+      if (songStale !== songShown && !stopped) { songShown = songStale; if (app.onSong) app.onSong(pid, songStale); }
+    };
     // the database opened late (hashes loaded: the held fields go out) or went away: the chip, transfers
     const onDb = () => { mediaChanged(); if (ready && !stopped) push(); };
     dbWatch.add(onDb);
@@ -292,7 +304,10 @@ export function createCollab(app, syncUrl, opts = {}) {
     }
     function songRef(/** @type {any} */ song) {
       if (songLocal === 'pending') return undefined;
-      const f = songLocal && songLocal.name === song.name ? songLocal : songFile && songFile.name === song.name ? songFile : null;
+      // the stored file goes out only if it's the doc's or a replacement made here (the song changed name since the doc's
+      // state): one older than the doc's (a remote replace not fetched yet) never overwrites it on a metadata edit
+      const mine = songLocal && songLocal.name === song.name && (!songFile || songLocal.sha256 === songFile.sha256 || !last || !last.song || last.song.name !== song.name);
+      const f = mine ? songLocal : songFile && songFile.name === song.name ? songFile : null;
       return f ? { ...song, sha256: f.sha256, mime: f.mime, bytes: f.bytes } : { ...song };
     }
     async function checkSong(/** @type {string} */ name) {
@@ -373,6 +388,9 @@ export function createCollab(app, syncUrl, opts = {}) {
       for (const [k, h] of held) if (isFailed(h) && !same(valueAt(v.project, h) ?? '', h.base ?? '')) held.delete(k);
       const mine = keepPending(structuredClone(v.project), held.values());
       if (!same(mine, stripLocal(app.project(pid)))) app.applyRemote(pid, mine);
+      // a song renamed or replaced in the doc is not a new file here: the stored one isn't hashed again
+      const song = app.project(pid)?.song;
+      if (song && songLocal !== 'pending' && songFor !== null) songFor = song.name;
       reportUnshared(); mediaChanged();
       restoreCaret(c);
     }

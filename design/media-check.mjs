@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync } from 'nod
 import { createServer } from 'node:http';
 import { createServer as tcpServer, connect } from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, extname, normalize } from 'node:path';
 const { chromium } = createRequire('/home/ramiro/testkit/')('playwright-core');
@@ -100,6 +100,14 @@ const landedOk = (pg, hex) => pg.page.evaluate(async hex => {
 const got = async (pg, hexes, ms = 120000) => !!(await until(async () => { for (const h of hexes) if ((await fileState(pg, h)) !== 'here') return false; return true; }, ms)) &&
   (await Promise.all(hexes.map(h => landedOk(pg, h)))).every(Boolean);
 const heap = pg => pg.page.evaluate(() => performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0);
+/** a ~400 KB WAV of noise (8 kHz mono 16-bit, 25 s), different for each seed */
+function wav(seed) {
+  const n = 8000 * 25, b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(8000, 24); b.writeUInt32LE(16000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  randomBytes(n * 2).copy(b, 44); b.writeUInt32LE(seed, 44);
+  return b;
+}
 
 let A, B, C, D, E, F, G;
 const TAKE = 30 * 1024 * 1024 + 4321;
@@ -150,6 +158,47 @@ try {
   check('B: the placeholder showed progress while the file was arriving', B.arriving.seen);
   check('B: chip went Syncing N files -> All files here', [...B.chips].some(c => /^Syncing \d files?$/.test(c)) && (await B.page.$eval('#cstat', e => e.textContent)) === 'All files here', [...B.chips].join(' | '));
   check('B: no "not on this device yet" placeholder left', await B.page.evaluate(() => !document.querySelector('[data-miss]')));
+
+  /* ---- the song: A loads one and B gets it; A replaces it and B gets the new one, never playing the old one under the
+     new name meanwhile; B replaces it and keeps its own (A's older one doesn't come back); a concurrent replace converges ---- */
+  const loadSong = (pg, name, buf) => pg.page.setInputFiles('#song', { name, mimeType: 'audio/wav', buffer: buf });
+  const songOf = pg => pg.page.evaluate(async () => {
+    const s = await window.__CUE_MEDIA_TEST.app.song(), b = s.rec && s.rec.blob;
+    const hex = b ? [...new Uint8Array(await crypto.subtle.digest('SHA-256', await b.arrayBuffer()))].map(x => x.toString(16).padStart(2, '0')).join('') : '';
+    const f = (window.__CUE_MEDIA_TEST.app.cmedia()?.files() || []).find(x => x.song);
+    return { stale: s.stale, playing: s.playing, playingName: s.playingName, name: s.rec ? s.rec.name : '', hex, file: f ? { label: f.label, state: f.state, hex: f.hex } : null,
+      bar: document.getElementById('songbar').hidden ? '' : document.getElementById('songbar').textContent, title: window.__CUE_MEDIA_TEST.app.cur().song?.name || '' };
+  });
+  const wavs = [1, 2, 3, 4, 5].map(i => wav(i)), [song1, song2, song3, song4, song5] = wavs;
+  const [h1, h2, h3, h4, h5] = wavs.map(b => createHash('sha256').update(b).digest('hex'));
+  const hasSong = (pg, hex, name) => until(async () => { const s = await songOf(pg); return s.hex === hex && s.name === name && s.playing && !s.stale && s.playingName === name && s.file?.state === 'here' ? s : null; }, 60000);
+  await loadSong(A, 'first-song.wav', song1);
+  check('song: B gets the song A loaded, stores and plays it', !!(await hasSong(B, h1, 'first-song.wav')));
+  // slow A's sending down so B's in-between state can be seen
+  await A.page.evaluate(() => { window.__CUE_MEDIA_TEST.chunkDelay = 150; });
+  const seen = { stale: null, playedOld: false };
+  const watch = setInterval(async () => {
+    const s = await songOf(B).catch(() => null); if (!s) return;
+    if (s.title === 'second-song.wav' && s.playing && s.playingName === 'first-song.wav') seen.playedOld = true;
+    if (s.stale && !seen.stale) seen.stale = s;
+  }, 50);
+  await loadSong(A, 'second-song.wav', song2);
+  const gotNew = await hasSong(B, h2, 'second-song.wav');
+  clearInterval(watch);
+  await A.page.evaluate(() => { window.__CUE_MEDIA_TEST.chunkDelay = 0; });
+  check('song: A replaces it; B fetches the new file, verifies it and replaces its stored song with it (old blob gone)', !!gotNew, gotNew ? `${gotNew.name} ${gotNew.hex.slice(0, 8)}` : JSON.stringify(await songOf(B)));
+  check('song: meanwhile B shows the new song as arriving (Files list, song bar) and doesn\'t play the old one under the new name',
+    !!seen.stale && !seen.stale.playing && seen.stale.file?.hex === h2 && seen.stale.file.state !== 'here' && /Song · second-song\.wav/.test(seen.stale.file.label) && /replaced with second-song\.wav/.test(seen.stale.bar) && !seen.playedOld,
+    JSON.stringify({ ...seen.stale, playedOld: seen.playedOld }).slice(0, 300));
+  await loadSong(B, 'third-song.wav', song3);
+  const aGot3 = await hasSong(A, h3, 'third-song.wav');
+  await sleep(2000);
+  const b3 = await songOf(B);
+  check('song: B\'s own replacement wins over the older one in the room: B keeps it, A gets it', !!aGot3 && b3.hex === h3 && b3.name === 'third-song.wav' && !b3.stale && b3.playing, JSON.stringify({ ...b3, bar: undefined }));
+  // both replace at once: the doc's order picks one, and both end up with that one
+  await Promise.all([loadSong(A, 'fourth-song.wav', song4), loadSong(B, 'fifth-song.wav', song5)]);
+  const conv = await until(async () => { const a = await songOf(A), b = await songOf(B); return a.hex && a.hex === b.hex && [h4, h5].includes(a.hex) && a.playing && b.playing && !a.stale && !b.stale && a.file?.state === 'here' && b.file?.state === 'here' ? [a, b] : null; }, 60000);
+  check('song: a concurrent replace on A and B converges on one file on both', !!conv, conv ? conv[0].name : JSON.stringify([await songOf(A), await songOf(B)].map(s => ({ ...s, bar: undefined }))));
 
   /* ---- A goes offline: C still gets everything, from B ---- */
   await close(A); A = null;
