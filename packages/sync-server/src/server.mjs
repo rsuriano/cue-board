@@ -6,7 +6,8 @@
    Close codes: 4400 malformed message · 4401 bad token · 4404 unknown room · 4429 too many connections from this IP
                 4500 room unavailable (unreadable project.json or updates.bin, or the room is degraded: an append to its log
                 failed and it refuses joins until a compaction gets its state on disk; see the error log)
-                Message type 10 is media signaling and relay (media-relay.mjs, docs/media-p2p.md).
+                Message type 10 is media signaling and relay (media-relay.mjs, docs/media-p2p.md); a type-10 frame the
+                relay doesn't take (unknown kind, over its size cap) is ignored, not 4400, so a newer client keeps doc sync.
                 1009 message too big (sent by ws) · 1001 server shutting down · 1006 terminated (no pong, or a slow reader) */
 import http from 'node:http';
 import fs from 'node:fs';

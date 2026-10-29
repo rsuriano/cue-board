@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createHash, createCipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
 import * as Y from 'yjs';
+import * as encoding from 'lib0/encoding';
+import * as decoding from 'lib0/decoding';
 import { WebsocketProvider } from 'y-websocket';
 import { tmpDir, server, makeRoom, until } from '../../sync-server/test/helpers.mjs';
 import {
@@ -167,6 +169,25 @@ test('relay path: B and C replicate A\'s file; C still gets it from B when A lea
     await until(() => C.m.summary().foreign >= 1, 5000, 'C sees a peer it can\'t read');
     await new Promise(ok => setTimeout(ok, 800));
     assert.equal(D.landed.length, 0); assert.equal(D.m.summary().unavailable, 1);
+  } finally { peers.forEach(p => p.close()); await srv.close(); }
+});
+
+test('a media frame the client doesn\'t know (newer server or peer: unknown kind, extra fields, garbage) is ignored; files and doc edits still flow', async () => {
+  const dir = tmpDir(), r = makeRoom(dir), srv = await server(dir, 3374);
+  const data = randomBytes(300_000), hex = nodeSha(data), refs = new Map([[hex, data.length]]);
+  const peers = [];
+  try {
+    const A = mk(srv, r.id, r.token, refs, new Map([[hex, new Blob([data])]])); peers.push(A);
+    const B = mk(srv, r.id, r.token, refs); peers.push(B);
+    await until(() => B.provider.wsconnected && B.provider.synced, 5000, 'B connected');
+    const ws = B.provider.ws, frame = (...parts) => { const e = encoding.createEncoder(); parts.forEach(p => (p instanceof Uint8Array ? encoding.writeVarUint8Array(e, p) : encoding.writeVarUint(e, p))); return decoding.createDecoder(encoding.toUint8Array(e)); };
+    const handle = B.provider.messageHandlers[10];
+    for (const dec of [frame(77, 1, Uint8Array.of(1, 2, 3)), frame(200000, 0, new Uint8Array(0)), frame(4), decoding.createDecoder(Uint8Array.of(0xff, 0xff))]) handle(encoding.createEncoder(), dec, B.provider, true, 10);
+    await until(() => B.landed.length === 1, 20000, 'B still gets the file');
+    assert.ok((await bytesOf(B.files.get(hex))).equals(data));
+    A.doc.getMap('meta').set('title', 'after');
+    await until(() => B.doc.getMap('meta').get('title') === 'after', 3000, 'doc edits still flow');
+    assert.equal(B.provider.ws, ws, 'the same socket');
   } finally { peers.forEach(p => p.close()); await srv.close(); }
 });
 

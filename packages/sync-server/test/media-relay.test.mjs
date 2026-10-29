@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import WebSocket from 'ws';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
-import { tmpDir, server, makeRoom, until } from './helpers.mjs';
+import { tmpDir, server, makeRoom, until, client, synced } from './helpers.mjs';
 import { MSG_MEDIA, K, DROP, Bucket, RELAY_DEFAULTS, createMediaRelay } from '../src/media-relay.mjs';
 import { MEDIA_CHUNK, RELAY_MAX_FILE, relayable } from '../src/media-limits.mjs';
 
@@ -96,9 +96,11 @@ test('(m2) relay forwards byte for byte between two online peers and stores noth
   } finally { await srv.close(); }
 });
 
-test('(m3) malformed or oversized media messages close with 4400; signal floods are dropped; Yjs sync unaffected', async () => {
-  const dir = tmpDir(), r = makeRoom(dir);
-  const srv = await server(dir, 3392, { media: { signalPerConnPerSec: 5, signalPerRoomPerSec: 1000 } });
+test('(m3) media frames the relay doesn\'t take are ignored and counted (logged once); unreadable ones and bad doc messages close with 4400; signal floods are dropped', async () => {
+  const dir = tmpDir(), r = makeRoom(dir), lines = [];
+  const rec = lv => (m, f = {}) => lines.push({ level: lv, msg: m, ...f });
+  const log = { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') };
+  const srv = await server(dir, 3392, { log, media: { signalPerConnPerSec: 5, signalPerRoomPerSec: 1000 } });
   try {
     const a = await peer(srv, r.id, r.token), b = await peer(srv, r.id, r.token);
     for (let i = 0; i < 40; i++) a.ws.send(msg(K.SIGNAL, b.id, Buffer.from('s' + i)));
@@ -106,22 +108,48 @@ test('(m3) malformed or oversized media messages close with 4400; signal floods 
     const n = of(b, K.SIGNAL).length;
     assert.ok(n >= 5 && n <= 12, 'per-connection signal rate (burst 10): got ' + n);
     assert.equal(a.closed, 0, 'a flood is dropped, not fatal');
-    const big = await peer(srv, r.id, r.token);
-    big.ws.send(msg(K.SIGNAL, b.id, Buffer.alloc(17 * 1024)));
-    await until(() => big.closed, 2000, 'oversized signal'); assert.equal(big.closed, 4400);
-    const big2 = await peer(srv, r.id, r.token);
-    big2.ws.send(msg(K.RELAY, b.id, Buffer.alloc(81 * 1024)));
-    await until(() => big2.closed, 2000, 'oversized relay'); assert.equal(big2.closed, 4400);
-    for (const bad of [Uint8Array.of(MSG_MEDIA), Uint8Array.of(MSG_MEDIA, 9, 0, 0), Uint8Array.of(MSG_MEDIA, K.RELAY, 1, 2, 0, 0), [...msg(K.SIGNAL, 1, Buffer.from('x')), 0]]) {
-      const c = await peer(srv, r.id, r.token);
-      c.ws.send(Uint8Array.from(bad));
-      await until(() => c.closed, 2000, 'malformed'); assert.equal(c.closed, 4400);
+    // a newer client's frames (a kind this server doesn't know, a bigger cap, an extra field): ignored, never fatal
+    const c = await peer(srv, r.id, r.token), before = of(b, K.SIGNAL).length + of(b, K.RELAY).length;
+    const notTaken = [msg(K.SIGNAL, b.id, Buffer.alloc(17 * 1024)), msg(K.RELAY, b.id, Buffer.alloc(81 * 1024)), msg(9, 0, Buffer.alloc(0)),
+      msg(200000, b.id, Buffer.from('future')), msg(K.RELAY, b.id, Buffer.of(2, 0)), Uint8Array.from([...msg(K.SIGNAL, b.id, Buffer.from('x')), 0]),
+      msg(K.WELCOME, 0, Buffer.alloc(0)), msg(K.DROPPED, b.id, Buffer.alloc(9))];
+    for (const f of notTaken) c.ws.send(f);
+    await until(() => srv.mediaStats.ignored === notTaken.length, 2000, 'all ignored');
+    await sleep(100);
+    assert.equal(c.closed, 0, 'still connected');
+    assert.equal(of(b, K.SIGNAL).length + of(b, K.RELAY).length, before, 'nothing of it was forwarded');
+    const noted = lines.filter(l => l.msg === 'media frames ignored');
+    assert.equal(noted.length, 1, 'logged once per room per 10 s, not per frame');
+    assert.equal(noted[0].level, 'debug');
+    // a frame that can't be read at all, or a message type nobody speaks: still 4400
+    for (const bad of [Uint8Array.of(MSG_MEDIA), Uint8Array.of(MSG_MEDIA, K.RELAY, 1, 5, 0), Uint8Array.of(42, 0)]) {
+      const x = await peer(srv, r.id, r.token);
+      x.ws.send(bad);
+      await until(() => x.closed, 2000, 'malformed'); assert.equal(x.closed, 4400);
     }
-    const c = await peer(srv, r.id, r.token);
-    c.ws.send(msg(K.WELCOME, 0, Buffer.alloc(0)));
-    await until(() => c.closed, 2000, 'client may not send server kinds'); assert.equal(c.closed, 4400);
     assert.equal(b.closed, 0, 'the honest peer stays');
-    a.ws.close(); b.ws.close();
+    a.ws.close(); b.ws.close(); c.ws.close();
+  } finally { await srv.close(); }
+});
+
+test('(m7) a client sending a media kind this server doesn\'t know keeps syncing the doc (newer client, older server)', async () => {
+  const dir = tmpDir(), r = makeRoom(dir);
+  const srv = await server(dir, 3373);
+  try {
+    const a = client(srv, r.id, r.token), b = client(srv, r.id, r.token);
+    for (const c of [a, b]) c.provider.messageHandlers[MSG_MEDIA] = () => {};
+    await Promise.all([synced(a.provider), synced(b.provider)]);
+    a.doc.getMap('meta').set('title', 'before');
+    await until(() => b.doc.getMap('meta').get('title') === 'before', 2000, 'first edit');
+    const ws = a.provider.ws;
+    ws.send(msg(77, 0, Buffer.from('a kind from the future')));
+    ws.send(msg(K.SIGNAL, 0, Buffer.alloc(20 * 1024)));
+    await until(() => srv.mediaStats.ignored === 2, 2000, 'ignored');
+    a.doc.getMap('meta').set('title', 'after');
+    b.doc.getMap('meta').set('title2', 'from b');
+    await until(() => b.doc.getMap('meta').get('title') === 'after' && a.doc.getMap('meta').get('title2') === 'from b', 2000, 'edits still flow both ways');
+    assert.equal(a.provider.ws, ws, 'the same socket: never closed, never reconnected');
+    for (const c of [a, b]) { c.provider.destroy(); c.doc.destroy(); }
   } finally { await srv.close(); }
 });
 

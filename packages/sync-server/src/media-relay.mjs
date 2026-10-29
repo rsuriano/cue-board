@@ -14,7 +14,10 @@
    A RELAY payload starts with a frame type byte and an 8-byte transfer tag (the first 8 bytes of the file's sha256,
    which the room's doc already shows the server). A chunk frame (type 2) then has its u32 chunk index: the per-file cap
    is on the index (`i < ceil(cap / 64 KiB)`), so a file up to the cap always fits and a chunk sent again (a re-ask after
-   a timeout, a retry) never counts twice. Nothing per transfer is kept. */
+   a timeout, a retry) never counts twice. Nothing per transfer is kept.
+   A frame this server doesn't take (a kind it doesn't know, a server kind, one over its size cap, trailing bytes) is
+   ignored and counted, never answered with a close: a newer client against a server not yet redeployed loses only
+   media, never doc sync. Only a frame that can't be read at all (truncated) closes with 4400. */
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { MEDIA_CHUNK, RELAY_MAX_FILE } from './media-limits.mjs';
@@ -60,13 +63,13 @@ export function createMediaRelay(opts, log, send) {
     swept = now;
     for (const [ip, b] of ipBuckets) { b.take(0, now); if (b.v >= b.cap) ipBuckets.delete(ip); }
   }
-  const stats = { signals: 0, relayed: 0, relayedBytes: 0, dropped: 0 };
-  /** per room: peers by id, buckets, and when a drop was last logged */
-  /** @type {WeakMap<object, { peers: Map<number, any>, sig: Bucket, bytes: Bucket, warned: number, drops: number }>} */
+  const stats = { signals: 0, relayed: 0, relayedBytes: 0, dropped: 0, ignored: 0 };
+  /** per room: peers by id, buckets, and when a drop (or an ignored frame) was last logged */
+  /** @type {WeakMap<object, { peers: Map<number, any>, sig: Bucket, bytes: Bucket, warned: number, drops: number, noted: number, ignored: number }>} */
   const state = new WeakMap();
   const roomState = (/** @type {object} */ room) => {
     let s = state.get(room);
-    if (!s) { s = { peers: new Map(), sig: new Bucket(o.signalPerRoomPerSec), bytes: new Bucket(o.relayRoomBytesPerSec), warned: 0, drops: 0 }; state.set(room, s); }
+    if (!s) { s = { peers: new Map(), sig: new Bucket(o.signalPerRoomPerSec), bytes: new Bucket(o.relayRoomBytesPerSec), warned: 0, drops: 0, noted: 0, ignored: 0 }; state.set(room, s); }
     return s;
   };
   const frame = (/** @type {number} */ kind, /** @type {number} */ from, /** @type {Uint8Array} */ payload) => {
@@ -82,6 +85,13 @@ export function createMediaRelay(opts, log, send) {
     stats.dropped++; rs.drops++;
     const now = Date.now();
     if (now - rs.warned > 10_000) { log.warn('media frames dropped', { room: roomId, why, frames: rs.drops }); rs.warned = now; rs.drops = 0; }
+  }
+
+  /** A frame this server doesn't take: counted, logged (debug) at most once per room every 10 s, never fatal. */
+  function ignored(/** @type {any} */ rs, /** @type {string} */ roomId, /** @type {string} */ why) {
+    stats.ignored++; rs.ignored++;
+    const now = Date.now();
+    if (now - rs.noted > 10_000) { log.debug('media frames ignored', { room: roomId, why, frames: rs.ignored }); rs.noted = now; rs.ignored = 0; }
   }
 
   return {
@@ -107,14 +117,15 @@ export function createMediaRelay(opts, log, send) {
       for (const p of rs.peers.values()) send(p, frame(K.LEFT, m.id, none));
       sweep();
     },
-    /** A MSG_MEDIA message from `ws`, type already read. Throws on a malformed one (the server closes with 4400). */
+    /** A MSG_MEDIA message from `ws`, type already read. Throws only on one that can't be read (the server closes with
+        4400); any other frame it doesn't take is ignored. */
     handle(/** @type {{ id: string }} */ room, /** @type {any} */ ws, /** @type {decoding.Decoder} */ dec) {
       const rs = roomState(room), m = ws.media;
       if (!m) throw new Error('media before join');
       const kind = decoding.readVarUint(dec), to = decoding.readVarUint(dec), payload = decoding.readVarUint8Array(dec);
-      if (decoding.hasContent(dec)) throw new Error('trailing bytes');
+      if (decoding.hasContent(dec)) { ignored(rs, room.id, 'trailing bytes'); return; }
       if (kind === K.SIGNAL) {
-        if (payload.length > o.signalMaxBytes) throw new Error('signal too big');
+        if (payload.length > o.signalMaxBytes) { ignored(rs, room.id, 'signal too big'); return; }
         if (!m.sig.take(1) || !rs.sig.take(1)) { dropped(rs, room.id, 'signal rate'); return; }
         stats.signals++;
         const msg = frame(K.SIGNAL, m.id, payload);
@@ -123,8 +134,8 @@ export function createMediaRelay(opts, log, send) {
         return;
       }
       if (kind === K.RELAY) {
-        if (payload.length > o.relayMaxFrameBytes) throw new Error('relay frame too big');
-        if (payload.length < 9) throw new Error('relay frame too short');
+        if (payload.length > o.relayMaxFrameBytes) { ignored(rs, room.id, 'relay frame too big'); return; }
+        if (payload.length < 9) { ignored(rs, room.id, 'relay frame too short'); return; }
         const target = to !== m.id ? rs.peers.get(to) : undefined;
         // the sender is told why, and which transfer (its tag), so it can stop sending what can't get through
         const drop = (/** @type {number} */ why, /** @type {string} */ what) => {
@@ -145,7 +156,7 @@ export function createMediaRelay(opts, log, send) {
         send(target, frame(K.RELAY, m.id, payload));   // forwarded as is; nothing is kept
         return;
       }
-      throw new Error('unknown media kind ' + kind);
+      ignored(rs, room.id, kind === K.WELCOME || kind > K.RELAY && kind <= K.DROPPED ? 'server kind' : 'unknown kind');
     },
   };
 }
