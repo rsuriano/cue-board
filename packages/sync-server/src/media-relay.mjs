@@ -7,13 +7,17 @@
    Wire format, after the Yjs-style message type MSG_MEDIA (10):
      client -> server   varuint kind · varuint to (peer id, 0 = everyone else in the room, SIGNAL only) · varUint8Array payload
      server -> client   varuint kind · varuint from (peer id)                                         · varUint8Array payload
-   kinds: 1 WELCOME (from = your own id, payload = varuint count + the ids already here) · 2 SIGNAL · 3 RELAY
+   kinds: 1 WELCOME (from = your own id, payload = varuint count + the ids already here + varuint the relay's per-file
+            cap in bytes; older servers sent no cap) · 2 SIGNAL · 3 RELAY
           4 JOINED (from = the new peer) · 5 LEFT (from = the peer that left) · 6 DROPPED (from = the relay target;
-          payload = one reason byte: 1 rate cap, 2 transfer cap, 3 target busy or gone)
-   A RELAY payload starts with a version byte and an 8-byte transfer tag (the first 8 bytes of the file's sha256, which
-   the room's doc already shows the server); the per-transfer byte cap counts per (sender, target, tag). */
+          payload = one reason byte: 1 rate cap, 2 transfer cap, 3 target busy or gone, then the frame's 8-byte tag)
+   A RELAY payload starts with a frame type byte and an 8-byte transfer tag (the first 8 bytes of the file's sha256,
+   which the room's doc already shows the server). A chunk frame (type 2) then has its u32 chunk index: the per-file cap
+   is on the index (`i < ceil(cap / 64 KiB)`), so a file up to the cap always fits and a chunk sent again (a re-ask after
+   a timeout, a retry) never counts twice. Nothing per transfer is kept. */
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
+import { MEDIA_CHUNK, RELAY_MAX_FILE } from './media-limits.mjs';
 
 export const MSG_MEDIA = 10;
 export const K = { WELCOME: 1, SIGNAL: 2, RELAY: 3, JOINED: 4, LEFT: 5, DROPPED: 6 };
@@ -24,8 +28,7 @@ export const RELAY_DEFAULTS = {
   signalPerConnPerSec: 40, signalPerRoomPerSec: 200,
   relayMaxFrameBytes: 80 * 1024,             // a 64 KiB chunk + headers + GCM tag
   relayRoomBytesPerSec: 8 * 1024 * 1024, relayIpBytesPerSec: 4 * 1024 * 1024,
-  relayMaxTransferBytes: 600 * 1024 * 1024,  // the clients' default per-file limit (500 MB) plus the envelope overhead
-  relayMaxTransfersPerConn: 256,
+  relayMaxTransferBytes: RELAY_MAX_FILE,     // largest file relayed; also sent to each client (media-limits.mjs)
   relayMaxBufferedBytes: 2 * 1024 * 1024,    // target socket's queue; past this a frame is dropped, never queued
 };
 
@@ -48,6 +51,14 @@ export function createMediaRelay(opts, log, send) {
   const o = { ...RELAY_DEFAULTS, ...opts };
   let nextId = 1;
   /** @type {Map<string, Bucket>} */ const ipBuckets = new Map();
+  const maxChunks = Math.ceil(o.relayMaxTransferBytes / MEDIA_CHUNK);
+  /** Forget the per-IP buckets that are full again (idle for 2 s or more): at most every 10 s, and on each detach. */
+  let swept = Date.now();
+  function sweep(now = Date.now(), force = false) {
+    if (!force && now - swept < 10_000) return;
+    swept = now;
+    for (const [ip, b] of ipBuckets) { b.take(0, now); if (b.v >= b.cap) ipBuckets.delete(ip); }
+  }
   const stats = { signals: 0, relayed: 0, relayedBytes: 0, dropped: 0 };
   /** per room: peers by id, buckets, and when a drop was last logged */
   /** @type {WeakMap<object, { peers: Map<number, any>, sig: Bucket, bytes: Bucket, warned: number, drops: number }>} */
@@ -73,13 +84,17 @@ export function createMediaRelay(opts, log, send) {
   }
 
   return {
-    stats,
+    stats, sweep,
+    /** how many per-IP buckets are kept (tests) */
+    get ipBuckets() { return ipBuckets.size; },
     /** A socket joined `room`: give it a peer id, tell it who's here, tell the others. */
     attach(/** @type {{ id: string }} */ room, /** @type {any} */ ws, /** @type {string} */ ip) {
       const rs = roomState(room), id = nextId++;
       if (nextId > 0x7fffffff) nextId = 1;
-      ws.media = { id, ip, sig: new Bucket(o.signalPerConnPerSec), transfers: new Map() };
-      send(ws, frame(K.WELCOME, id, ids([...rs.peers.keys()])));
+      ws.media = { id, ip, sig: new Bucket(o.signalPerConnPerSec) };
+      const w = encoding.createEncoder();
+      encoding.writeUint8Array(w, ids([...rs.peers.keys()])); encoding.writeVarUint(w, o.relayMaxTransferBytes);
+      send(ws, frame(K.WELCOME, id, encoding.toUint8Array(w)));
       for (const p of rs.peers.values()) send(p, frame(K.JOINED, id, none));
       rs.peers.set(id, ws);
       return id;
@@ -88,9 +103,8 @@ export function createMediaRelay(opts, log, send) {
       const rs = roomState(room), m = ws.media;
       if (!m || rs.peers.get(m.id) !== ws) return;
       rs.peers.delete(m.id);
-      for (const p of rs.peers.values()) { send(p, frame(K.LEFT, m.id, none)); p.media.transfers.forEach((/** @type {any} */ _, /** @type {string} */ k) => { if (k.startsWith(m.id + ':')) p.media.transfers.delete(k); }); }
-      const b = ipBuckets.get(m.ip);
-      if (b) { b.take(0); if (b.v >= b.cap) ipBuckets.delete(m.ip); }   // idle long enough to be full again: forget it
+      for (const p of rs.peers.values()) send(p, frame(K.LEFT, m.id, none));
+      sweep(Date.now(), true);
     },
     /** A MSG_MEDIA message from `ws`, type already read. Throws on a malformed one (the server closes with 4400). */
     handle(/** @type {{ id: string }} */ room, /** @type {any} */ ws, /** @type {decoding.Decoder} */ dec) {
@@ -111,20 +125,21 @@ export function createMediaRelay(opts, log, send) {
         if (payload.length > o.relayMaxFrameBytes) throw new Error('relay frame too big');
         if (payload.length < 9) throw new Error('relay frame too short');
         const target = to !== m.id ? rs.peers.get(to) : undefined;
-        if (!target || target.readyState !== target.OPEN || target.bufferedAmount + payload.length > o.relayMaxBufferedBytes) {
-          dropped(rs, room.id, 'target busy'); send(ws, frame(K.DROPPED, to, Uint8Array.of(DROP.BUSY))); return;
+        // the sender is told why, and which transfer (its tag), so it can stop sending what can't get through
+        const drop = (/** @type {number} */ why, /** @type {string} */ what) => {
+          dropped(rs, room.id, what);
+          const d = new Uint8Array(9); d[0] = why; d.set(payload.subarray(1, 9), 1);
+          send(ws, frame(K.DROPPED, to, d));
+        };
+        if (!target || target.readyState !== target.OPEN || target.bufferedAmount + payload.length > o.relayMaxBufferedBytes) { drop(DROP.BUSY, 'target busy'); return; }
+        if (payload[0] === 2 && payload.length >= 13 && new DataView(payload.buffer, payload.byteOffset, payload.length).getUint32(9) >= maxChunks) {
+          drop(DROP.TRANSFER, 'transfer cap'); return;
         }
-        const key = to + ':' + Buffer.from(payload.subarray(1, 9)).toString('hex');
-        const sofar = m.transfers.get(key) || 0;
-        if (sofar + payload.length > o.relayMaxTransferBytes || (!m.transfers.has(key) && m.transfers.size >= o.relayMaxTransfersPerConn)) {
-          dropped(rs, room.id, 'transfer cap'); send(ws, frame(K.DROPPED, to, Uint8Array.of(DROP.TRANSFER))); return;
-        }
+        const now = Date.now();
+        sweep(now);
         let ipb = ipBuckets.get(m.ip);
-        if (!ipb) { ipb = new Bucket(o.relayIpBytesPerSec); ipBuckets.set(m.ip, ipb); }
-        if (!rs.bytes.take(payload.length) || !ipb.take(payload.length)) {
-          dropped(rs, room.id, 'rate cap'); send(ws, frame(K.DROPPED, to, Uint8Array.of(DROP.RATE))); return;
-        }
-        m.transfers.set(key, sofar + payload.length);
+        if (!ipb) { ipb = new Bucket(o.relayIpBytesPerSec, now); ipBuckets.set(m.ip, ipb); }
+        if (!rs.bytes.take(payload.length, now) || !ipb.take(payload.length, now)) { drop(DROP.RATE, 'rate cap'); return; }
         stats.relayed++; stats.relayedBytes += payload.length;
         send(target, frame(K.RELAY, m.id, payload));   // forwarded as is; nothing is kept
         return;

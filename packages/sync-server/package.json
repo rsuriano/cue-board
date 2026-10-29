@@ -10,6 +10,7 @@
   "exports": {
     ".": "./src/server.mjs",
     "./schema": "./src/schema.mjs",
+    "./media-limits": "./src/media-limits.mjs",
     "./import-cueboard": "./src/import-cueboard.mjs"
   },
   "scripts": {
