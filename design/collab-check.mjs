@@ -396,8 +396,9 @@ try {
 
   // a binding whose token was revoked (simulated: the stored token is changed), then a server that never answers
   const setToken = (page, t) => page.evaluate(async t => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); }); const st = () => d.transaction('settings', 'readwrite').objectStore('settings'); const c = await new Promise(r => { const g = st().get('collab'); g.onsuccess = () => r(g.result); }); for (const b of Object.values(c.rooms)) b.token = t; await new Promise(r => { const p = st().put(c, 'collab'); p.onsuccess = r; }); }, t);
+  const cRoom = JSON.stringify(await cards(C.page));
   await setToken(C.page, 'x' + room.token.slice(1)); await C.page.reload(); await C.page.waitForSelector('.card');
-  check('revoked token: chip says "Can\'t reach the room", the project still works', (await until(async () => (await chip(C.page)) === "Can't reach the room")) && (await C.page.$$('.card')).length > 1, await chip(C.page));
+  check('revoked token: chip says "This invite link no longer works", the project still works and the local copy is kept', (await until(async () => (await chip(C.page)) === 'This invite link no longer works')) && (await C.page.$$('.card')).length > 1 && JSON.stringify(await cards(C.page)) === cRoom, await chip(C.page));
   await sleep(200); await shot(C.page, 'chip-rejected');
   await setToken(C.page, room.token); await C.page.goto(app + '?sync=hang'); await C.page.waitForSelector('.card'); await sleep(800);
   check('server not answering yet: chip says Syncing…', (await chip(C.page)) === 'Syncing…', await chip(C.page));
@@ -425,7 +426,7 @@ try {
   /* ---- layout with the indicator, its panel and presence: 1920 to 820 ---- */
   const widths = [1920, 1440, 1280, 1100, 900, 820], over = [];
   // every state's label, longest included, in the hover label and the open panel (the text is set directly here; the states themselves are checked above)
-  const states = [['synced', 'Synced', 'ok'], ['offline', 'Offline, changes will sync', 'off'], ['rejected', "Can't reach the room", 'err'], ['synced', 'Synced, 2 files not shared', 'off']];
+  const states = [['synced', 'Synced', 'ok'], ['offline', 'Offline, changes will sync', 'off'], ['rejected', 'This invite link no longer works', 'err'], ['synced', 'Synced, 2 files not shared', 'off']];
   for (const [st, label, k] of states) for (const w of widths) {
     await A.page.setViewportSize({ width: w, height: 900 });
     await A.page.click('#mstat');

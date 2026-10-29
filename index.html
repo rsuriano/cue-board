@@ -48,7 +48,7 @@
   /* type */
   --font-ui:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --text-sm:12px; --text-md:13px; --text-lg:14px; --text-xl:16px; --text-2xl:20px; --text-3xl:28px; --text-input:var(--text-md);
+  --text-sm:12px; --text-md:13px; --text-lg:14px; --text-xl:16px; --text-2xl:20px; --text-3xl:28px; --text-input:var(--text-md); --text-input-mono:var(--text-sm);
   /* line heights in px so every line box lands on the 4px grid */
   --lh-sm:16px; --lh-md:20px; --lh-xl:24px; --lh-2xl:28px; --lh-3xl:32px; --lh-control:1;
   --w-regular:400; --w-medium:500; --w-semibold:600;
@@ -546,7 +546,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .jmsg{margin:0;color:var(--error);font-size:var(--text-sm);line-height:var(--lh-sm)}
 /* the invite link: the link with Copy beside it; for the owner, New link (two taps) with what it does */
 .linkrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-2)}
-.linkrow input{overflow:hidden;text-overflow:ellipsis;font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono)}
+.linkrow input{overflow:hidden;text-overflow:ellipsis;font:var(--w-regular) var(--text-input-mono)/var(--lh-sm) var(--font-mono)}
 .ownerrow{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--sp-3);margin-top:var(--sp-2)}
 #jRegen[data-armed]{color:var(--error)}
 .jmsg:empty{display:none}
@@ -617,7 +617,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 @media (min-width:820px){.m-only{display:none!important}}
 /* "not all and (min-width:820px)", not (max-width:819px): with zoom or a fractional DPR the width can be 819.5px */
 @media not all and (min-width:820px){
-  :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
+  :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-input-mono:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
     --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px;
     /* the timeline's rows: the ruler (the zoom on its right), the shot strip, the waveform. A fixed height; the preview takes the rest */
     --tl-ruler-h:var(--hit); --tl-strip-h:56px; --tl-wave-h:clamp(72px,12dvh,120px);

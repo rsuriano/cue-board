@@ -50,7 +50,8 @@ The top-left chip is gone: the room's state is the header line of the files pane
 | Syncing… | connecting, or connected and waiting for the first sync |
 | Offline, changes will sync | the browser is offline (the provider is disconnected until it's back) |
 | Downloading N files · All files here · N files not available yet · N files skipped: over the size limit · … | as Synced, in a project with media files: their transfer state (`docs/media-p2p.md`, "Limits and UX") |
-| Can't reach the room | the connection fails (it keeps retrying, up to every 10 s), or the server refused the token or room (4400/4401/4404: it stops retrying) |
+| Can't reach the room | the connection fails (it keeps retrying, up to every 10 s) |
+| This invite link no longer works | the server refused the token or room (4400/4401/4404: the link was replaced or revoked, or it's incomplete); it stops retrying, the local copy stays |
 
 ## Server change
 
