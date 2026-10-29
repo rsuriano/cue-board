@@ -53,6 +53,7 @@ export function createMedia(ctx) {
   /** @type {Map<number, any>} */ const peers = new Map();
   /** @type {Map<string, any>} */ const dls = new Map();          // hex -> { d: Download, src, fails, state, finishing }
   /** @type {Set<string>} */ const failed = new Set();
+  /** @type {Set<string>} */ const asked = new Set();    // asked for one by one ("Download" on a skipped file): past the size limits
   /** @type {{ persisted: boolean | null, free: number | null }} */ const storage = { persisted: null, free: null };
   let swept = false, tickTimer = /** @type {any} */ (0), relayTokens = RELAY_RATE, relayT = Date.now();
   const stats = { recv: 0, sent: 0, banned: 0, rejected: 0 };
@@ -370,8 +371,9 @@ export function createMedia(ctx) {
     /** @type {string[]} */ const fetch = []; /** @type {Map<string, string>} */ const skipped = new Map();
     for (const [h, v] of missing) {
       if (!Number.isSafeInteger(v.bytes) || v.bytes <= 0 || v.bytes > MAX_FILE) { skipped.set(h, 'unknown'); continue; }
-      if (!override && v.bytes > lim.file) { skipped.set(h, 'file'); continue; }
-      if (!override && used + v.bytes > lim.project) { skipped.set(h, 'project'); continue; }
+      const any = override || asked.has(h);
+      if (!any && v.bytes > lim.file) { skipped.set(h, 'file'); continue; }
+      if (!any && used + v.bytes > lim.project) { skipped.set(h, 'project'); continue; }
       used += v.bytes; fetch.push(h);
     }
     return { w, fetch, skipped };
@@ -545,6 +547,10 @@ export function createMedia(ctx) {
     pause(/** @type {boolean} */ on) { paused = on; changed(); schedule(); },
     /** fetch everything now, the size limits too, for the rest of the session; also retries after "storage full" */
     downloadAll() { override = true; paused = false; storageFull = false; failed.clear(); changed(); schedule(); },
+    /** fetch this one file now, past the size limits, for the rest of the session */
+    download(/** @type {string} */ hex) { asked.add(hex); changed(); schedule(); },
+    /** a file that failed its hash: three more tries */
+    retry(/** @type {string} */ hex) { failed.delete(hex); changed(); schedule(); },
     retryStorage() { storageFull = false; schedule(); },
     stop() {
       if (stopped) return;
