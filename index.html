@@ -700,7 +700,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="ph" class="ph"></div></div></div>
   </section>
   <div class="strip" id="strip"></div>
-  <p class="keys"><kbd>Space</kbd> play/pause · <kbd>M</kbd> cut at the playhead · <kbd>L</kbd> loop the shot · <kbd>←</kbd><kbd>→</kbd> 1 s (<kbd>Shift</kbd> 5 s) · <kbd>[</kbd><kbd>]</kbd> previous/next shot · click and drag on the waveform to scrub · scroll over it to move sideways (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll to zoom) · drag the triangles to move a cut · drag a shot card onto the middle of another to swap them, or onto an edge/gap to slide it in between (it gets half of that slot). Drop an mp3 on the page to load the song, or an image, GIF or clip for the selected shot.</p>
+  <p class="keys"><kbd>Space</kbd> play/pause · <kbd>M</kbd> cut at the playhead · <kbd>L</kbd> loop the shot · <kbd>←</kbd><kbd>→</kbd> 1 s (<kbd>Shift</kbd> 5 s) · <kbd>[</kbd><kbd>]</kbd> previous/next shot · click and drag on the waveform to scrub · scroll over it to move sideways (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll to zoom) · drag the triangles to move a cut · scroll over the shot cards to move along them · drag a shot card onto the middle of another to swap them, or onto an edge/gap to slide it in between (it gets half of that slot). Drop an mp3 on the page to load the song, or an image, GIF or clip for the selected shot.</p>
   </div>
   <div id="sideB" class="sideB" hidden>
     <aside class="blist" id="bList" aria-label="Shots"></aside>
@@ -1358,6 +1358,20 @@ function endStripDrag(apply){
 strip.addEventListener("pointerup",()=>endStripDrag(true));
 strip.addEventListener("pointercancel",()=>endStripDrag(false));
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&sd&&sd.on)endStripDrag(false)});
+/* the mouse wheel scrolls the strip sideways, no Shift: only a mostly vertical turn (a trackpad's sideways swipe stays
+   native), only while the strip has somewhere to go that way. At either end the event is left alone and the page
+   scrolls. Notches glide (a quick series adds up to one target); fine pixel deltas follow the hand */
+let wheelTo=0,wheelAt=0;
+strip.addEventListener("wheel",e=>{
+  if(e.ctrlKey||e.shiftKey||Math.abs(e.deltaX)>=Math.abs(e.deltaY))return;
+  const max=strip.scrollWidth-strip.clientWidth;if(max<1)return;
+  const d=e.deltaY*(e.deltaMode===1?40:e.deltaMode===2?strip.clientWidth*.9:1);
+  const from=performance.now()-wheelAt<250?wheelTo:strip.scrollLeft,to=Math.max(0,Math.min(max,from+d));
+  if(Math.abs(to-from)<1)return;
+  e.preventDefault();wheelTo=to;wheelAt=performance.now();
+  const glide=(e.deltaMode!==0||Math.abs(d)>=50)&&!matchMedia("(prefers-reduced-motion:reduce)").matches;
+  strip.scrollTo({left:to,behavior:glide?"smooth":"instant"});
+},{passive:false});
 strip.addEventListener("click",e=>{if(suppressClick){suppressClick=false;return}const c=e.target.closest(".card");if(c)select(c.dataset.id,true)});
 document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText($(b.dataset.copy).value,"Prompt copied"));
 $("copylist").onclick=()=>{if(!cur)return;const txt=(cur.title||"Project")+(cur.song&&cur.song.name?" · "+cur.song.name:"")+"\n"+S().map((s,i)=>{const d=secEnd(i)-s.start;
