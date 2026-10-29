@@ -2275,8 +2275,11 @@ function mediaChip(x,m){if(!x||!x.total)return null;
   if(x.unavailable)return["off",plural(x.unavailable,"not available yet"),"Nobody online has "+(x.unavailable>1?"them":"it")+". "+(x.unavailable>1?"They arrive":"It arrives")+" when someone who has "+(x.unavailable>1?"them":"it")+" opens the project."+low,"unavailable"];
   if(x.relay)return["off",plural(x.relay,"too large to relay"),"Too big to pass through the sync server. It arrives when you and someone who has it can connect directly (for example, on the same network).","relay"];
   const held=x.skipped&&m?m.files().filter(f=>f.state==="skipped"&&f.skip==="video").length:0;
-  if(held&&held===x.skipped)return["off",held>1?held+" videos wait for Wi-Fi":"1 video waits for Wi-Fi","Takes and clips download only on Wi-Fi on this phone. Download gets one now, Download everything now gets them all.","skipped"];
-  if(x.skipped)return["off",plural(x.skipped,"skipped: over the size limit"),"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
+  /* the two reasons are counted apart: a held video isn't over any limit */
+  const big=x.skipped-held,hT=held>1?held+" videos wait for Wi-Fi":"1 video waits for Wi-Fi",bT=plural(big,"skipped: over the size limit");
+  if(held&&!big)return["off",hT,"Takes and clips download only on Wi-Fi on this phone. Download gets one now, Download everything now gets them all.","skipped"];
+  if(held)return["off",hT+" · "+bT,"Takes and clips download only on Wi-Fi on this phone; the other "+(big>1?"files are":"file is")+" bigger than this project's download limit. Download gets one now, Download everything now gets them all.","skipped"];
+  if(x.skipped)return["off",bT,"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
   return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
 function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSaved();
   if(!s){w.hidden=true;closeFiles();for(const k of ["state","media","unshared","k"])delete b.dataset[k];peers=[];renderPresence();return}

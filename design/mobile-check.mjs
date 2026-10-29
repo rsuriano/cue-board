@@ -342,6 +342,13 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   const coarse = await p.evaluate(() => matchMedia('(pointer:coarse)').matches);
   const held = await p.evaluate(() => window.__STUB.app.mediaLimits(window.__STUB.pid).video === false);
   check(dev, 'boots at 768px with a coarse pointer: Wi-Fi only on, video held, the chip says so', coarse && held && /Wi-Fi/.test(await p.getAttribute('#mstat', 'aria-label')));
+  // held videos and a file over the size limit: the chip counts the two reasons apart
+  await p.evaluate(() => { const S = window.__STUB, v = (hex, label) => ({ hex, label, bytes: 31.5e6, song: false, state: 'skipped', skip: 'video', got: 0, who: ['Julia'] });
+    S.files = [v('aa', 'Shot 02 · take 1'), v('ab', 'Shot 03 · take 1'), { hex: 'ac', label: 'Song', bytes: 900e6, song: true, state: 'skipped', skip: 'file', got: 0, who: ['Julia'] }]; S.ping(); });
+  await p.waitForTimeout(300);
+  const mix = await p.getAttribute('#mstat', 'aria-label') || '';
+  check(dev, 'mixed skips: "2 videos wait for Wi-Fi" and "1 file skipped: over the size limit", counted apart', /2 videos wait for Wi-Fi/.test(mix) && /1 file skipped: over the size limit/.test(mix) && !/3 files/.test(mix), mix);
+  await p.evaluate(() => { const S = window.__STUB; S.files = S.files.slice(0, 1); S.ping(); }); await p.waitForTimeout(300);
   const r0 = await p.evaluate(() => window.__STUB.refreshes);
   await p.setViewportSize({ width: 1024, height: 768 }); await p.waitForTimeout(400);
   const wide = await p.evaluate(() => ({ video: window.__STUB.app.mediaLimits(window.__STUB.pid).video, refreshes: window.__STUB.refreshes, wifi: document.getElementById('fWifi').getClientRects().length }));
