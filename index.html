@@ -989,8 +989,10 @@ function renderProjSelect(){
   if(!$("projmenu").hidden)renderProjMenu();
 }
 /* the room, at the top level: Join while the open project isn't in one (also with no project), Leave while it is */
-function renderCollabBtns(){const inRoom=!!(cur&&cset.rooms[cur.id]),j=$("joinb"),l=$("leaveb"),foc=document.activeElement;
-  j.hidden=!SYNC_URL||inRoom;l.hidden=!SYNC_URL||!inRoom;if(l.hidden)resetLeave();
+let leavePid=null;
+function renderCollabBtns(){const inRoom=!!(cur&&cset.rooms[cur.id]),j=$("joinb"),l=$("leaveb"),foc=document.activeElement,pid=cur&&cur.id;
+  /* an armed Leave belongs to the room it was armed in: another project, even another room, starts unarmed */
+  j.hidden=!SYNC_URL||inRoom;l.hidden=!SYNC_URL||!inRoom;if(l.hidden||pid!==leavePid)resetLeave();leavePid=pid;
   /* the one that was focused went away: its counterpart takes the focus */
   if(foc===j&&j.hidden&&!l.hidden)l.focus();else if(foc===l&&l.hidden&&!j.hidden)j.focus()}
 function renderSongbar(){
