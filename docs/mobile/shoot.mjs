@@ -1,5 +1,6 @@
 // Screenshots for docs/mobile: the mocks (one per ?screen=) and, for comparison, today's app on a phone.
 //   node docs/mobile/shoot.mjs [<repo-root>] [--only=mocks|today]
+// The committed today-*.png are the app before the phone layout (PLAN.md "today"); running today overwrites them.
 // Serves the repo on 127.0.0.1:3371 (falls back to 3372-3379). Mobile emulation: 390x844, DPR 2, touch.
 // Every request that isn't to the local server is aborted and listed (the mocks must make none).
 import { createRequire } from 'node:module';
@@ -72,7 +73,8 @@ if (only !== 'mocks') {
     inputFont: getComputedStyle(document.getElementById('f-title')).fontSize,
   }));
   console.log('today side A:', JSON.stringify(m));
-  await page.locator('.sidetab').nth(1).tap().catch(() => page.locator('.sidetab').nth(1).click());
+  // the phone layout's tab bar (#mTabs); the desktop .sidetab before it existed
+  await page.locator('#mTabs [data-side="b"]:visible, .sidetab[data-side="b"]:visible').first().tap();
   await page.waitForTimeout(600);
   await page.screenshot({ path: join(out, 'today-b.png') });
   await page.context().close();
