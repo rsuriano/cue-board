@@ -440,7 +440,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 #mstat[data-k="off"] .mdot{display:block;box-shadow:inset 0 0 0 var(--hairline) var(--ink-2)}
 #mstat[data-k="err"] .mdot{display:block;background:var(--error)}
 /* its state in words on hover and keyboard focus (the panel says it once open) */
-.mlabel,.pchip::after{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink);white-space:nowrap;pointer-events:none;visibility:hidden}
+.mlabel,.pchip::after,#settingsb::after{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink);white-space:nowrap;pointer-events:none;visibility:hidden}
 #mstat[aria-expanded="false"]:is(:hover,:focus-visible)~.mlabel{visibility:visible}
 /* the dropdown panel: non-modal, anchored under the indicator, right edges aligned (script keeps it on screen) */
 .mpanel{position:absolute;top:calc(100% + var(--sp-1));right:var(--mp-shift,0);z-index:var(--z-menu);display:grid;gap:var(--gap-block);width:var(--w-panel);max-width:calc(100vw - 2 * var(--gutter));max-height:var(--mp-max,var(--menu-max-h));overflow:auto;padding:var(--inset-panel);background:var(--surface-2);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-md);box-shadow:var(--shadow-float)}
@@ -477,6 +477,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .pchip:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 .pchip::after{content:attr(data-tip);display:none}
 .pchip:is(:hover,:focus-visible)::after{display:block;visibility:visible}
+/* Settings is the gear alone: its name in the same label, on hover and on keyboard focus */
+#settingsb::after{content:attr(data-tip);display:none}
+#settingsb:is(:hover,:focus-visible)::after{display:block;visibility:visible}
 /* someone else has this shot selected: their initials on the thumbnail, neutral (orange stays "yours") */
 .pmark{position:absolute;right:var(--sp-2);top:var(--sp-2);display:flex;gap:var(--sp-0-5)}
 .bitem .bt{position:relative}
@@ -534,9 +537,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 @media (max-width:1279px){
   .brand .lbl{display:none}
   .saved{min-width:0}
-  .saved .lbl,#settingsb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-  #settingsb{width:var(--h-md);padding:0}
-  #settingsb .ico:first-child{margin:0}
+  .saved .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 }
 @media (max-width:959px){
   :root{--w-project-min:120px}
@@ -573,7 +574,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.75 8h.01M8 8h.01M12.25 8h.01" stroke-width="2.5"/></symbol>
   <symbol id="i-users" viewBox="0 0 16 16"><path d="M6 7.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5zM2 13c0-2 1.75-3.25 4-3.25S10 11 10 13M10.75 3.1a2.25 2.25 0 0 1 0 4.3M12 9.9c1.25.4 2 1.5 2 3.1"/></symbol>
   <symbol id="i-leave" viewBox="0 0 16 16"><path d="M6.5 2.5h-3v11h3M10 5l3 3-3 3M13 8H6.5"/></symbol>
-  <symbol id="i-sliders" viewBox="0 0 16 16"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6M10 3v3M6 10v3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 16 16"><path d="M12.46 6.89L14.17 7.02L14.17 8.98L12.46 9.11A4.6 4.6 0 0 1 11.94 10.37L13.06 11.67L11.67 13.06L10.37 11.94A4.6 4.6 0 0 1 9.11 12.46L8.98 14.17L7.02 14.17L6.89 12.46A4.6 4.6 0 0 1 5.63 11.94L4.33 13.06L2.94 11.67L4.06 10.37A4.6 4.6 0 0 1 3.54 9.11L1.83 8.98L1.83 7.02L3.54 6.89A4.6 4.6 0 0 1 4.06 5.63L2.94 4.33L4.33 2.94L5.63 4.06A4.6 4.6 0 0 1 6.89 3.54L7.02 1.83L8.98 1.83L9.11 3.54A4.6 4.6 0 0 1 10.37 4.06L11.67 2.94L13.06 4.33L11.94 5.63A4.6 4.6 0 0 1 12.46 6.89zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></symbol>
   <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.25a5.75 5.75 0 1 0 0 11.5 5.75 5.75 0 0 0 0-11.5zM8 5v3.5M8 10.75h.01"/></symbol>
   <symbol id="i-x"viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
 </defs></svg>
@@ -637,7 +638,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       </div>
       </div>
       <span id="status" class="saved" data-k="busy" title="Loading"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Loading</span></span>
-      <button type="button" id="settingsb" class="btn ghost" title="Settings"><svg class="ico" aria-hidden="true"><use href="#i-sliders"/></svg><span class="lbl">Settings</span></button>
+      <button type="button" id="settingsb" class="btn ghost icon" aria-label="Settings" data-tip="Settings"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg></button>
     </div>
   </header>
 
