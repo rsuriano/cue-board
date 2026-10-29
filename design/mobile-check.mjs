@@ -19,8 +19,9 @@ export function createCollab(app) {
     return { total: S.files.length, here: n('here'), active: n('downloading') + n('queued'), unavailable: n('unavailable'), skipped: n('skipped'), failed: n('failed'), relay: 0, paused: false, storageFull: false, storageBusy: '', storage: { persisted: true, free: 5e10 }, foreign: 0 }; };
   const media = { files: () => S.files, summary, progress: () => null, pause() {},
     // as media.mjs: refresh re-reads the limits, a video held for Wi-Fi is fetched once they allow it, then onMedia
-    refresh() { S.refreshes++; if (S.pid && app.mediaLimits(S.pid).video !== false) S.files.forEach(f => { if (f.state === 'skipped' && f.skip === 'video') { f.state = 'queued'; f.skip = ''; } }); setTimeout(S.ping, 0); }, downloadAll() { S.all++; }, download(h) { S.dl.push(h); }, retry() {} };
-  S.ping = () => { if (S.pid) { app.onStatus(S.pid, S.status); app.onPeers(S.pid, S.peers); app.onMedia(S.pid); } };
+    refresh() { S.refreshes++; if (S.pid && app.mediaLimits(S.pid).video !== false) S.files.forEach(f => { if (f.state === 'skipped' && f.skip === 'video') { f.state = 'queued'; f.skip = ''; } }); setTimeout(S.ping, 0); }, downloadAll(only) { S.all++; S.allList = only; if (!only) S.override = true; }, download(h){ S.dl.push(h); }, retry() {} };
+  // as media.mjs: downloadAll() without a list fetches everything from then on, the phone's list only those files
+  S.ping = () => { if (S.override) S.files.forEach(f => { if (f.state === 'skipped') { f.state = 'queued'; f.skip = ''; } }); if (S.pid) { app.onStatus(S.pid, S.status); app.onPeers(S.pid, S.peers); app.onMedia(S.pid); } };
   return {
     open(pid) { S.pid = pid; setTimeout(S.ping, 30);
       return { status: () => S.status, select() {}, changed() {}, mark() {}, saved() {}, stop() { S.pid = null; }, media: () => media }; },
@@ -256,8 +257,14 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   await p2.tap('#mstat'); await p2.waitForTimeout(200);
   check(dev, '"Download everything now" is there', (await p2.textContent('#fAll')) === 'Download everything now');
   await p2.tap('#fAll'); await p2.waitForTimeout(200); await p2.tap('#szGo'); await p2.waitForTimeout(200);
-  check(dev, 'Download everything now asks, then downloads all', (await p2.evaluate(() => window.__STUB.all)) === 1);
-  await p2.tap('#mstat'); await p2.waitForTimeout(200); await p2.tap('#fWifi'); await p2.waitForTimeout(100);
+  const listed = await p2.evaluate(() => ({ all: window.__STUB.all, only: window.__STUB.allList, want: window.__STUB.files.filter(f => f.state !== 'here').map(f => f.hex) }));
+  check(dev, 'Download everything now asks, then downloads exactly the files it listed (a one-off)', listed.all === 1 && Array.isArray(listed.only) && listed.only.join() === listed.want.join() && listed.want.length > 0, JSON.stringify(listed));
+  // a collaborator adds a take afterwards: still held for Wi-Fi, not downloaded
+  await p2.evaluate(() => { const S = window.__STUB; S.files.push({ hex: 'cc', label: 'Shot 01 · take 2', bytes: 12e6, song: false, state: 'skipped', skip: 'video', got: 0, who: ['Julia'] }); S.ping(); });
+  await p2.waitForTimeout(300); await p2.tap('#mstat'); await p2.waitForTimeout(200);
+  const late = await p2.evaluate(() => ({ st: window.__STUB.files.find(f => f.hex === 'cc').state, dl: window.__STUB.dl.includes('cc'), row: [...document.querySelectorAll('#fList li')].map(l => l.textContent).find(t => /take 2/.test(t)) || '' }));
+  check(dev, 'a take added after "Download everything now" is not downloaded and shows as waiting for Wi-Fi', late.st === 'skipped' && !late.dl && /Waits for Wi-Fi/.test(late.row), JSON.stringify(late));
+  await p2.tap('#fWifi'); await p2.waitForTimeout(100);
   check(dev, 'turning Wi-Fi only off lets video download', await p2.evaluate(() => window.__STUB.app.mediaLimits(window.__STUB.pid).video === undefined && window.__STUB.refreshes > 0));
   // long project name
   await p2.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app; a.cur().title = 'A very long project name that goes on far past what a phone bar can hold'; a.renderAll(); });

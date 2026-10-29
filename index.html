@@ -2345,9 +2345,11 @@ $("mpanel").addEventListener("keydown",e=>{e.stopPropagation();
 document.addEventListener("pointerdown",e=>{if(!e.target.closest(".mstat"))closeFiles()});
 window.addEventListener("resize",placeFiles);
 $("fAll").onclick=async()=>{const m=cmedia();if(!m)return;
-  /* the phone says how much first: it may be on mobile data */
+  /* the phone says how much first: it may be on mobile data. Then exactly those files, once: what a collaborator adds
+     later follows "Wi-Fi only" and the limits again */
   if(phone()){const l=m.files().filter(f=>f.state!=="here"),n=l.reduce((a,f)=>a+Math.max(0,f.bytes-f.got),0);
-    if(l.length&&!(await sizeAsk("Download everything now?",`${plural(l.length)}, ${fmtMB(n)} to download. On mobile data this counts against your plan.`,"Download all")))return}
+    if(l.length&&!(await sizeAsk("Download everything now?",`${plural(l.length)}, ${fmtMB(n)} to download. On mobile data this counts against your plan.`,"Download all")))return;
+    m.downloadAll(l.map(f=>f.hex));renderFiles();return}
   m.downloadAll();renderFiles()};
 $("fWifi").onchange=e=>{wifiOnly=e.target.checked;putSetting("wifiOnly",wifiOnly);const m=cmedia();if(m)m.refresh();renderFiles()};
 /* the files sheet's close button exists only in the phone layout (the desktop panel closes with Escape or outside) */

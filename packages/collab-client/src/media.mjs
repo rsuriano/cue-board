@@ -547,8 +547,13 @@ export function createMedia(ctx) {
     /** no new requests; chunks already asked for still land (dropping them would count against an honest peer).
         "Download all now" stays on: resuming continues the files it started, from their stored chunks */
     pause(/** @type {boolean} */ on) { paused = on; changed(); schedule(); },
-    /** fetch everything now, the size limits too, for the rest of the session; also retries after "storage full" */
-    downloadAll() { override = true; paused = false; storageFull = false; failed.clear(); changed(); schedule(); },
+    /** fetch everything now, the size limits too, for the rest of the session; also retries after "storage full".
+        With `only` (the files the user was shown and agreed to), a one-off: just those, past the limits (as
+        `download`); what arrives afterwards follows the limits again */
+    downloadAll(/** @type {string[]=} */ only) {
+      if (only) for (const h of only) { asked.add(h); failed.delete(h); } else { override = true; failed.clear(); }
+      paused = false; storageFull = false; changed(); schedule();
+    },
     /** fetch this one file now, past the size limits, for the rest of the session */
     download(/** @type {string} */ hex) { asked.add(hex); changed(); schedule(); },
     /** a file that failed its hash: three more tries */
