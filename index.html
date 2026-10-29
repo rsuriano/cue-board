@@ -544,6 +544,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .opt:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 .opt:disabled,.opt:disabled:hover{opacity:var(--o-disabled);cursor:not-allowed;background:var(--surface-2);border-color:var(--border-strong)}
 .jmsg{margin:0;color:var(--error);font-size:var(--text-sm);line-height:var(--lh-sm)}
+/* the invite link: the link with Copy beside it; for the owner, New link (two taps) with what it does */
+.linkrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-2)}
+.linkrow input{overflow:hidden;text-overflow:ellipsis;font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono)}
+.ownerrow{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--sp-3);margin-top:var(--sp-2)}
+#jRegen[data-armed]{color:var(--error)}
 .jmsg:empty{display:none}
 
 /* ---------- motion (opt-in) ---------- */
@@ -823,6 +828,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
             <button type="button" class="mi" role="menuitem" tabindex="-1" data-for="song" id="mReplace" hidden><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span>Replace song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delsong" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Remove song</span></button>
             <hr role="separator">
+            <button type="button" class="mi" role="menuitem" tabindex="-1" id="inviteb" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span>Invite link…</span></button>
+            <button type="button" class="mi" role="menuitem" tabindex="-1" id="delroom" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete room</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delp"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete project</span></button>
           </div>
         </div>
@@ -835,7 +842,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <nav class="sides" role="tablist" aria-label="Side"><button type="button" class="sidetab" role="tab" data-side="a" aria-selected="true">Side A<span class="lbl">&nbsp;· Cut</span></button><button type="button" class="sidetab" role="tab" data-side="b" aria-selected="false">Side B<span class="lbl">&nbsp;· Takes</span></button></nav>
     <div class="tzone tright">
       <div class="tgroup collab">
-      <button type="button" id="joinb" class="btn ghost" title="Join collaboration" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span class="lbl">Join collaboration</span></button>
+      <button type="button" id="joinb" class="btn ghost" title="Collaborate" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span class="lbl">Collaborate</span></button>
       <button type="button" id="leaveb" class="btn ghost" title="Leave collaboration (this project stays here as a local copy)" hidden><svg class="ico" aria-hidden="true"><use href="#i-leave"/></svg><span class="lbl">Leave collaboration</span></button>
       <div id="presence" class="presence" role="group" hidden></div>
       <div class="mstat" id="mstatw" hidden>
@@ -1044,8 +1051,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <ul class="m-people" id="mPeople"></ul>
     <div class="m-state" id="mState"><b id="mStateT"></b><p class="muted" id="mStateTip"></p></div>
     <button type="button" class="m-row" id="mFiles"><span>Files and downloads</span><span class="muted" id="mFilesV"></span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
-    <button type="button" class="btn" id="mJoin"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Join collaboration</button>
-    <button type="button" class="btn ghost" id="mLeave"><span>Leave collaboration</span></button>
+    <button type="button" class="m-row" id="mInvite"><span>Invite link</span><span class="muted" id="mInviteV"></span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+    <button type="button" class="btn" id="mJoin"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Collaborate</button>
+    <div class="m-acts"><button type="button" class="btn ghost" id="mLeave"><span>Leave collaboration</span></button><button type="button" class="btn ghost m-del" id="mDelRoom" hidden><span>Delete room</span></button></div>
   </section>
   <button type="button" class="m-row" id="mSettings"><span>Settings</span><span class="muted">OpenRouter key</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
   <button type="button" class="m-row" id="mCopy"><span>Copy shot list</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
@@ -1072,14 +1080,21 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div class="row"><span class="grow"></span><button type="button" id="expCancel" class="btn ghost">Cancel</button><button type="button" id="expGo" class="btn primary">Download</button></div>
 </div></dialog>
 <dialog id="dlgJoin"><form class="dlg" id="joinForm">
-  <h3 id="jTitle">Join collaboration</h3>
+  <h3 id="jTitle">Collaborate</h3>
   <p class="muted" id="jLead"></p>
+  <div class="opts" id="jOptsC">
+    <button type="button" class="opt" id="jShareNew"><b>Share this project</b><span id="jShareNewHint"></span></button>
+    <button type="button" class="opt" id="jJoinLink"><b>Join with a link</b><span>Paste an invite link someone sent you. Anyone with a link can join its room.</span></button>
+  </div>
   <div class="field" id="jLinkF"><label for="jLink">Invite link</label><input id="jLink" autocomplete="off" spellcheck="false" placeholder="https://…/#join=…"></div>
+  <div class="field" id="jCodeF"><label for="jCode">Verification code</label><input id="jCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="The code you were given" aria-describedby="jCodeHint"><p class="hint" id="jCodeHint">One code verifies this browser for good. Joining a room with a link needs no code.</p></div>
   <div class="field" id="jNameF"><label for="jName">Your name</label><input id="jName" autocomplete="nickname" maxlength="40" placeholder="e.g. Ana" aria-describedby="jNameHint"><p class="hint" id="jNameHint">Stored only in this browser.</p></div>
   <div class="opts" id="jOpts">
     <button type="button" class="opt" id="jNew"><b>Open the room as a new project</b><span>Your project stays exactly as it is. The room opens as a separate project next to it.</span></button>
     <button type="button" class="opt" id="jShare"><b>Share this project into the room</b><span id="jShareHint"></span></button>
   </div>
+  <div class="field" id="jInviteF"><label for="jInvite">Invite link</label><div class="linkrow"><input id="jInvite" readonly spellcheck="false" aria-describedby="jInviteHint"><button type="button" class="btn" id="jCopy">Copy</button></div><p class="hint" id="jInviteHint"></p>
+    <div class="ownerrow" id="jOwnerRow" hidden><button type="button" class="btn small ghost" id="jRegen"><span>New link</span></button><p class="hint">Replaces this link. Everyone who joined with it, in the room now or later, needs the new one.</p></div></div>
   <p class="jmsg" id="jMsg" role="alert"></p>
   <div class="row"><span class="grow"></span><button type="button" id="jCancel" class="btn ghost">Cancel</button><button type="submit" id="jGo" class="btn primary">Join</button></div>
 </form></dialog>
@@ -1280,6 +1295,8 @@ let leavePid=null;
 function renderCollabBtns(){const inRoom=!!(cur&&cset.rooms[cur.id]),j=$("joinb"),l=$("leaveb"),foc=document.activeElement,pid=cur&&cur.id;
   /* an armed Leave belongs to the room it was armed in: another project, even another room, starts unarmed */
   j.hidden=!SYNC_URL||inRoom;l.hidden=!SYNC_URL||!inRoom;if(l.hidden||pid!==leavePid)resetLeave();leavePid=pid;
+  /* the room's own actions live in More: its invite link for every member, Delete room for the owner */
+  $("inviteb").hidden=l.hidden;$("delroom").hidden=l.hidden||!cset.rooms[cur.id].owner;
   /* the one that was focused went away: its counterpart takes the focus */
   if(foc===j&&j.hidden&&!l.hidden)l.focus();else if(foc===l&&l.hidden&&!j.hidden)j.focus()}
 function renderSongbar(){
@@ -1521,8 +1538,8 @@ $("projmenu").onclick=e=>{
 /* More: what doesn't fit the bar at this width, the song's Replace and Remove, and Delete project last. An entry
    stands in for its bar button (data-for); the two destructive ones confirm with a second tap and keep the menu open */
 $("moremenu").onclick=e=>{
-  const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong")return;
-  closeMore(true);$(b.dataset.for).click();
+  const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong"||b.id==="delroom")return;
+  closeMore(true);if(b.id==="inviteb"){showInvite(cur&&cur.id);return}$(b.dataset.for).click();
 };
 /* Space and Enter on a button in the bar press it (side A's Space-to-play is for the rest of the page) */
 document.querySelector(".top").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&e.target.closest("button"))e.stopPropagation()});
@@ -1573,7 +1590,7 @@ const removeSong=()=>{
   hasAudio=false;cur.song=null;vt=0;scheduleSave();renderAll();toast("Song removed. Your cuts and shots are kept.");
 };
 const resetDelsong=twoTap($("delsong"),"Remove song","Tap again to remove",removeSong);
-function disarmMore(){resetDelp();resetDelsong()}
+function disarmMore(){resetDelp();resetDelsong();resetDelroom()}
 const deleteShot=()=>{
   const s=S(),i=s.findIndex(x=>x.id===selId);if(i<0)return;
   if(s.length===1){Object.assign(s[0],{title:"",shot:"",notes:"",imgPrompt:"",vidPrompt:""});}
@@ -2213,12 +2230,15 @@ $("setTest").onclick=async()=>{
    imported only when a room is joined or already bound; with no binding nothing here touches the network. */
 const SYNC_URL=((document.querySelector('meta[name="cue-sync-url"]')||{}).content||"").trim();
 const ICE_URLS=((document.querySelector('meta[name="cue-ice-urls"]')||{}).content||"").trim();
-const INVITE=/^([A-Za-z0-9_-]{16,64})\.([A-Za-z0-9_-]{16,128})$/;
-let cset={name:"",rooms:{}},cmod=null,csess=null,csessPid=null,peers=[],deviceId="",cunshared=0;
-/* an invite link: https://host/#join=<room>.<token>, the server CLI's ?room=…&token=… link, or just <room>.<token> */
+const INVITE=/^([A-Za-z0-9_-]{16,64})\.([A-Za-z0-9_-]{16,128})(?:\.([A-Za-z0-9_-]{16,128}))?$/;
+/* verified: {token,label} once a verification code was redeemed here (the one state the "Share this project" gate reads);
+   rooms[pid].owner: the owner token of a room created here (or claimed through an owner link), stored like the invite token */
+let cset={name:"",rooms:{},verified:null},cmod=null,csess=null,csessPid=null,peers=[],deviceId="",cunshared=0;
+/* an invite link: https://host/#join=<room>.<token>, the server CLI's ?room=…&token=… link, or just <room>.<token>.
+   An owner link (attach-owner) carries a third part, the owner token, which only that browser keeps */
 function parseInvite(t){t=String(t||"").trim();let m=/[#&]join=([A-Za-z0-9_.-]+)/.exec(t);
   if(m)t=m[1];else{const r=/[?&]room=([A-Za-z0-9_-]+)/.exec(t),k=/[?&]token=([A-Za-z0-9_-]+)/.exec(t);if(r&&k)t=r[1]+"."+k[1]}
-  m=INVITE.exec(t);return m?{roomId:m[1],token:m[2]}:null}
+  m=INVITE.exec(t);return m?{roomId:m[1],token:m[2],owner:m[3]||""}:null}
 /* read the invite and take it out of the address bar (and history) before anything else runs */
 function takeInvite(){if(!/[#&]join=/.test(location.hash))return null;const inv=parseInvite(location.hash);
   try{history.replaceState(null,"",location.pathname+location.search)}catch(e){}return inv||{bad:true}}
@@ -2226,7 +2246,7 @@ let pendingInvite=takeInvite(),joining=!!pendingInvite;
 /* an invite pasted into the address bar of an open tab only changes the hash */
 window.addEventListener("hashchange",()=>{const inv=takeInvite();if(inv&&store)joinFlow(inv)});
 const saveCset=()=>putSetting("collab",cset);
-async function loadCollab(){if(cmod)return cmod;try{const m=await import("./collab.js");cmod=m.createCollab(collabApp,SYNC_URL,{ice:m.parseIce?m.parseIce(ICE_URLS):[]})}catch(e){cmod=null}return cmod}
+async function loadCollab(){if(cmod)return cmod;try{const m=await import("./collab.js");cmod=m.createCollab(collabApp,SYNC_URL,{ice:m.parseIce?m.parseIce(ICE_URLS):[]});cmod.api=m.createApi?m.createApi(SYNC_URL):null}catch(e){cmod=null}return cmod}
 const collabApp={
   project:pid=>cur&&cur.id===pid?cur:null,
   applyRemote,
@@ -2236,7 +2256,7 @@ const collabApp={
     return f?{el:a,shotId:s.id,field:f}:null},
   mediaBlob,
   songBlob:async pid=>{const r=await idbDo("readonly",st=>st.get(pid));return r&&r.blob?{blob:r.blob,name:r.name||""}:null},
-  onStatus:(pid,s)=>{if(cur&&cur.id===pid&&csessPid===pid)renderCollab(s)},
+  onStatus:(pid,s)=>{if(cur&&cur.id===pid&&csessPid===pid){renderCollab(s);if(s==="deleted")toast("This room was deleted by its owner. Your project stays here as a local copy",4000)}},
   onPeers:(pid,l)=>{if(cur&&cur.id===pid&&csessPid===pid){peers=l;renderPresence();renderMarks()}},
   onUnshared:(pid,n)=>{if(cur&&cur.id===pid&&csessPid===pid){cunshared=n;renderCollab(csess.status())}},
   /* media from collaborators (docs/media-p2p.md): verified against its hash before it gets here */
@@ -2279,7 +2299,9 @@ function applyRemote(pid,p){
    The indicator shows the worst state: quiet when everything is here, a thin ring while files arrive, a hollow dot
    when something isn't here (offline, nobody has it, skipped, paused), an error dot when something went wrong. */
 const CST={synced:["ok","Synced",""],syncing:["ok","Syncing…",""],offline:["off","Offline, changes will sync","Your edits are kept in this browser and go to the room when you're back online."],
-  unreachable:["err","Can't reach the room","Retrying. Your edits are kept in this browser."],rejected:["err","Can't reach the room","The room didn't accept this invite link. Your project is still here."]};
+  unreachable:["err","Can't reach the room","Retrying. Your edits are kept in this browser."],rejected:["err","This invite link no longer works","The room didn't accept it: the owner may have replaced the link, or it's incomplete. Ask them for the new one. Your project is still here."],
+  deleted:["err","This room was deleted","Its owner deleted the room on the server. Your project stays here as a local copy; Leave collaboration clears this."],
+  full:["err","Room is over its size limit","The server refused the last change: it would take the room past its size limit. The change is kept in this browser; reload to reconnect."]};
 const plural=(k,w)=>k+" file"+(k>1?"s":"")+(w?" "+w:"");
 const fmtMB=b=>b>=1e9?(b/1e9).toFixed(1)+" GB":b>=1e6?(b/1e6).toFixed(1)+" MB":Math.max(1,Math.round(b/1e3))+" KB";
 const cmedia=()=>csess&&csess.media?csess.media():null;
@@ -2437,7 +2459,7 @@ narrowBar.addEventListener("change",renderPresence);
 $("presence").addEventListener("keydown",e=>{const it=[...$("presence").children],i=it.indexOf(document.activeElement);if(i<0)return;
   const j={ArrowRight:i+1,ArrowDown:i+1,ArrowLeft:i-1,ArrowUp:i-1,Home:0,End:it.length-1}[e.key];if(j==null)return;
   e.preventDefault();e.stopPropagation();const t=it[Math.max(0,Math.min(it.length-1,j))];it.forEach(c=>c.tabIndex=-1);t.tabIndex=0;t.focus()});
-$("joinb").onclick=async()=>{await joinFlow(null);
+$("joinb").onclick=async()=>{await collabFlow();
   /* the dialog hands focus back to Join; once joined that's hidden, so Leave takes it */
   const a=document.activeElement;if(!a||a===document.body||a===$("joinb")&&$("joinb").hidden)(!$("leaveb").hidden?$("leaveb"):$("joinb")).focus()};
 const resetLeave=twoTap($("leaveb"),"Leave collaboration","Tap again to leave",()=>leaveRoom());
@@ -2481,23 +2503,85 @@ function leaveRoom(pid,quiet){
 let jRes=null;const jDone=v=>{const r=jRes;jRes=null;if(r)r(v)};
 function joinStep(step,title,lead){const d=$("dlgJoin");
   $("jTitle").textContent=title;$("jLead").textContent=lead||"";$("jMsg").textContent="";
-  $("jLinkF").hidden=step!=="link";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";
-  $("jGo").hidden=step!=="link"&&step!=="name";$("jGo").textContent=step==="name"?"Continue":"Join";$("jCancel").textContent=step==="err"?"Close":"Cancel";
+  $("jOptsC").hidden=step!=="collab";$("jLinkF").hidden=step!=="link";$("jCodeF").hidden=step!=="code";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";$("jInviteF").hidden=step!=="invite";
+  $("jGo").hidden=!["link","name","code"].includes(step);$("jGo").textContent=step==="link"?"Join":"Continue";$("jCancel").textContent=step==="err"?"Close":step==="invite"?"Done":"Cancel";
   d.dataset.step=step;if(!d.open)d.showModal();
-  setTimeout(()=>{const f=step==="link"?$("jLink"):step==="name"?$("jName"):step==="choose"?$("jNew"):$("jCancel");f.focus()},30)}
+  setTimeout(()=>{const f={link:"jLink",name:"jName",code:"jCode",choose:"jNew",collab:"jShareNew",invite:"jCopy"}[step];$(f||"jCancel").focus()},30)}
 const joinAsk=(step,title,lead)=>{joinStep(step,title,lead);return new Promise(r=>{jRes=r})};
 $("joinForm").onsubmit=e=>{e.preventDefault();const st=$("dlgJoin").dataset.step;
   if(st==="link"){const inv=parseInvite($("jLink").value);if(!inv){$("jMsg").textContent="That isn't an invite link. It ends in #join= and a long code.";return}jDone(inv)}
-  else if(st==="name"){const n=$("jName").value.replace(/\s+/g," ").trim().slice(0,40);if(!n){$("jMsg").textContent="Type a name first.";return}jDone(n)}};
+  else if(st==="name"){const n=$("jName").value.replace(/\s+/g," ").trim().slice(0,40);if(!n){$("jMsg").textContent="Type a name first.";return}jDone(n)}
+  else if(st==="code"){const c=$("jCode").value.trim();if(!c){$("jMsg").textContent="Type the code first.";return}jDone(c)}};
 $("jCancel").onclick=()=>$("dlgJoin").close();
-$("dlgJoin").addEventListener("close",()=>jDone(null));
+$("dlgJoin").addEventListener("close",()=>{resetRegen();jDone(null)});
 $("jNew").onclick=()=>jDone("new");$("jShare").onclick=()=>jDone("share");
+$("jShareNew").onclick=()=>jDone("share-new");$("jJoinLink").onclick=()=>jDone("join");
+/* the Collaborate panel: share the open project (a new room, invite-only to create) or join with a link (open to anyone) */
+async function collabFlow(){
+  if(!SYNC_URL){toast("Collaboration isn't set up on this copy of Cue Board");return}
+  const can=!!cur&&!cset.rooms[cur.id];$("jShareNew").disabled=!can;
+  $("jShareNewHint").textContent=!cur?"Open a project first.":!can?"This project is already in a room.":`Creates a room from “${cur.title||"Untitled project"}” and gives you a link to send. Everyone with the link edits it with you; media files stay on each device until they're shared.`;
+  const how=await joinAsk("collab","Collaborate","Work on a cue board together, live: everyone in a room edits the same cuts, notes, prompts and takes.");
+  if(!how)return;
+  if(how==="join"){$("jLink").value="";const inv=await joinAsk("link","Join with a link","Paste the invite link you were sent. Everyone with the link can edit the project with you.");if(inv)await joinFlow(inv);return}
+  await createRoomFlow();
+}
+/* verified means a code was redeemed in this browser, once. A token the server no longer knows (its code was revoked)
+   drops back to unverified and asks again */
+async function ensureVerified(api){
+  if(cset.verified&&cset.verified.token)return true;
+  let msg="";$("jCode").value="";
+  for(;;){joinStep("code","Creating rooms is invite-only for now","Enter the code you were given.");$("jMsg").textContent=msg;
+    const code=await new Promise(r=>{jRes=r});if(!code)return false;
+    joinStep("busy","Checking the code","One moment…");const r=await api.verify(code);if(!$("dlgJoin").open)return false;
+    if(r.ok){cset.verified={token:r.token,label:r.label};await saveCset();return true}
+    msg=r.message}
+}
+const roomName=()=>cur&&cur.title||"Untitled project";
+async function createRoomFlow(){
+  if(!cur||cset.rooms[cur.id])return;
+  const pid=cur.id,m=await loadCollab();if(!m||!m.api){joinStep("err","Can't reach the sync server","It didn't answer. Check your connection and try again. Your projects are untouched.");return}
+  if(!(await ensureVerified(m.api)))return;
+  if(!cset.name){$("jName").value="";const n=await joinAsk("name","Your name in the room","The others see it next to the shots you have selected.");if(!n)return;cset.name=n;await saveCset()}
+  joinStep("busy","Creating the room","One moment…");
+  let r=await m.api.createRoom(cset.verified.token,roomName());if(!$("dlgJoin").open)return;
+  if(!r.ok&&r.error==="unverified"){cset.verified=null;await saveCset();if(!(await ensureVerified(m.api)))return;joinStep("busy","Creating the room","One moment…");r=await m.api.createRoom(cset.verified.token,roomName());if(!$("dlgJoin").open)return}
+  if(!r.ok){joinStep("err","Couldn't create the room",r.message+" Your project is untouched.");return}
+  if(!cur||cur.id!==pid||cset.rooms[pid]){$("dlgJoin").close();return}
+  /* as "Share this project into the room": this project's takes were all sent from here */
+  S().forEach(s=>(s.takes||[]).forEach(t=>{if(!t.dev)t.dev=deviceId}));flush();
+  cset.rooms[pid]={roomId:r.roomId,token:r.token,owner:r.ownerToken,name:cset.name,share:true};await saveCset();collabFor(cur);renderProjSelect();
+  showInvite(pid,"The room is ready. Send this link to the people you want in it: everyone with it can edit the project with you.");
+}
+/* the invite link, for any member (More, or the Project sheet on a phone); the owner can replace it from here */
+const inviteLink=b=>location.href.replace(/[#?].*$/,"")+"#join="+b.roomId+"."+b.token;
+function showInvite(pid,lead){const b=pid&&cset.rooms[pid];if(!b)return;
+  joinStep("invite","Invite link",lead||"Everyone with this link can edit the project with you.");
+  $("jInvite").value=inviteLink(b);$("jCopy").textContent="Copy";$("jInviteHint").textContent=b.owner?"You own this room.":"";$("jOwnerRow").hidden=!b.owner}
+$("jCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("jInvite").value);$("jCopy").textContent="Copied"}catch(e){$("jInvite").focus();$("jInvite").select()}};
+const resetRegen=twoTap($("jRegen"),"New link","Tap again to replace it",()=>regenerateLink());
+async function regenerateLink(){const pid=cur&&cur.id,b=pid&&cset.rooms[pid];if(!b||!b.owner)return;
+  const m=await loadCollab();if(!m||!m.api){$("jMsg").textContent="Can't reach the sync server.";return}
+  const r=await m.api.regenerateInvite(b.roomId,b.owner);
+  if(!r.ok){if(r.error==="not_owner"){delete b.owner;saveCset();renderCollabBtns()}$("jMsg").textContent=r.message;return}
+  /* the server closed every connection, this one included: reconnect with the new link */
+  b.token=r.token;await saveCset();if(csess&&csessPid===pid){csess.stop();csess=null;csessPid=null}collabFor(cur);
+  if($("dlgJoin").open&&$("dlgJoin").dataset.step==="invite"){$("jInvite").value=inviteLink(b);$("jCopy").textContent="Copy";$("jMsg").textContent=""}
+  toast("New link ready. The old one no longer works")}
+/* the owner wipes the room on the server; members see "This room was deleted" and keep their copies, as does the owner */
+async function deleteRoomFlow(){const pid=cur&&cur.id,b=pid&&cset.rooms[pid];if(!b||!b.owner)return;
+  const m=await loadCollab();if(!m||!m.api){toast("Can't reach the sync server");return}
+  const r=await m.api.deleteRoom(b.roomId,b.owner);
+  if(!r.ok&&r.error!=="unknown_room"){if(r.error==="not_owner"){delete b.owner;saveCset();renderCollabBtns()}toast(r.message,3000);return}
+  leaveRoom(pid,true);toast("Room deleted. This project stays here as a local copy",3000)}
+const resetDelroom=twoTap($("delroom"),"Delete room","Tap again to delete",()=>{closeMore(true);deleteRoomFlow()});
 async function joinFlow(inv){
   if(inv&&inv.bad){toast("That invite link is incomplete. Ask for a new one");return}
   if(!SYNC_URL){toast("Collaboration isn't set up on this copy of Cue Board");return}
   if(!inv){$("jLink").value="";inv=await joinAsk("link","Join collaboration","Paste the invite link you were sent. Everyone with the link can edit the project with you.");if(!inv)return}
   const have=Object.entries(cset.rooms).find(([,b])=>b.roomId===inv.roomId),hp=have&&projects.find(x=>x.id===have[0]);
   if(hp){$("dlgJoin").close();
+    if(inv.owner&&have[1].owner!==inv.owner){have[1].owner=inv.owner;await saveCset();renderCollabBtns()}
     if(have[1].token!==inv.token){have[1].token=inv.token;await saveCset();if(csessPid===hp.id){csess.stop();csess=null;csessPid=null}}
     if(!cur||cur.id!==hp.id){if(dirty)flush();selectProject(hp)}else collabFor(cur);
     toast("You're already in this room: it's “"+(hp.title||"Untitled project")+"”");return}
@@ -2512,10 +2596,11 @@ async function joinFlow(inv){
     how=await joinAsk("choose","Join “"+r.title+"”","You have “"+(cur.title||"Untitled project")+"” open. Nothing in it is overwritten either way.");if(!how)return}
   $("dlgJoin").close();
   /* this project's takes were all sent from here: say so, so only this browser ever polls them */
-  if(how==="share"){S().forEach(s=>(s.takes||[]).forEach(t=>{if(!t.dev)t.dev=deviceId}));flush();cset.rooms[cur.id]={roomId:inv.roomId,token:inv.token,name:cset.name,share:true};await saveCset();collabFor(cur);renderProjSelect();return}
+  const own=inv.owner?{owner:inv.owner}:{};
+  if(how==="share"){S().forEach(s=>(s.takes||[]).forEach(t=>{if(!t.dev)t.dev=deviceId}));flush();cset.rooms[cur.id]={roomId:inv.roomId,token:inv.token,name:cset.name,share:true,...own};await saveCset();collabFor(cur);renderProjSelect();return}
   const p={...r.project,id:uid("p"),updated:Date.now()};if(!p.sections.length)p.sections.push(newSec(0));
   await m.seed(p.id,r.update);
-  cset.rooms[p.id]={roomId:inv.roomId,token:inv.token,name:cset.name};await saveCset();
+  cset.rooms[p.id]={roomId:inv.roomId,token:inv.token,name:cset.name,...own};await saveCset();
   if(dirty)flush();
   try{await store.set(p)}catch(e){delete cset.rooms[p.id];saveCset();toast("Couldn't save the project here");return}
   selectProject(p);toast("Joined “"+p.title+"”");
@@ -2727,7 +2812,8 @@ function renderProjSheet(){
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
   ["mRename","mExport","mCopy","mDelp"].forEach(id=>$(id).disabled=!cur);$("mSong").textContent=has?"Replace song":"Load song";$("mDelsong").hidden=!has;
   const inRoom=!!(SYNC_URL&&cur&&cset.rooms[cur.id]);$("mRoom").hidden=!SYNC_URL;
-  ["mPeople","mState","mFiles","mRoomN"].forEach(id=>$(id).hidden=!inRoom);$("mJoin").hidden=inRoom;$("mLeave").hidden=!inRoom;
+  ["mPeople","mState","mFiles","mRoomN","mInvite"].forEach(id=>$(id).hidden=!inRoom);$("mJoin").hidden=inRoom;$("mLeave").hidden=!inRoom;$("mDelRoom").hidden=!(inRoom&&cset.rooms[cur.id].owner);$("mLeave").parentNode.hidden=!inRoom;
+  if(inRoom)$("mInviteV").textContent=cset.rooms[cur.id].owner?"You own this room":"";
   if(inRoom){const b=cset.rooms[cur.id],me=b.name||cset.name||"You",l=csess&&csessPid===cur.id?peers:[];
     $("mRoomN").textContent=(l.length+1)+(l.length?" people here":" person here");
     const on=p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return i>=0?`on <span class="tc">${pad(i+1)}</span>`:""};
@@ -2745,8 +2831,10 @@ $("mImport").onclick=()=>{mProj.close();$("importf").click()};
 $("mExport").onclick=()=>{mProj.close();$("exportb").click()};
 $("mSong").onclick=()=>{mProj.close();$("song").click()};
 twoTap($("mDelsong"),"Remove song","Tap again to remove",()=>{removeSong();renderProjSheet()});
-$("mJoin").onclick=()=>{mProj.close();joinFlow(null)};
+$("mJoin").onclick=()=>{mProj.close();collabFlow()};
+$("mInvite").onclick=()=>{mProj.close();showInvite(cur&&cur.id)};
 twoTap($("mLeave"),"Leave collaboration","Tap again to leave",()=>{leaveRoom();renderProjSheet()});
+twoTap($("mDelRoom"),"Delete room","Tap again to delete",()=>{mProj.close();deleteRoomFlow()});
 $("mFiles").onclick=()=>{mProj.close();openFiles(false)};
 $("mSettings").onclick=()=>{mProj.close();openSettings()};
 $("mCopy").onclick=()=>{if(cur)$("copylist").onclick()};
@@ -2772,7 +2860,7 @@ renderAll();
   if(!(await idb())){setStatus("err","Browser storage unavailable");toast("This browser blocks local storage, so nothing will be saved")}
   else setStatus("ok","Saved locally");
   try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im)}catch(e){}
-  try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms};
+  try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms,verified:c.verified&&typeof c.verified.token==="string"?{token:c.verified.token,label:String(c.verified.label||"")}:null};
     deviceId=(await getSetting("deviceId"))||"";if(!deviceId){deviceId=uid("d");await putSetting("deviceId",deviceId)}}catch(e){}
   /* takes and clips only on Wi-Fi: on by default on a phone, set in its Files sheet */
   try{const w=await getSetting("wifiOnly");wifiOnly=w===undefined?phone()&&matchMedia("(pointer:coarse)").matches:!!w}catch(e){}

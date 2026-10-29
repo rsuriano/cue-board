@@ -88,7 +88,7 @@ async function nameStep(page, name) {
   await page.fill('#jName', name); await page.click('#jGo');
 }
 // Join and Leave are top-level buttons in the bar; Leave confirms with a second tap
-const menu = async (page, act) => { if (act === 'join') await page.click('#joinb'); else { await page.click('#leaveb'); await page.click('#leaveb'); } };
+const menu = async (page, act) => { if (act === 'join') { await page.click('#joinb'); await page.click('#jJoinLink'); } else { await page.click('#leaveb'); await page.click('#leaveb'); } };
 // everyone else in the presence row (your own bubble, .self, comes first and is left out here)
 const presence = page => page.evaluate(() => { const p = document.getElementById('presence'); return p.hidden ? '' : [...p.children].filter(c => !c.classList.contains('self')).map(c => c.textContent).join(','); });
 // the whole row as [initials, tooltip] pairs, and what a bubble's tooltip shows on hover / keyboard focus

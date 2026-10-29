@@ -16,8 +16,11 @@ import { shotsMap } from '@cue-board/sync-server/schema';
 import { docToProject, pushProject, keepPending, isEmptyRoom, clearShots, sanitizeName, initials, same } from './convert.mjs';
 import { createMedia } from './media.mjs';
 
+export { createApi, httpBase } from './api.mjs';   // the server's HTTP side: rooms from the app, codes, owner actions
+
 const LOCAL = 'cueboard-app';                      // transaction origin of our own writes
 const REJECTED = new Set([4400, 4401, 4404]);       // the server won't take us: stop retrying
+const DELETED = 4410, FULL = 4413;                 // the owner deleted the room · our update would pass the room's size cap
 const SHA_ID = /^sha256-([0-9a-f]{64})$/;
 const SHOT_ID = /^[\w-]{1,64}$/;
 
@@ -152,7 +155,9 @@ export function parseIce(/** @type {string} */ s) {
 
 /**
  * @typedef {{ roomId: string, token: string, name: string, dev?: string }} Binding   dev: this browser's id
- * @typedef {'syncing' | 'synced' | 'offline' | 'unreachable' | 'rejected'} Status
+ * @typedef {'syncing' | 'synced' | 'offline' | 'unreachable' | 'rejected' | 'deleted' | 'full'} Status
+ *   deleted: the owner deleted the room (4410); the local copy stays, nothing retries. full: the server refused an update
+ *   that would take the room past its size cap (4413); the edit is kept here, the session stops until a reload.
  * @typedef {{ id: number, name: string, initials: string, sel: string | null }} Peer
  * @typedef {{
  *   project(pid: string): any,                 the app's live project object if `pid` is open, else null
@@ -224,7 +229,7 @@ export function createCollab(app, syncUrl, opts = {}) {
     /** @type {any} */ let savedBase = null;
     let dropped = false;                          // forget(pid): the offline copy is gone and is never written again
     /** @type {Uint8Array | null} */ let finalState = null;
-    let ready = false, stopped = false, rejected = false, failing = false, pullQueued = false;
+    let ready = false, stopped = false, rejected = false, deleted = false, full = false, failing = false, pullQueued = false;
     /** @type {any} */ let caret = null;
     /** @type {any} */ let refs = new Map(), songFile = null, songLocal = null, songFor = null;
     /** @type {any} */ let pushTimer = 0, saveTimer = 0;
@@ -288,7 +293,7 @@ export function createCollab(app, syncUrl, opts = {}) {
       mediaChanged(); queuePull();
     }
 
-    const status = () => /** @type {Status} */ (rejected ? 'rejected' : !navigator.onLine ? 'offline' : prov && prov.wsconnected ? (prov.synced ? 'synced' : 'syncing') : failing ? 'unreachable' : 'syncing');
+    const status = () => /** @type {Status} */ (deleted ? 'deleted' : full ? 'full' : rejected ? 'rejected' : !navigator.onLine ? 'offline' : prov && prov.wsconnected ? (prov.synced ? 'synced' : 'syncing') : failing ? 'unreachable' : 'syncing');
     let shown = '';
     const report = () => { if (stopped) return; const s = status(); if (s !== shown) { shown = s; app.onStatus(pid, s); } };
 
@@ -432,7 +437,7 @@ export function createCollab(app, syncUrl, opts = {}) {
     const unlist = () => { const l = live.get(pid); if (l) { l.delete(drop); if (!l.size) live.delete(pid); } };
     let marks = 0;                                // app saves begun (mark) and not finished (saved)
 
-    const onOnline = () => { if (prov && !rejected && !stopped) prov.connect(); report(); };
+    const onOnline = () => { if (prov && !rejected && !deleted && !full && !stopped) prov.connect(); report(); };
     const onOffline = () => { if (prov) prov.disconnect(); report(); };
     window.addEventListener('online', onOnline); window.addEventListener('offline', onOffline);
 
@@ -450,7 +455,9 @@ export function createCollab(app, syncUrl, opts = {}) {
       prov.on('sync', s => { if (s) firstSync(); report(); });
       prov.on('connection-error', () => { failing = true; report(); });
       prov.on('connection-close', ev => {
-        if (ev && REJECTED.has(ev.code)) { rejected = true; prov && prov.disconnect(); }
+        if (ev && ev.code === DELETED) { deleted = true; prov && prov.disconnect(); }
+        else if (ev && ev.code === FULL) { full = true; prov && prov.disconnect(); }
+        else if (ev && REJECTED.has(ev.code)) { rejected = true; prov && prov.disconnect(); }
         else if (prov && prov.shouldConnect) failing = true;
         report();
       });
