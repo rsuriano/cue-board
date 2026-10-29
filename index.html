@@ -2515,7 +2515,9 @@ function sizeAsk(title,text,go){const d=$("dlgSize");$("szTitle").textContent=ti
   d.returnValue="";d.showModal();return new Promise(r=>d.addEventListener("close",()=>r(d.returnValue==="ok"),{once:true}))}
 
 /* ---------- timeline ---------- */
-let mProg=null,mTouch=false,mScrollAt=0,mFit=false,mGrip=null,mCut=-1,mMode="",mLift=null,mPress=null;
+let mProg=null,mTouch=false,mScrollAt=0,mFit=false,mGrip=null,mCutId="",mMode="",mLift=null,mPress=null;
+/* the picked cut is kept by the id of the shot it starts (a collaborator's insert before it doesn't move the pick), resolved here */
+function mCutI(){const i=mCutId?S().findIndex(x=>x.id===mCutId):-1;return i>0?i:-1}
 const mBusy=()=>!!((mGrip&&mGrip.moved)||mLift);
 const MT={};["--accent","--screen","--ink","--on-media","--surface-3"].forEach(n=>MT[n]=tok(n));
 const mThumbs=new Map();
@@ -2558,18 +2560,18 @@ function mDraw(){
     else{g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(Math.max(0,X(0)),mid+.5);g.lineTo(Math.min(cw,X(d)),mid+.5);g.stroke();
       g.fillStyle=T["--tl-label"];g.font="500 12px 'Instrument Sans', sans-serif";g.textAlign="center";g.fillText(hasAudio?"Analyzing…":"Load the song to see the waveform",cw/2,mid-12);g.textAlign="left"}
     /* cuts: neutral lines; the one being moved in ink. Their grips are buttons (#mGrips) */
-    s.forEach((x,i)=>{if(!i)return;const px=Math.round(X(x.start))+.5;if(px<-24||px>cw+24)return;const on=i===mCut;
+    s.forEach((x,i)=>{if(!i)return;const px=Math.round(X(x.start))+.5;if(px<-24||px>cw+24)return;const on=x.id===mCutId;
       g.strokeStyle=on?MT["--ink"]:T["--tl-cut"];g.lineWidth=on?2:1.5;g.beginPath();g.moveTo(px,RU);g.lineTo(px,H);g.stroke();
       g.fillStyle=g.strokeStyle;g.beginPath();g.moveTo(px-6,RU);g.lineTo(px+6,RU);g.lineTo(px,RU+8);g.closePath();g.fill();
       grips.push({i,x:px,t:x.start,top:b.top,h:b.h})});
     g.lineWidth=1}
   mPlaceGrips(grips);
 }
-function mPlaceGrips(list){const box=$("mGrips");
+function mPlaceGrips(list){const box=$("mGrips"),ci=mCutI();
   while(box.children.length<list.length){const b=document.createElement("button");b.type="button";b.className="grip";box.appendChild(b)}
   [...box.children].forEach((b,k)=>{const c=list[k];if(!c){b.hidden=true;return}b.hidden=false;b.dataset.i=c.i;
     b.style.left=c.x+"px";b.style.top=c.top+"px";b.style.height=c.h+"px";
-    b.setAttribute("aria-label",`Cut between shots ${pad(c.i)} and ${pad(c.i+1)}, at ${fmt(c.t)}`);b.setAttribute("aria-pressed",String(mCut===c.i))})}
+    b.setAttribute("aria-label",`Cut between shots ${pad(c.i)} and ${pad(c.i+1)}, at ${fmt(c.t)}`);b.setAttribute("aria-pressed",String(ci===c.i))})}
 /* scrolling: seek, and the shot under the playhead becomes the selected one (as when playing) */
 scroller.addEventListener("scroll",()=>{if(!phone())return;const x=scroller.scrollLeft;
   if(mProg!=null&&Math.abs(x-mProg)<2){mProg=null;mDraw();return}mProg=null;
@@ -2593,7 +2595,7 @@ cv.addEventListener("pointerup",e=>{if(!phone())return;
   if(mLift){mLiftEnd(true);return}
   const p=mPress;mPress=null;if(!p)return;clearTimeout(p.timer);if(performance.now()-p.at>450)return;
   /* a tap: on a shot, select it and go to its start; on the waveform, go there */
-  if(mCut>0||mMode){mCut=-1;mMode="";renderMTool()}
+  if(mCutId||mMode){mCutId="";mMode="";renderMTool()}
   const t=Math.max(0,Math.min(dur()-.01,p.t));mScrollAt=0;if(p.band){const s=S()[secAt(t)];if(s)select(s.id,true)}else seek(t)});
 /* the preview: a tap plays or pauses */
 $("monitor").addEventListener("click",()=>{if(phone())toggle()});
@@ -2618,12 +2620,12 @@ mGrips.addEventListener("pointerdown",e=>{const b=e.target.closest(".grip");if(!
   try{b.setPointerCapture(e.pointerId)}catch(_){}mGrip={id:s[i].id,i,x0:e.clientX,s0:s[i].start,moved:false}});
 mGrips.addEventListener("pointermove",e=>{if(!mGrip)return;const dx=e.clientX-mGrip.x0;if(!mGrip.moved&&Math.abs(dx)<6)return;mGrip.moved=true;
   const s=S(),i=s.findIndex(x=>x.id===mGrip.id);if(i<1)return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
-  s[i].start=r2(Math.min(hi,Math.max(lo,mGrip.s0+dx/P)));mCut=i;mDraw();renderEdHead();renderMTool();renderMonitor()});
+  s[i].start=r2(Math.min(hi,Math.max(lo,mGrip.s0+dx/P)));mCutId=mGrip.id;mDraw();renderEdHead();renderMTool();renderMonitor()});
 const mGripEnd=()=>{const g=mGrip;mGrip=null;if(!g)return;
-  if(g.moved){scheduleSave();renderStrip();renderPeek();renderMonitor(true)}else{mCut=mCut===g.i?-1:g.i;mMode=""}renderMTool();mDraw()};
+  if(g.moved){scheduleSave();renderStrip();renderPeek();renderMonitor(true)}else{mCutId=mCutId===g.id?"":g.id;mMode=""}renderMTool();mDraw()};
 mGrips.addEventListener("pointerup",mGripEnd);mGrips.addEventListener("pointercancel",mGripEnd);
-mGrips.addEventListener("keydown",e=>{const b=e.target.closest(".grip");if(!b||(e.key!=="ArrowLeft"&&e.key!=="ArrowRight"))return;e.preventDefault();e.stopPropagation();mCut=+b.dataset.i;mNudge(e.key==="ArrowLeft"?-.1:.1)});
-function mNudge(dt){const s=S(),i=mCut;if(i<1||!s[i])return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
+mGrips.addEventListener("keydown",e=>{const b=e.target.closest(".grip");if(!b||(e.key!=="ArrowLeft"&&e.key!=="ArrowRight"))return;e.preventDefault();e.stopPropagation();const c=S()[+b.dataset.i];if(!c)return;mCutId=c.id;mNudge(e.key==="ArrowLeft"?-.1:.1)});
+function mNudge(dt){const s=S(),i=mCutI();if(i<1||!s[i])return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
   s[i].start=r2(Math.min(hi,Math.max(lo,s[i].start+dt)));scheduleSave();renderStrip();renderEdHead();renderPeek();renderMonitor(true);renderMTool();mDraw()}
 /* Fit means the whole song; the zoom buttons sit on the timeline's corner */
 {const zf=$("zfit").onclick,zo=$("zout").onclick,zi=$("zin").onclick;
@@ -2644,7 +2646,7 @@ const MTOOL=[["mtCut","shot","split","Cut here"],["mtDet","shot","lines","Detail
 $("mTool").innerHTML=MTOOL.map(([id,m,ic,l,al])=>ic?`<button type="button" id="${id}" data-m="${m}"${id==="mtPrev"?' class="flip"':""}${al?` aria-label="${al}"`:""}>${ico(ic)}<span>${l}</span></button>`:`<div class="m-read" id="${id}" data-m="${m}" aria-live="polite"></div>`).join("");
 $("mtHint").innerHTML="<span>Or hold a shot on the timeline</span><span>and drag it</span>";
 function renderMTool(){if(!phone())return;const s=selSec(),i=s?S().indexOf(s):-1;
-  if(mCut>0&&!S()[mCut])mCut=-1;const mode=mCut>0?"cut":mMode==="move"&&s?"move":"shot";
+  const mCut=mCutI();if(mCut<0)mCutId="";const mode=mCut>0?"cut":mMode==="move"&&s?"move":"shot";
   $("mTool").querySelectorAll("[data-m]").forEach(b=>b.hidden=!b.dataset.m.split(" ").includes(mode));
   ["mtCut","mtDet","mtImg","mtMove","mtDel"].forEach(id=>$(id).disabled=!cur||(!s&&id!=="mtCut"));$("mtMove").disabled=!s||S().length<2;
   $("mtPrev").disabled=i<1;$("mtNext").disabled=i<0||i>=S().length-1;
@@ -2652,8 +2654,8 @@ function renderMTool(){if(!phone())return;const s=selSec(),i=s?S().indexOf(s):-1
 $("mtCut").onclick=addMarker;
 $("mtDet").onclick=()=>openDetails($("mtDet"));
 $("mtImg").onclick=()=>$("f-img").click();
-$("mtMove").onclick=()=>{mMode="move";mCut=-1;renderMTool();mDraw()};
-$("mtDone").onclick=()=>{mMode="";mCut=-1;renderMTool();mDraw()};
+$("mtMove").onclick=()=>{mMode="move";mCutId="";renderMTool();mDraw()};
+$("mtDone").onclick=()=>{mMode="";mCutId="";renderMTool();mDraw()};
 $("mtMinus").onclick=()=>mNudge(-.1);$("mtPlus").onclick=()=>mNudge(.1);
 [["mtPrev",-1],["mtNext",1]].forEach(([id,k])=>$(id).onclick=()=>{const s=S(),i=s.findIndex(x=>x.id===selId),o=s[i+k];if(o)moveShot(selId,{kind:"swap",to:o.id})});
 /* disarmed whenever the selection changes (renderEditor: a scroll, playback crossing a cut, a tap), a sheet opens or
@@ -2727,7 +2729,7 @@ $("mTabs").addEventListener("click",e=>{const b=e.target.closest("[data-side]");
 if(window.visualViewport){const vv=window.visualViewport,kb=()=>document.documentElement.style.setProperty("--kb",Math.max(0,Math.round(innerHeight-vv.height-vv.offsetTop))+"px");
   vv.addEventListener("resize",kb);vv.addEventListener("scroll",kb)}
 /* crossing the breakpoint (a rotation, a resized window): sheets close, everything redraws for the other layout */
-phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close();if(mLift)mLiftEnd(false);mCut=-1;mMode="";closeFiles();fCloseBtn();
+phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close();if(mLift)mLiftEnd(false);mCutId="";mMode="";closeFiles();fCloseBtn();
   ph.style.transform="";lastKey="";renderAll();if(side==="b")renderB();
   /* videos wait for Wi-Fi in the phone layout only: re-evaluate them, then the chip */
   const m=cmedia();if(m)m.refresh();if(csess)renderCollab(csess.status())});

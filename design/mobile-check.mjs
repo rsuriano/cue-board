@@ -128,6 +128,13 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   const s1 = (await app(page)).starts[g.i];
   check(dev, 'tapping a grip picks the cut; +0.1 s nudges it', Math.abs(s1 - s0 - .1) < .011 && await page.isVisible('#mtRead'), `${s0} → ${s1}`);
   await shot('cut-selected');
+  // a collaborator inserts a shot just before the picked cut: the pick stays on the same cut
+  const ins = await page.evaluate(i => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(), id = s[i].id, at = +((s[i - 1].start + s[i].start) / 2).toFixed(2);
+    s.splice(i, 0, { ...s[i], id: 'remote-ins', start: at, title: 'Inserted', takes: [] }); a.renderAll(); return { id, at, s0: s[i + 1].start }; }, g.i);
+  await page.waitForTimeout(150); await page.tap('#mtPlus'); await page.waitForTimeout(150);
+  const after = await page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(); return Object.fromEntries(s.map(x => [x.id, x.start])); });
+  check(dev, 'a remote insert before the picked cut: +0.1 s still moves the same cut, not the new one', Math.abs(after[ins.id] - ins.s0 - .1) < .011 && after['remote-ins'] === ins.at, `${ins.s0} → ${after[ins.id]}, inserted ${ins.at} → ${after['remote-ins']}`);
+  await page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(); s.splice(s.findIndex(x => x.id === 'remote-ins'), 1); a.renderAll(); });
   await page.tap('#mtDone');
 
   // reorder: hold a shot tile, drag it onto the middle of its neighbour (swap)
