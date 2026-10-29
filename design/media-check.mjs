@@ -54,8 +54,8 @@ const proc = () => { const st = readFileSync(`/proc/${server.pid}/stat`, 'utf8')
 
 const browser = await chromium.launch({ executablePath: '/snap/bin/chromium', headless: true, args: ['--no-sandbox', '--enable-precise-memory-info'] });
 const pages = {};
-async function open(name, init = {}, q = '') {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+async function open(name, init = {}, q = '', ctxOpts = { viewport: { width: 1440, height: 900 } }) {
+  const ctx = await browser.newContext(ctxOpts);
   await ctx.route('**/*', r => (r.request().url().startsWith(origin) ? r.continue() : r.abort()));
   await ctx.addInitScript(init => {
     window.__CUE_MEDIA_TEST = { ...init };
@@ -115,7 +115,7 @@ function wav(seed) {
   return b;
 }
 
-let A, B, C, D, E, F, G;
+let A, B, C, D, E, F, G, H;
 const TAKE = 30 * 1024 * 1024 + 4321;
 try {
   /* ---- A shares a project and adds a large frame image and a 30 MB take ---- */
@@ -318,6 +318,31 @@ try {
   const bigOk = await got(G, [bigHex]), r1 = (await media(G)).stats.recv;
   check('G: "Download all now" resumes it from the stored chunks and it lands', !!bigOk && r1 - r0 < 110 * 1024 * 1024 + 4 * 1024 * 1024, `${((r1 - r0) / 1e6).toFixed(1)} MB received for a 115.3 MB file`);
   check('G: the placeholder is gone once it landed', !!(await until(() => G.page.evaluate(h => !document.querySelector(`[data-miss="sha256-${h}"]`), bigHex), 10000)));
+
+  /* ---- H: a phone (layout below 820px, touch) with Wi-Fi only on. D adds a GIF frame and a song stored as video/mp4:
+     only the video/* takes are held; the images (PNG, GIF) and the song still arrive, as the files sheet's hint says ---- */
+  const gifHex = await D.page.evaluate(async () => {
+    const u = new Uint8Array(60000); crypto.getRandomValues(u); u.set([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+    const r = await window.__CUE_MEDIA_TEST.app.assets().upload(new Blob([u], { type: 'image/gif' }), { type: 'image/gif' });
+    window.__CUE_MEDIA_TEST.app.S()[3].key = r.id; window.__CUE_MEDIA_TEST.app.scheduleSave(); window.__CUE_MEDIA_TEST.app.renderAll();
+    return [...new Uint8Array(await crypto.subtle.digest('SHA-256', u))].map(x => x.toString(16).padStart(2, '0')).join('');
+  });
+  const song6 = wav(6), h6 = createHash('sha256').update(song6).digest('hex');
+  await D.page.setInputFiles('#song', { name: 'video-song.mp4', mimeType: 'video/mp4', buffer: song6 });
+  const dSong = await until(async () => { const s = await songOf(D); return s.hex === h6 && s.file?.state === 'here' ? s : null; }, 20000);
+  H = await open('H', {}, '', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  await H.page.goto(link());
+  await H.page.waitForSelector('#dlgJoin[open][data-step="name"]', { timeout: 15000 });
+  await H.page.fill('#jName', 'Hana Mori'); await H.page.tap('#jGo');
+  await H.page.waitForSelector('#dlgJoin[open] #jNew:visible', { timeout: 3000 }).then(() => H.page.tap('#jNew')).catch(() => {});
+  await until(() => H.page.evaluate(() => !!window.__CUE_MEDIA_TEST.app.cmedia()), 15000);
+  const hState = async () => { const f = (await media(H))?.files || []; const st = h => (f.find(x => x.hex === h) || {}); const s = f.find(x => x.song) || {};
+    return { wifi: await H.page.evaluate(() => matchMedia('not all and (min-width:820px)').matches), take: [st(takeHex).state, st(takeHex).skip], big: [st(bigHex).state, st(bigHex).skip], frame: st(frameHex).state, gif: st(gifHex).state, song: [s.hex === h6, s.state] }; };
+  const hOk = await until(async () => { const s = await hState(); return s.frame === 'here' && s.gif === 'here' && s.song[0] && s.song[1] === 'here' ? s : null; }, 60000);
+  await sleep(1500);
+  const hs = await hState();
+  check('H: phone, Wi-Fi only: the PNG and GIF frames and the video/mp4 song arrive; the video/* takes are held for Wi-Fi',
+    !!dSong && !!hOk && hs.wifi && hs.take.join() === 'skipped,video' && hs.big.join() === 'skipped,video' && (await progress(H, takeHex)) === null, JSON.stringify(hs));
 
   check('server log: no token, no file name, no plaintext', !serverLog.includes(room.token) && !serverLog.includes('secret-frame-name') && !serverLog.includes(MARK) && !/take 1|Shot 0/.test(serverLog), `${serverLog.split('\n').length} lines`);
   // as in collab-check: requests the route blocks (OpenRouter) and 404 probes are not errors of the app

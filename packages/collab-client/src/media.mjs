@@ -373,8 +373,9 @@ export function createMedia(ctx) {
       if (!Number.isSafeInteger(v.bytes) || v.bytes <= 0 || v.bytes > MAX_FILE) { skipped.set(h, 'unknown'); continue; }
       const any = override || asked.has(h);
       if (!any && v.bytes > lim.file) { skipped.set(h, 'file'); continue; }
-      // video waits for a tap (the app's "takes only on Wi-Fi", off the Wi-Fi it can see): stored chunks are kept
-      if (!any && lim.video === false && /^video\//.test(v.mime || '')) { skipped.set(h, 'video'); continue; }
+      // video waits for a tap (the app's "takes only on Wi-Fi", off the Wi-Fi it can see): stored chunks are kept.
+      // Not the song, even stored as video/mp4 (an .mp4 or some .m4a): the song always comes
+      if (!any && lim.video === false && !v.song && /^video\//.test(v.mime || '')) { skipped.set(h, 'video'); continue; }
       if (!any && used + v.bytes > lim.project) { skipped.set(h, 'project'); continue; }
       used += v.bytes; fetch.push(h);
     }
