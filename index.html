@@ -1795,6 +1795,8 @@ function renderFiles(){const m=cmedia(),l=m?m.files():[],x=m?m.summary():null,b=
   $("fPause").textContent=x&&x.paused?"Resume":"Pause";$("fPause").disabled=!m;$("fAll").disabled=!m;
   const lim=(b&&b.limits)||{};$("fLimF").value=String(lim.file||500);$("fLimP").value=String(lim.project||5000)}
 function openFiles(){renderFiles();$("dlgFiles").showModal()}
+/* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId};
 $("fClose").onclick=()=>$("dlgFiles").close();
 $("fAll").onclick=()=>{const m=cmedia();if(m){m.downloadAll();renderFiles()}};
 $("fPause").onclick=()=>{const m=cmedia();if(m){m.pause(!m.summary().paused);renderFiles()}};

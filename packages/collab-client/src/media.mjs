@@ -45,7 +45,7 @@ export function createMedia(ctx) {
   /** @type {Map<string, any>} */ const dls = new Map();          // hex -> { d: Download, src, fails, state, finishing }
   /** @type {Set<string>} */ const failed = new Set();
   /** @type {{ persisted: boolean | null, free: number | null }} */ const storage = { persisted: null, free: null };
-  let tickTimer = /** @type {any} */ (0), relayTokens = RELAY_RATE, relayT = Date.now();
+  let swept = false, tickTimer = /** @type {any} */ (0), relayTokens = RELAY_RATE, relayT = Date.now();
   const stats = { recv: 0, sent: 0, banned: 0, rejected: 0 };
 
   /* ---------- server link ---------- */
@@ -77,7 +77,7 @@ export function createMedia(ctx) {
   function addPeer(/** @type {number} */ id) {
     if (!id || id === myId) return peers.get(id);
     let p = peers.get(id);
-    if (!p) {
+    if (!p && peers.size < 32) {                 // a room is a handful of people; past 32 the rest are ignored
       p = { id, client: -1, guard: new SeqGuard(), have: new Set(), pc: null, dc: null, direct: 'none', saidHi: false, heard: false,
         foreign: false, banned: false, gone: false, queue: [], pumping: false, strikes: 0, pending: 0, chain: Promise.resolve(),
         blobs: new Map(), backoff: 0 };
@@ -328,6 +328,8 @@ export function createMedia(ctx) {
     tickTimer = 0;
     if (stopped) return;
     const { w, fetch } = plan();
+    // a crash after a file landed and before its parts were dropped leaves them behind: drop them for files that are here
+    if (!swept) { swept = true; for (const [h, v] of w) if (v.local) ctx.store.drop(h); }
     // files nobody references anymore (deleted elsewhere, or now here): stop, and drop what was stored of them
     for (const [h, x] of dls) if (!fetch.includes(h) && !x.finishing) {
       dls.delete(h);
@@ -346,7 +348,7 @@ export function createMedia(ctx) {
     }
     for (const x of dls.values()) {
       if (!x.d || x.finishing) continue;
-      if (x.d.done) { finish(x); continue; }                  // all stored, landing failed or was interrupted: again
+      if (x.d.done) { if (!storageFull) finish(x); continue; } // all stored, landing interrupted: again (not while full)
       for (const pid of x.d.stale(STALE_MS)) { x.d.release(pid); if (x.src && x.src.id === pid) x.src = null; }
       if (x.src && (x.src.gone || x.src.banned || !x.src.have.has(x.d.hex))) x.src = null;
       if (paused || storageFull) continue;
@@ -388,7 +390,10 @@ export function createMedia(ctx) {
       dls.delete(d.hex);
       await ctx.store.drop(d.hex);
       for (const p of peers.values()) if (p.heard && !p.banned) ctl(p, { t: 'have', h: [d.hex] });
-    } catch { x.finishing = false; } finally { changed(); schedule(); }
+    } catch {
+      // the app couldn't store it (quota): pause instead of re-reading and re-hashing the whole file every second
+      x.finishing = false; storageFull = true;
+    } finally { changed(); schedule(); }
   }
 
   /* ---------- storage ---------- */
