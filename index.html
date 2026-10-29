@@ -729,6 +729,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-people .pchip{flex:none}
   .m-state{display:grid;gap:var(--sp-0-5);padding:var(--inset-card);background:var(--surface-2);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
   .m-state[data-k="err"] b{color:var(--error)}
+  .m-saveerr{margin:0;padding:var(--inset-card);border:var(--hairline) solid var(--error);border-radius:var(--r-md);color:var(--error)}
   .m-state p{margin:0}
   .m-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit);border-top:var(--hairline) solid var(--border-subtle);cursor:pointer}
   .m-row>span:first-child{flex:1;font-weight:var(--w-medium)}
@@ -1014,6 +1015,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 <!-- phone: the project, the song and the room in one sheet (the app bar's title opens it) -->
 <dialog id="mProj" class="sheet" aria-labelledby="mProjH"><div class="sh">
   <div class="sh-top"><span class="grab" aria-hidden="true"></span><h3 id="mProjH">Projects</h3><span class="grow"></span><button type="button" class="btn ghost icon" data-close aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <p class="m-saveerr" id="mSaveErr" role="alert" hidden></p>
   <div class="m-list" id="mProjList" role="group" aria-label="Projects"></div>
   <div class="m-acts"><button type="button" class="btn" id="mNew">New</button><button type="button" class="btn" id="mRename">Rename</button><button type="button" class="btn" id="mImport">Import</button><button type="button" class="btn" id="mExport">Export</button></div>
   <div class="m-acts"><button type="button" class="btn" id="mSong">Load song</button><button type="button" class="btn ghost" id="mDelsong" hidden><span>Remove song</span></button></div>
@@ -1104,15 +1106,21 @@ function localStore(){let cb=null;const all=async()=>{const r=await idbS("projec
 /* saved state, in the bar: what this browser's save says (busy/ok/err) together with the room's state when the
    project is in one. Nothing to press: every change saves itself, here and to the room */
 let saveK="busy",saveT="Loading",roomSt="";
-function setStatus(kind,text){saveK=kind;saveT=text;renderSaved()}
+/* the phone hides #status: a save error (and the recovery from one) arrives as a toast, and stays in the Projects sheet while it lasts */
+let saveErr="";
+function setStatus(kind,text){const was=saveErr;saveK=kind;saveT=text;if(kind==="err")saveErr=text;else if(kind==="ok")saveErr="";renderSaved();
+  if(!matchMedia("(max-width:819px)").matches)return;
+  if(saveErr&&was!==saveErr)toast(saveTip(saveErr),6000);else if(was&&!saveErr)toast("Saved again")}
+function saveTip(t){return t+(t==="Browser storage unavailable"?". This browser blocks local storage, so nothing will be saved.":". Your latest changes are only in this tab; export the project to keep a copy.")}
 function renderSaved(){const s=$("status"),r=SYNC_URL&&cur&&cset.rooms[cur.id]?roomSt:"";let k=saveK,t,tip;
-  if(k==="err"){t=saveT;tip=saveT+(saveT==="Browser storage unavailable"?". This browser blocks local storage, so nothing will be saved.":". Your latest changes are only in this tab; export the project to keep a copy.")}
+  if(k==="err"){t=saveT;tip=saveTip(saveT)}
   else if(k==="busy"){t=saveT==="Loading"?"Loading":"Saving…";tip=t==="Loading"?"Loading your projects":r?"Saving your changes in this browser and sending them to the room":"Saving your changes in this browser"}
   else if(!r){t="Saved";tip="Every change is saved in this browser"}
   else if(r==="synced"){t="Saved";tip="Every change is saved in this browser and synced with the room"}
   else if(r==="syncing"){k="busy";t="Syncing…";tip="Saved in this browser. Connecting to the room…"}
   else{k="local";t="Saved locally";tip="Saved in this browser. Your changes go to the room once it can be reached again."}
-  s.dataset.k=k;s.title=tip;s.querySelector(".lbl").textContent=t;s.querySelector("use").setAttribute("href",k==="err"?"#i-alert":k==="busy"?"#i-more":"#i-check")}
+  s.dataset.k=k;s.title=tip;s.querySelector(".lbl").textContent=t;s.querySelector("use").setAttribute("href",k==="err"?"#i-alert":k==="busy"?"#i-more":"#i-check");
+  const m=$("mSaveErr");m.hidden=!saveErr;m.textContent=saveErr?saveTip(saveErr):""}
 
 /* media: blobs in IndexedDB, shown through object URLs cached per session */
 const mediaCache=new Map();
@@ -2379,7 +2387,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -2724,7 +2732,7 @@ phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close(
 window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"))mSheetTop()});
 
 /* ---------- toast / boot ---------- */
-let tt=null;function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,1800)}
+let tt=null;function toast(t,ms=1800){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,ms)}
 let rz=0;try{new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(renderTimeline)}).observe(scroller)}catch(e){window.addEventListener("resize",renderTimeline)}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>renderTimeline());
 renderAll();

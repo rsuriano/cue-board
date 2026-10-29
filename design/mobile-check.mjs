@@ -268,6 +268,24 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   // gestures the browser must not take: double-tap zoom, pull-to-refresh, bounce
   const ta = await page.evaluate(() => ({ body: getComputedStyle(document.body).touchAction, ob: getComputedStyle(document.documentElement).overscrollBehaviorY, ov: getComputedStyle(document.body).overflow, tl: getComputedStyle(document.getElementById('tl-scroll')).overscrollBehaviorX }));
   check(dev, 'no double-tap zoom, no pull-to-refresh or bounce on the shell, timeline overscroll contained', ta.body === 'manipulation' && ta.ob === 'none' && ta.ov === 'hidden' && ta.tl === 'contain', JSON.stringify(ta));
+  // a save error (#status is hidden on the phone): a toast with the full text, a notice in the Projects sheet while it
+  // lasts, then "Saved again" and no notice once saving works
+  const se = await page.evaluate(async () => {
+    const A = window.__CUE_MEDIA_TEST.app, store = A.store(), { scheduleSave, flushNow, setStatus } = A;
+    const set0 = store.set, toast = () => { const t = document.getElementById('toast'); return t.hidden ? '' : t.textContent; }, note = () => { const n = document.getElementById('mSaveErr'); return n.hidden ? '' : n.textContent; };
+    const kinds = {};
+    for (const [code, want] of [['quota_exceeded', 'Out of storage space'], ['', "Couldn't save"]]) {
+      store.set = () => Promise.reject(Object.assign(new Error('x'), { code })); scheduleSave(); flushNow();
+      await new Promise(r => setTimeout(r, 200)); kinds[want] = { toast: toast(), note: note() };
+    }
+    store.set = set0; scheduleSave(); flushNow(); await new Promise(r => setTimeout(r, 200));
+    const after = { toast: toast(), note: note() };
+    setStatus('err', 'Browser storage unavailable'); const un = { toast: toast(), note: note() }; setStatus('ok', 'Saved locally');
+    return { kinds, after, un };
+  });
+  check(dev, 'save error on the phone: toast and Projects-sheet notice with the full text, both kinds', Object.entries(se.kinds).every(([w, v]) => v.toast.startsWith(w) && /only in this tab/.test(v.toast) && v.note === v.toast), JSON.stringify(se.kinds));
+  check(dev, 'storage unavailable: toast and notice say nothing will be saved', /^Browser storage unavailable\. .*nothing will be saved/.test(se.un.toast) && se.un.note === se.un.toast, JSON.stringify(se.un));
+  check(dev, 'saving works again: "Saved again" toast, the notice is gone', se.after.toast === 'Saved again' && !se.after.note, JSON.stringify(se.after));
   // widths 360/390/430
   for (const w of [360, 390, 430]) {
     await page.setViewportSize({ width: w, height: 780 }); await page.waitForTimeout(250);
