@@ -189,6 +189,60 @@ try {
   check('Join opens the join dialog (paste the invite link)', await page.isVisible('#dlgJoin') && await page.evaluate(() => document.getElementById('dlgJoin').dataset.step) === 'link');
   await page.keyboard.press('Escape'); await sleep(150);
   check('cancelling Join hands focus back to Join', await page.evaluate(() => document.activeElement?.id) === 'joinb');
+
+  // ---------- Settings: the gear, named on hover and on focus, like the other icon buttons ----------
+  await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur());
+  const gear = await page.evaluate(() => { const s = document.getElementById('settingsb'), m = document.getElementById('moreb'), r = s.getBoundingClientRect(), mr = m.getBoundingClientRect();
+    return { ico: s.querySelector('svg[aria-hidden="true"] use')?.getAttribute('href'), name: s.getAttribute('aria-label'), text: s.textContent.trim(), w: r.width, h: r.height, mw: mr.width, mh: mr.height,
+      sw: getComputedStyle(s.querySelector('.ico')).strokeWidth, msw: getComputedStyle(m.querySelector('.ico')).strokeWidth, tag: s.tagName, last: s === document.querySelector('.tright').lastElementChild }; });
+  check('Settings is a gear icon button: aria-label "Settings", no text, same size and stroke as More, last in the bar', gear.ico === '#i-gear' && gear.name === 'Settings' && !gear.text && gear.tag === 'BUTTON'
+    && gear.w === gear.mw && gear.h === gear.mh && gear.sw === gear.msw && gear.last && await page.locator('#i-sliders').count() === 0, JSON.stringify(gear));
+  check('no tooltip on Settings at rest', await tip('#settingsb') === '');
+  await page.hover('#settingsb'); await sleep(150);
+  check('Settings: its name on hover', await tip('#settingsb') === 'Settings');
+  await bar('14-settings-gear-hover', 40);
+  await page.mouse.move(700, 600); await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
+  const ring = await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [document.activeElement.id, s.outlineStyle, s.outlineWidth, s.outlineColor]; });
+  await page.focus('#moreb'); const mring = await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; });
+  await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
+  check('Settings: its name on keyboard focus, with the same focus ring as More', ring[0] === 'settingsb' && await tip('#settingsb') === 'Settings' && ring[1] !== 'none' && JSON.stringify(ring.slice(1)) === JSON.stringify(mring), `${ring} / ${mring}`);
+  await bar('15-settings-gear-focus', 40);
+  await page.keyboard.press('Enter'); await sleep(250);
+  check('the gear opens Settings', await page.isVisible('#dlgSettings')); await page.keyboard.press('Escape'); await sleep(150);
+
+  // ---------- an armed Leave does not follow you into another room ----------
+  await db(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
+    const ids = await new Promise(r => { const q = d.transaction('projects').objectStore('projects').getAllKeys(); q.onsuccess = () => r(q.result); });
+    const rooms = Object.fromEntries(ids.map((id, i) => [id, { roomId: String(i).repeat(22), token: 't'.repeat(22), name: 'Rami' }]));
+    await new Promise(r => { const q = d.transaction('settings', 'readwrite').objectStore('settings').put({ name: 'Rami', rooms }, 'collab'); q.onsuccess = r; }); });
+  await page.reload(); await page.waitForSelector('.card'); await page.waitForFunction(() => window.__STUB && window.__STUB.pid); await sleep(300);
+  await page.click('#leaveb'); await sleep(100);
+  const armedIn = await page.textContent('#projname');
+  await page.evaluate(() => window.__STUB.ping()); await sleep(100);
+  check('an armed Leave survives a re-render of the same room', await page.textContent('#leaveb') === 'Tap again to leave');
+  await page.click('#proj'); await sleep(150); await page.locator('#projmenu [role="menuitemradio"][aria-checked="false"]').first().click(); await sleep(400);
+  const other = await page.evaluate(() => [document.getElementById('projname').textContent, document.getElementById('leaveb').hidden, document.getElementById('leaveb').textContent, document.getElementById('leaveb').hasAttribute('data-armed')]);
+  check('switching to another room project disarms Leave', other[0] !== armedIn && !other[1] && other[2] === 'Leave collaboration' && !other[3], `${armedIn} → ${JSON.stringify(other)}`);
+  const pidBefore = await page.evaluate(() => window.__STUB.pid);
+  await page.click('#leaveb'); await sleep(100);
+  check('so one tap there only arms it (still in that room)', await page.textContent('#leaveb') === 'Tap again to leave' && await page.evaluate(() => window.__STUB.pid) === pidBefore && await page.isVisible('#presence'));
+  await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await sleep(2800);
+
+  // ---------- no project: More holds nothing usable on a wide bar, so it isn't there ----------
+  await db(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
+    await new Promise(r => { const q = d.transaction('projects', 'readwrite').objectStore('projects').clear(); q.onsuccess = r; }); });
+  await page.reload(); await page.waitForFunction(() => document.getElementById('projname').textContent === 'No projects', null, { timeout: 15000 }); await sleep(300);
+  const moreAt = async w => { await page.setViewportSize({ width: w, height: 900 }); await sleep(150); return page.isVisible('#moreb'); };
+  const vis = { 1920: await moreAt(1920), 1440: await moreAt(1440), 1280: await moreAt(1280), 900: await moreAt(900) };
+  check('no project: More is hidden at 1440 and 1920 (only a disabled Delete project), back below 1440 (Import, Export)', !vis[1920] && !vis[1440] && vis[1280] && vis[900], JSON.stringify(vis));
+  await page.setViewportSize({ width: 1280, height: 900 }); await sleep(150);
+  await page.focus('#moreb'); await page.keyboard.press('ArrowDown'); await sleep(150);
+  check('no project, narrow bar: opening More by keyboard focuses its first enabled entry', await page.evaluate(() => document.activeElement?.closest('#moremenu') && !document.activeElement.disabled && document.activeElement.textContent) === 'Import…');
+  await page.keyboard.press('Escape'); await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150);
+  const ord = []; await page.focus('#proj');
+  for (let i = 0; i < 8; i++) { await page.keyboard.press('Tab'); const id = await page.evaluate(() => document.activeElement?.closest('.top') ? document.activeElement.id : null); if (!id) break; ord.push(id); }
+  check('no project, wide bar: Tab skips straight from the project zone past the missing More', !ord.includes('moreb') && ord.includes('newp'), ord.join(' → '));
+  await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await bar('16-no-project-1440');
 } catch (e) { check('run completed', false, e.stack.split('\n').slice(0, 3).join(' ')); }
 check('no console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`${results.filter(Boolean).length}/${results.length} passed`);
