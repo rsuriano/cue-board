@@ -17,7 +17,9 @@ export function createCollab(app) {
   const S = window.__STUB = { app, pid: null, status: 'synced', peers: [], files: [], dl: [], all: 0, refreshes: 0 };
   const summary = () => { const n = s => S.files.filter(f => f.state === s).length;
     return { total: S.files.length, here: n('here'), active: n('downloading') + n('queued'), unavailable: n('unavailable'), skipped: n('skipped'), failed: n('failed'), relay: 0, paused: false, storageFull: false, storageBusy: '', storage: { persisted: true, free: 5e10 }, foreign: 0 }; };
-  const media = { files: () => S.files, summary, progress: () => null, pause() {}, refresh() { S.refreshes++; }, downloadAll() { S.all++; }, download(h) { S.dl.push(h); }, retry() {} };
+  const media = { files: () => S.files, summary, progress: () => null, pause() {},
+    // as media.mjs: refresh re-reads the limits, a video held for Wi-Fi is fetched once they allow it, then onMedia
+    refresh() { S.refreshes++; if (S.pid && app.mediaLimits(S.pid).video !== false) S.files.forEach(f => { if (f.state === 'skipped' && f.skip === 'video') { f.state = 'queued'; f.skip = ''; } }); setTimeout(S.ping, 0); }, downloadAll() { S.all++; }, download(h) { S.dl.push(h); }, retry() {} };
   S.ping = () => { if (S.pid) { app.onStatus(S.pid, S.status); app.onPeers(S.pid, S.peers); app.onMedia(S.pid); } };
   return {
     open(pid) { S.pid = pid; setTimeout(S.ping, 30);
@@ -144,6 +146,31 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   check(dev, 'Move · Later swaps the shot with the next one', A.ids.join() !== B.ids.join() && B.n === A.n);
   await page.tap('#mtDone');
 
+  // an armed Delete disarms when the selection changes: a scroll onto another shot, then playback crossing a cut.
+  // The second tap (well within the 2.6 s) only arms again, nothing is deleted.
+  const armed = () => page.evaluate(() => document.getElementById('mtDel').hasAttribute('data-armed'));
+  const selId = () => page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(), t = document.getElementById('audio').currentTime; return s[s.findLastIndex(x => x.start <= t)].id; });
+  A = await app(page); const shotA = await selId();
+  await page.tap('#mtDel'); const arm1 = await armed();
+  await page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(), sc = document.getElementById('tl-scroll'), a = document.getElementById('audio'), P = (sc.scrollWidth - sc.clientWidth) / a.duration;
+    const i = s.findLastIndex(x => x.start <= a.currentTime), j = s[i + 1] ? i + 1 : i - 1; sc.scrollLeft = Math.round(((s[j].start + (s[j + 1] ? s[j + 1].start : a.duration)) / 2) * P); });
+  await page.waitForTimeout(250);
+  const shotB = await selId(), dis1 = !(await armed());
+  await page.tap('#mtDel'); await page.waitForTimeout(150); B = await app(page);
+  check(dev, 'armed Delete, then a scroll onto another shot: disarmed, a second tap deletes nothing', arm1 && dis1 && shotA !== shotB && B.n === A.n && B.ids.includes(shotA) && B.ids.includes(shotB), `${shotA} → ${shotB}, ${A.n} → ${B.n}`);
+  // that tap armed Delete on B: let it lapse, go just before the next cut, arm, play across it
+  await page.waitForTimeout(2700);
+  await page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(), a = document.getElementById('audio'), i = s.findLastIndex(x => x.start <= a.currentTime), c = s[i + 1] || s[i];
+    a.currentTime = Math.max(s[i].start + .05, c.start - .25); });
+  await page.waitForTimeout(300);
+  A = await app(page); const shotC = await selId(); await page.tap('#mtDel'); const arm2 = await armed();
+  await page.tap('#play'); await page.waitForFunction(id => { const s = window.__CUE_MEDIA_TEST.app.S(), t = document.getElementById('audio').currentTime; return s[s.findLastIndex(x => x.start <= t)].id !== id; }, shotC, { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(120); await page.tap('#play');
+  const shotD = await selId(), dis2 = !(await armed());
+  await page.tap('#mtDel'); await page.waitForTimeout(150); B = await app(page);
+  check(dev, 'armed Delete, then playback crosses a cut: disarmed, a second tap deletes nothing', arm2 && dis2 && shotC !== shotD && B.n === A.n && B.ids.includes(shotC) && B.ids.includes(shotD), `${shotC} → ${shotD}, armed ${arm2}/${!dis2}, ${A.n} → ${B.n}`);
+  await page.waitForTimeout(2700);
+
   // delete (two taps)
   A = await app(page); await page.tap('#mtDel'); await page.waitForTimeout(100); await page.tap('#mtDel'); await page.waitForTimeout(200); B = await app(page);
   check(dev, 'Delete (tap twice) removes the shot', B.n === A.n - 1, `${A.n} → ${B.n}`);
@@ -261,6 +288,36 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   check(dev, 'install manifest valid: standalone, theme from tokens, 192 and 512 icons, iOS meta', man.display === 'standalone' && man.theme === '#191817' && man.icons.length === 2 && man.icons.every(([s, d, t]) => s === d && t === 'image/png') && man.apple && !(am.errors || []).length, JSON.stringify(man) + ' ' + JSON.stringify(am.errors));
   check(dev, 'no console errors', !errs.length, errs.join(' | '));
   check(dev, 'nothing left 127.0.0.1 except the blocked OpenRouter catalog', blocked.every(u => /openrouter\.ai|Failed to load resource/.test(u)), blocked.slice(0, 3).join(' '));
+  await ctx.close();
+}
+// a touch device that boots below 820px (an iPad in portrait, a narrowed touch laptop) gets Wi-Fi only by default;
+// widened past 820px the switch is gone, so nothing may stay held and the chip doesn't mention Wi-Fi
+{
+  const dev = 'tablet';
+  const ctx = await browser.newContext({ viewport: { width: 768, height: 1000 }, deviceScaleFactor: 2, isMobile: false, hasTouch: true });
+  await ctx.route('**/*', r => (r.request().url().startsWith(origin) ? r.continue() : r.abort()));
+  await ctx.addInitScript(() => { window.__CUE_MEDIA_TEST = {}; });
+  const p = await ctx.newPage(), errs = [];
+  p.on('pageerror', e => errs.push(String(e)));
+  await p.goto(origin + '/index.html#join=roomroomroomroom1234.tokentokentokentoken5678');
+  await p.waitForSelector('#dlgJoin[open] #jName', { timeout: 10000 });
+  await p.fill('#jName', 'Ana'); await p.tap('#jGo');
+  await p.waitForSelector('#dlgJoin[open] #jNew:visible', { timeout: 5000 }).then(() => p.tap('#jNew')).catch(() => {});
+  await p.waitForFunction(() => /Night drive/.test(document.getElementById('projname').textContent), null, { timeout: 10000 });
+  await p.waitForTimeout(300);
+  await p.evaluate(() => { const S = window.__STUB; S.files = [{ hex: 'aa', label: 'Shot 02 · take 1', bytes: 31.5e6, song: false, state: 'skipped', skip: 'video', got: 0, who: ['Julia'] }]; S.ping(); });
+  await p.waitForTimeout(300);
+  const coarse = await p.evaluate(() => matchMedia('(pointer:coarse)').matches);
+  const held = await p.evaluate(() => window.__STUB.app.mediaLimits(window.__STUB.pid).video === false);
+  check(dev, 'boots at 768px with a coarse pointer: Wi-Fi only on, video held, the chip says so', coarse && held && /Wi-Fi/.test(await p.getAttribute('#mstat', 'aria-label')));
+  const r0 = await p.evaluate(() => window.__STUB.refreshes);
+  await p.setViewportSize({ width: 1024, height: 768 }); await p.waitForTimeout(400);
+  const wide = await p.evaluate(() => ({ video: window.__STUB.app.mediaLimits(window.__STUB.pid).video, refreshes: window.__STUB.refreshes, wifi: document.getElementById('fWifi').getClientRects().length }));
+  const label = await p.getAttribute('#mstat', 'aria-label') || '';
+  check(dev, 'widened past 820px: video no longer held, media refreshed, the chip says nothing of Wi-Fi', wide.video !== false && wide.refreshes > r0 && !/Wi-Fi/.test(label), JSON.stringify(wide) + ' · ' + label);
+  await p.setViewportSize({ width: 768, height: 1000 }); await p.waitForTimeout(400);
+  check(dev, 'narrowed again: held again (the setting is kept)', await p.evaluate(() => window.__STUB.app.mediaLimits(window.__STUB.pid).video === false));
+  check(dev, 'no console errors', !errs.length, errs.join(' | '));
   await ctx.close();
 }
 await browser.close(); srv.close();
