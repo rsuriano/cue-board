@@ -14,13 +14,19 @@ Heavy media (song, frames, clips, takes, reference images) is never hosted by us
 
 A small purpose-made protocol instead of BitTorrent: with 2-5 people per project a swarm (piece rarity, choking, trackers, DHT) buys nothing. No new dependency: WebRTC is the browser's own `RTCPeerConnection`, signaling goes through the room's existing WebSocket.
 
-**Peers.** On join the server gives each connection a peer id (`WELCOME`, with the ids already there) and tells the others (`JOINED`, `LEFT`). The newcomer sends each peer a sealed `hi` (its awareness client id, for names in the files list); the other answers with `hi` too. Each side then sends `have` (the hashes it holds, ≤ 200 per message). The lower peer id offers a WebRTC data channel (`offer` / `answer` / `ice` as sealed `SIGNAL`s); until it opens, and whenever it can't, everything goes through the relay (`RELAY`). One attempt per peer per session, 10 s timeout.
+**Peers.** On join the server gives each connection a peer id (`WELCOME`, with the ids already there and the relay's per-file cap) and tells the others (`JOINED`, `LEFT`). The newcomer sends each peer a sealed `hi` (its awareness client id, for names in the files list); the other answers with `hi` too. Each side then sends `have` (the hashes it holds, ≤ 200 per message). The lower peer id offers a WebRTC data channel (`offer` / `answer` / `ice` as sealed `SIGNAL`s); until it opens, and whenever it can't, everything goes through the relay (`RELAY`). One attempt per peer per session, 10 s timeout.
 
 **Transfer.** Files are cut into 64 KiB chunks. The receiver drives: per file it picks one source (the least-loaded peer that has it), asks for up to 16 chunks at a time (`get {h, i:[…]}`, ≤ 32 indexes), stores each chunk as it's verified and asks for more. At most 3 files at once, smallest first. A request unanswered for 8 s is asked again, elsewhere if possible. A source that leaves, says `nf` or `lost`, or is dropped, is replaced and the file continues from the chunks already stored. The sender reads only the requested slice of the file (`Blob.slice`), seals it, and waits while the transport's queue is over 1 MiB (data channel `bufferedAmount`, or the WebSocket's; backpressure); through the relay it also paces itself at 3 MB/s, under the server's per-IP cap.
 
+**Lost control frames.** The relay may drop any frame (rate caps, the receiver's queue) and a reconnect loses what was in flight; nothing answers `have`, `hi` or `cancel`. So every peer sends its whole `have` list again to each peer every 20 s, and about 1 s after the server says it dropped one of its frames to that peer (`DROPPED`, at most every 3 s); `hi` goes again every 20 s to a peer never heard from; `cancel` goes again (once a second at most) when chunks of a cancelled file keep coming. All idempotent; a handful of small frames per peer per period. `nf` and `lost` answer a `get`, which is asked again after 8 s anyway. A chunk that arrives after its request was given up on (timeout, cancel) is ignored, not counted against the sender.
+
+**Too big for the relay.** The relay carries files up to its cap (2 GiB by default, `RELAY_MAX_FILE` in `packages/sync-server/src/media-limits.mjs`, shared by server and client; the server sends its own value in `WELCOME`). That covers every automatic per-file limit (up to 2 GB). A bigger file (only fetched through **Download all now**) is asked for only over an open data channel; with none open or coming it's shown as "too large to relay: needs a direct connection" instead of "Downloading" forever, and if a data channel closes mid-file the file stops with its chunks kept. A server too old to send its cap is assumed to carry 500 MiB.
+
 **Verification.** A file reaches the app only after all chunks are in and the sha256 of the whole thing equals its content id (incremental SHA-256 over 4 MiB slices, never the whole file in memory). If it doesn't match, everything stored of it is thrown away; if a single peer sent all of it, that peer is dropped; after three failures the file is marked "couldn't be verified" until **Download all now**.
 
-**Storage.** `cueboard-collab` (now version 2): `parts` (sha256 → `{ size, mime, pid, t }`) and `chunks` (`[sha256, i]` → Blob, plaintext, already verified). Each chunk is one IndexedDB transaction, so a crash leaves whole chunks only, and a reload resumes from the last verified chunk. When the file verifies it's stored like any other media file in the app's own `cueboard-local` / `media` (a new id, as if uploaded; ids are never reused), its hash goes into `hashes`, the parts are dropped, and the session pulls: the field's `sha256-…` id becomes the local id and the placeholder becomes the media. A song lands in `songs` for that project.
+**Storage.** `cueboard-collab` (now version 2): `parts` (sha256 → `{ size, mime, pid, t }`) and `chunks` (`[sha256, i]` → Blob, plaintext, already verified). Each chunk is one IndexedDB transaction, so a crash leaves whole chunks only, and a reload resumes from the last verified chunk. When the file verifies it's stored like any other media file in the app's own `cueboard-local` / `media` (a new id, as if uploaded; ids are never reused), its hash goes into `hashes`, the parts are dropped, and the session pulls: the field's `sha256-…` id becomes the local id and the placeholder becomes the media. A song lands in `songs` for that project. Parts of a file the doc no longer references are dropped (at the first sync of a session, and as soon as it happens).
+
+**An old tab blocking the upgrade.** A tab still running the previous version holds `cueboard-collab` at version 1 and never lets go, so the upgrade to 2 waits until it closes. After 2.5 s (`onblocked`) the new tab goes on without the database: the doc connects and syncs (without the offline copy), file transfers wait and the chip says "Storage busy, close other tabs", and local files aren't re-hashed meanwhile (their stored hashes aren't loaded yet; the fields wait). Once the old tab goes, the upgrade runs, this tab picks the database up and everything resumes. Every connection now sets `onversionchange` to close itself, so a later version never waits on this one; the tab that let go says "Storage busy, reload this tab".
 
 ## Crypto envelope
 
@@ -37,7 +43,7 @@ What it protects against: the relay, the signaling path and anything that record
 
 ## Untrusted input
 
-Every header, chunk and signal from a peer: sizes, indexes and counts checked (`checkCtl()`: hashes 64 hex, ≤ 32 indexes, SDP ≤ 12,000 chars, candidates ≤ 1,024; `parseChunk()`: ≤ 64 KiB + header + tag); a chunk is accepted only if it was asked of that peer, isn't stored yet and authenticates, and its length matches its index. A peer is **dropped for the session** for: a chunk that fails authentication or has the wrong length, a control frame that fails after it was readable before, an index out of range, more than 128 queued requests, more than 96 frames waiting to be processed, or more than 48 unasked/duplicate/replayed frames. At most 4096 announced hashes and 32 peers are kept. A peer is served only hashes **the room's doc references**, only if this device has the file and its size equals the doc's (otherwise `nf`); joining the room needs a valid token. File names in the files list are built from the doc (shot number, "take 2", the song's name) and rendered with `textContent`.
+Every header, chunk and signal from a peer: sizes, indexes and counts checked (`checkCtl()`: hashes 64 hex, ≤ 32 indexes, SDP ≤ 12,000 chars (Chromium's data-channel offer is 458 chars as sent, 715 with its candidates; each candidate line ~130 chars, so ~88 fit; measured by `design/sdp-size.mjs`; a sealed offer at the limit still fits the 16 KiB signal cap, tested), candidates ≤ 1,024; `parseChunk()`: ≤ 64 KiB + header + tag); a chunk is accepted only if it was asked of that peer, isn't stored yet and authenticates, and its length matches its index. A peer is **dropped for the session** for: a chunk that fails authentication or has the wrong length, a control frame that fails after it was readable before, an index out of range, more than 128 queued requests, more than 96 frames waiting to be processed, or more than 48 unasked/duplicate/replayed frames. At most 4096 announced hashes and 32 peers are kept. A peer is served only hashes **the room's doc references**, only if this device has the file and its size equals the doc's (otherwise `nf`); joining the room needs a valid token. File names in the files list are built from the doc (shot number, "take 2", the song's name) and rendered with `textContent`.
 
 ## Server: signaling and relay
 
@@ -49,11 +55,11 @@ Message type 10 on the room's WebSocket (`media-relay.mjs`, wire format in its h
 | Signals | 40/s per connection, 200/s per room (2 s burst; over: dropped) | |
 | Relay frame | 80 KiB (bigger: 4400) | |
 | Relay bandwidth | 8 MiB/s per room, 4 MiB/s per IP (2 s burst) | `RELAY_ROOM_BYTES_PER_SEC`, `RELAY_IP_BYTES_PER_SEC` |
-| Per transfer (sender, receiver, file tag) | 600 MiB | `RELAY_MAX_TRANSFER_BYTES` |
-| Transfers per connection | 256 | |
+| Per file: a chunk frame's index must be `< ceil(cap / 64 KiB)`, so a file up to the cap always fits and a chunk sent again never counts twice | 2 GiB (`RELAY_MAX_FILE`), sent to clients in `WELCOME` | `RELAY_MAX_TRANSFER_BYTES` |
 | Receiver's queue | 2 MiB: frame dropped, sender told (`DROPPED`) | |
+| Per-IP buckets | forgotten once idle (swept at most every 10 s) | |
 
-Over a cap the frame is dropped and the sender gets `DROPPED` with the reason; drops are logged as one line per room every 10 s with counts only. Nothing about contents, tokens or file names is logged. Tests: `packages/sync-server/test/media-relay.test.mjs` (ids and fan-out, no cross-room delivery, byte-for-byte relay, nothing on disk or in the log, each cap, malformed and oversized messages).
+Over a cap the frame is dropped and the sender gets `DROPPED` with the reason and the frame's 8-byte tag (on the per-file cap it stops sending that file to that peer); drops are logged as one line per room every 10 s with counts only. Nothing about contents, tokens or file names is logged. Tests: `packages/sync-server/test/media-relay.test.mjs` (ids and fan-out, no cross-room delivery, byte-for-byte relay, nothing on disk or in the log, each cap, malformed and oversized messages).
 
 ## ICE servers (owner to choose)
 
@@ -67,8 +73,8 @@ Over a cap the frame is dropped and the sender gets `DROPPED` with the reason; d
 
 ## Limits and UX
 
-- Per project, in **Files…**: files up to 100 MB / **500 MB** / 2 GB download automatically, up to **5 GB** / 20 GB / 50 GB for the whole project (stored in this browser's `collab` setting, `rooms[pid].limits`). Bigger ones are skipped: the chip says "1 file skipped: over the size limit", the list says "Skipped: over the size limit", **Download all now** fetches them anyway (and retries failed ones). **Pause** stops new requests (serving others goes on: they may depend on this browser).
-- Chip, when connected: "Syncing 3 files" · "All files here" · "2 files not available yet: nobody online has them" · "1 file skipped: over the size limit" · "Paused, 2 files to get" · "Storage full, downloads paused" · "1 file couldn't be verified". A project without files still says "Synced". Tooltips explain each.
+- Per project, in **Files…**: files up to 100 MB / **500 MB** / 2 GB download automatically, up to **5 GB** / 20 GB / 50 GB for the whole project (stored in this browser's `collab` setting, `rooms[pid].limits`). Bigger ones are skipped: the chip says "1 file skipped: over the size limit", the list says "Skipped: over the size limit", **Download all now** fetches them anyway (and retries failed ones), for the rest of the session. **Pause** stops new requests (serving others goes on: they may depend on this browser) and keeps "Download all now" on, so Resume continues. A file that stops being fetched only because of the limits (Pause, a lowered limit, a newly added smaller file taking the project budget) keeps its stored chunks and resumes from them when it's allowed again; only a file the doc no longer references, or that's here already, has its chunks dropped.
+- Chip, when connected: "Syncing 3 files" · "All files here" · "2 files not available yet: nobody online has them" · "1 file skipped: over the size limit" · "1 file too large to relay: needs a direct connection" · "Paused, 2 files to get" · "Storage full, downloads paused" · "Storage busy, close other tabs" · "1 file couldn't be verified". A project without files still says "Synced". Tooltips explain each.
 - Placeholders: "Arriving · 42%" while a file is coming, back to "… not on this device yet" when nothing is.
 - Storage: `navigator.storage.persist()` is asked once per session; if it's denied, Files… and the chip's tooltip say the browser may clear the files when space runs low (collaborators keep theirs, and they come back from them). Under 1 GB free (`estimate()`) is said too. A write that fails (quota) pauses downloads with "Storage full"; **Download all now** retries. A file the browser cleared is noticed when someone asks for it: announced as `lost` and fetched again.
 
@@ -90,10 +96,16 @@ Each has a test (Node: `packages/collab-client/test/media.test.mjs`; browser: `d
 | Storage cleared by the browser | Missing blob noticed when serving: `lost` announced, fetched again under a new id; the old id is released as usual | code path, not tested |
 | Same file referenced twice, or already here under another id | One entry per hash; landing skipped if it's already here | `finish()` |
 | Peer with another invite token | Not readable, counted, ignored, never dropped as hostile | Node "relay path" |
-| Relay abuse by a member | Per-room and per-IP byte rates, per-transfer total, per-connection transfer count, receiver queue cap; floods are dropped, not queued | `media-relay.test.mjs` |
+| Relay abuse by a member | Per-room and per-IP byte rates, per-file chunk-index cap, receiver queue cap; floods are dropped, not queued | `media-relay.test.mjs` |
+| Pause after Download all, limit lowered, budget taken by a new smaller file | Stopped without dropping; resumes from the stored chunks (each chunk fetched once) | Node "Download all now, then Pause…" |
+| File bigger than the relay's cap, no direct connection | Never asked over the relay; "too large to relay"; smaller files still come | Node "bigger than the relay's cap"; server (m5) |
+| Relayed `have` / `get` / `cancel` dropped (silently or with `DROPPED`) | Re-announced; the transfer completes | Node "relayed control frames…" (fault-injecting proxy) |
+| An old tab holds the database at version 1 | Session connects and syncs; "Storage busy"; switches over when the old tab goes; a newer version gets the database at once | `test/idb-blocked.test.mjs` |
+| Scheduler poked while it awaits storage | One tick at a time, at most one timer pending, none after `stop()` | Node "one tick at a time" |
 
 ## Not done
 
+- The request window (up to 3 files × 16 chunks) isn't sized to the relay's 2 MiB per-receiver queue: a slow receiver's chunks can be dropped there and are asked again after 8 s (control frames are re-announced, above). Slower, never stuck.
 - No always-on seed: when nobody online has a file, it waits ("not available yet"). The at-rest format is designed for it.
 - One key per invite token (see above); no key rotation; revoking a token doesn't re-key files already exchanged.
 - Partial files are kept in IndexedDB in plaintext, like the app's own media (the browser's storage is the trust boundary, as before).
@@ -108,13 +120,15 @@ From `design/media-check.mjs`, a 6.7 MB frame plus a 31.5 MB take plus the examp
 
 - WebRTC, A → B: about **9 MB/s** from join to verified (4.3 s); B's JS heap peaked at 37 MB (chunks go to IndexedDB as they arrive, and the hash is computed over 4 MiB slices).
 - Relay, D → server → F (direct blocked): **3.3 MB/s**, which is the clients' own pacing (3 MB/s, under the server's 4 MiB/s per-IP cap). F's heap peaked at 40 MB. The sync server used **8% of one core**, RSS 83 → 97 MB peak, and nothing in its data dir or log held any of the plaintext.
+- After the last review round (re-announce, single-flight scheduler) eight runs gave 5.8 to 9.4 MB/s over WebRTC (one identical bundle gave both 6.4 and 9.4) and 3.2 to 3.3 MB/s over the relay; the bundle before that round measured 8.9 MB/s in the same session, so the spread is this machine, not the change.
 - A first build ran at ~1.1 MB/s on both paths: the scheduler's 1 s fallback timer blocked the immediate refills, so the request window was refilled once a second. Fixed in `schedule()`; the number above is after the fix.
 
 Incognito contexts keep IndexedDB blobs in memory, so these heap numbers say nothing about a normal profile's disk use.
 
 ## Checks
 
-- `npm test -w @cue-board/collab-client`: `test/media.test.mjs` (KATs, envelope, validation, `Download`, backpressure, and end to end through the real server's relay: replication, offline originator, foreign key, resume, corruption, source leaving, remote delete, storage full, limits, unreferenced hash).
-- `npm test -w @cue-board/sync-server`: `test/media-relay.test.mjs`.
+- `npm test -w @cue-board/collab-client`: `test/media.test.mjs` (KATs, envelope, validation, `Download`, backpressure, and end to end through the real server's relay: replication, offline originator, foreign key, resume, corruption, source leaving, remote delete, storage full, limits, unreferenced hash, partial downloads kept through Pause and limits, too large to relay, dropped control frames, single-flight scheduler, SDP limit vs signal cap); `test/idb-blocked.test.mjs` (an old tab holding the database).
+- `npm test -w @cue-board/sync-server`: `test/media-relay.test.mjs` (also the per-file cap against the app's limit options, re-sends not counted, IP buckets swept).
+- `node design/sdp-size.mjs`: Chromium's SDP sizes for the media data channel.
 - `node design/media-check.mjs . <out>`: three browser contexts at a time against a server on 3360, listed in its output.
 - `design/collab-check.mjs` runs with media transfers off (`__CUE_MEDIA_TEST.off`), since it checks the doc side ("not on this device yet" stays).
