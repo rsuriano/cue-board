@@ -138,6 +138,9 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .top .btn.icon{padding:0}
 /* the More menu opens under its button, right edges aligned when the button sits near the right of its zone */
 .more{position:relative}
+/* ...and only while it has an enabled entry at this width: with no project open, a wide bar's More would hold just a
+   disabled Delete project. Below 1440 Import/Export (below 960 Load song) bring it back */
+.more:not(:has(.mi:not(.narrow,.narrowest,:disabled,[hidden]))){display:none}
 #moremenu{min-width:var(--w-menu-min)}
 #moremenu .mi.narrow,#moremenu .mi.narrowest{display:none}
 #moremenu .mi[data-armed]{color:var(--error)}
@@ -530,6 +533,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 @media (max-width:1439px){
   #importb,#exportb{display:none}
   #moremenu .mi.narrow{display:flex}
+  .more:has(.mi.narrow:not(:disabled,[hidden])){display:block}
   .collab .btn:not([data-armed]){width:var(--h-md);padding:0}
   .collab .btn:not([data-armed]) .ico:first-child{margin:0}
   .collab .btn:not([data-armed]) .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -543,6 +547,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   :root{--w-project-min:120px}
   .songops{display:none}
   #moremenu .mi.narrowest:not([hidden]){display:flex}
+  .more:has(.mi.narrowest:not(:disabled,[hidden])){display:block}
   .sidetab .lbl{display:none}
 }
 @media (max-width:1180px){
@@ -1273,6 +1278,8 @@ const resetDelp=twoTap($("delp"),"Delete project","Tap again to delete",async()=
   if(cset.rooms[id])leaveRoom(id,true);
   projects=projects.filter(p=>p.id!==id);cur=null;selId=null;hasAudio=false;lastKey="";
   if(projects.length)selectProject(projects[0]);else renderAll();toast("Project deleted");
+  /* the last one: More has nothing left to offer and hides, so the focus goes to New */
+  if(document.activeElement===$("moreb")&&!$("moreb").getClientRects().length||document.activeElement===document.body)$("newp").focus();
 });
 const resetDelsong=twoTap($("delsong"),"Remove song","Tap again to remove",()=>{
   closeMore(true);if(!cur)return;stop();idbDo("readwrite",st=>st.delete(cur.id));
