@@ -41,7 +41,7 @@ A small purpose-made protocol instead of BitTorrent: with 2-5 people per project
 
 What it protects against: the relay, the signaling path and anything that records them (proxy logs, a disk image of the server) only ever hold ciphertext; a stolen copy of `project.json` doesn't give the key. What it doesn't: **a modified sync server** sees each token when a client joins (it has to, to check it) and could derive the key. Any member can derive it (they hold the token): encryption is against outsiders, not against members, which is why the whole-file hash is checked as well.
 
-**Several invite tokens per room** (`create-project --invite` adds tokens) give several keys: people who joined through different links can't exchange files. Their `hi` doesn't open, they're counted as "joined with another invite link" (said in Files…), and nothing is exchanged with them; everything else (the doc) works. Hand out one link per room for now. A shared room key wrapped per token would fix it (not done).
+**Several invite tokens per room** (`create-project --invite` adds tokens) give several keys: people who joined through different links can't exchange files. Their `hi` doesn't open, they're counted as "joined with another invite link" (said in the files panel next to Settings), and nothing is exchanged with them; everything else (the doc) works. Hand out one link per room for now. A shared room key wrapped per token would fix it (not done).
 
 ## Untrusted input
 

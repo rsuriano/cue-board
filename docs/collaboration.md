@@ -11,7 +11,7 @@ User-facing summary and limits: README, "Collaboration v1". Server and doc layou
 | `packages/collab-client/src/convert.mjs` | Project ⇄ doc. Doc → project is the sync server's `docToCueboard()` plus `sanitizeProject()`. Project → doc is `pushProject()`, a field-level diff; writing a whole project into an empty doc gives the same doc as the server's `cueboardToDoc()` (tested). |
 | `collab.js` | The two above, Yjs and y-websocket bundled by esbuild (`npm run build:collab`), committed. |
 
-**Media** (frames, clips, takes, the song) now travels between collaborators, peer to peer, encrypted, verified by hash: `docs/media-p2p.md`. `packages/collab-client/src/media.mjs` and `media-core.mjs`, `packages/sync-server/src/media-relay.mjs`, `<meta name="cue-ice-urls">`, and **Files…** in the project menu.
+**Media** (frames, clips, takes, the song) now travels between collaborators, peer to peer, encrypted, verified by hash: `docs/media-p2p.md`. `packages/collab-client/src/media.mjs` and `media-core.mjs`, `packages/sync-server/src/media-relay.mjs`, `<meta name="cue-ice-urls">`, and the files panel (the icon next to Settings).
 
 ## Storage (all in the browser)
 
