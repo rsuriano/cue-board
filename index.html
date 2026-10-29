@@ -480,9 +480,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .pchip:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 .pchip::after{content:attr(data-tip);display:none}
 .pchip:is(:hover,:focus-visible)::after{display:block;visibility:visible}
-/* Settings is the gear alone: its name in the same label, on hover and on keyboard focus */
+/* Settings: the gear and its name. Where the name steps back (below 1280) it shows in the same label as the
+   bubbles', on hover and on keyboard focus */
 #settingsb::after{content:attr(data-tip);display:none}
-#settingsb:is(:hover,:focus-visible)::after{display:block;visibility:visible}
 /* someone else has this shot selected: their initials on the thumbnail, neutral (orange stays "yours") */
 .pmark{position:absolute;right:var(--sp-2);top:var(--sp-2);display:flex;gap:var(--sp-0-5)}
 .bitem .bt{position:relative}
@@ -541,7 +541,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 @media (max-width:1279px){
   .brand .lbl{display:none}
   .saved{min-width:0}
-  .saved .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .saved .lbl,#settingsb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  #settingsb{width:var(--h-md);padding:0}
+  #settingsb .ico:first-child{margin:0}
+  #settingsb:is(:hover,:focus-visible)::after{display:block;visibility:visible}
 }
 @media (max-width:959px){
   :root{--w-project-min:120px}
@@ -643,7 +646,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       </div>
       </div>
       <span id="status" class="saved" data-k="busy" title="Loading"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Loading</span></span>
-      <button type="button" id="settingsb" class="btn ghost icon" aria-label="Settings" data-tip="Settings"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg></button>
+      <button type="button" id="settingsb" class="btn ghost" data-tip="Settings"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg><span class="lbl">Settings</span></button>
     </div>
   </header>
 
