@@ -68,6 +68,7 @@
   --app-max:1920px; --gutter:var(--sp-5); --header-h:48px;
   --inspector-w:clamp(320px,26vw,400px); --list-w:248px; --card-w:176px; --thumb-w:72px; --ref-w:100px;
   --monitor-min-h:280px; --stage-h:max(var(--monitor-min-h),calc(100vh - 400px)); --dialog-w:560px; --measure:72ch; --take-min:400px; --var-min:140px;
+  --dialog-w-wide:800px; --w-kcol:280px;
   /* elevation: borders first; shadows only for things that float */
   --shadow-float:0 12px 32px rgba(0,0,0,.5); --shadow-overlay:0 24px 64px rgba(0,0,0,.55);
   /* motion */
@@ -288,9 +289,24 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 /* playhead: accent line with a cap in the ruler */
 .ph{position:absolute;top:0;bottom:0;left:0;width:var(--ring);margin-left:calc(var(--ring) / -2);background:var(--accent);pointer-events:none;box-shadow:0 0 0 var(--hairline) var(--on-media)}
 .ph::before{content:"";position:absolute;top:0;left:50%;width:var(--sp-3);height:var(--sp-3);margin-left:calc(var(--sp-3) / -2);background:var(--accent);clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
-/* shortcut reference: quiet keys, reading measure */
-.keys{margin:var(--sp-3) 0 0;max-width:var(--measure);color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-xl)}
-.keys kbd{min-width:0;height:auto;padding:0 var(--sp-1);margin-inline:var(--sp-px);border:0;background:var(--surface-2);line-height:var(--lh-sm);color:var(--ink-2)}
+/* shortcut hint: one quiet line of the essentials, the rest in the shortcuts panel */
+.keys{display:flex;align-items:center;gap:var(--sp-5);margin:var(--sp-3) 0 0;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-xl);white-space:nowrap}
+.keys>span,.keys .linkbtn{display:inline-flex;align-items:center;gap:var(--sp-1-5)}
+.keys kbd,.klist kbd{min-width:0;height:auto;padding:0 var(--sp-1);border:0;background:var(--surface-2);line-height:var(--lh-sm);color:var(--ink-2)}
+.keys .linkbtn{color:var(--ink-3);font-weight:var(--w-regular);text-decoration:none}
+.keys .linkbtn:hover{color:var(--ink)}
+@media (max-width:819px){.keys{display:none}}
+/* shortcuts panel: a modal like the others, wider, sections in two columns when there's room */
+#dlgKeys{max-width:min(var(--dialog-w-wide),calc(100vw - var(--sp-8)))}
+#kBody:focus{outline:none}
+.dlg .khead{display:flex;align-items:center;justify-content:space-between;margin:calc(var(--sp-1) * -1) calc(var(--sp-2) * -1) 0 0}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--w-kcol)),1fr));gap:var(--sp-6) var(--sp-8)}
+.dlg .kh{margin:0 0 var(--sp-2);font:var(--w-semibold) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);letter-spacing:var(--track-caps);text-transform:uppercase}
+.klist{display:grid;gap:var(--sp-3);margin:0;font-size:var(--text-md);line-height:var(--lh-md)}
+.klist>div{display:flex;justify-content:space-between;gap:var(--sp-4)}
+.klist dt{flex:1 1 auto;color:var(--ink)}
+.klist dt small{display:block;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm)}
+.klist dd{display:flex;justify-content:flex-end;align-items:center;align-self:start;gap:var(--sp-1);min-height:var(--lh-md);margin:0;color:var(--ink-2);text-align:right}
 
 /* ---------- storyboard strip ---------- */
 .strip{display:flex;gap:var(--sp-2);overflow-x:auto;padding-bottom:var(--sp-2)}
@@ -724,7 +740,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="ph" class="ph"></div></div></div>
   </section>
   <div class="strip" id="strip"></div>
-  <p class="keys"><kbd>Space</kbd> play/pause · <kbd>M</kbd> cut at the playhead · <kbd>L</kbd> loop the shot · <kbd>←</kbd><kbd>→</kbd> 1 s (<kbd>Shift</kbd> 5 s) · <kbd>[</kbd><kbd>]</kbd> previous/next shot · click and drag on the waveform to scrub · scroll over it to move sideways (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll to zoom) · drag the triangles to move a cut · scroll over the shot cards to move along them · drag a shot card onto the middle of another to swap them, or onto an edge/gap to slide it in between (it gets half of that slot). Drop an mp3 on the page to load the song, or an image, GIF or clip for the selected shot.</p>
+  <p class="keys" id="keys"><span><kbd>Space</kbd> play</span><span><kbd>M</kbd> cut</span><span><kbd>L</kbd> loop</span><span><kbd>←</kbd><kbd>→</kbd> step</span><button type="button" class="linkbtn" id="keysb" aria-haspopup="dialog"><kbd>?</kbd> All shortcuts</button></p>
   </div>
   <div id="sideB" class="sideB" hidden>
     <aside class="blist" id="bList" aria-label="Shots"></aside>
@@ -799,6 +815,35 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     </div>
   </div>
 </div>
+<dialog id="dlgKeys" aria-labelledby="kTitle"><div class="dlg" id="kBody" tabindex="-1">
+  <div class="khead"><h3 id="kTitle">Shortcuts</h3><button type="button" id="kClose" class="btn ghost icon" aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="kgrid">
+    <section aria-labelledby="kPlay"><p class="kh" role="heading" aria-level="4" id="kPlay">Playback</p><dl class="klist">
+      <div><dt>Play / pause</dt><dd><kbd>Space</kbd></dd></div>
+      <div><dt>Loop the selected shot</dt><dd><kbd>L</kbd></dd></div>
+      <div><dt>Back / forward 1 s</dt><dd><kbd>←</kbd><kbd>→</kbd></dd></div>
+      <div><dt>Back / forward 5 s</dt><dd><kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd></dd></div>
+    </dl></section>
+    <section aria-labelledby="kCuts"><p class="kh" role="heading" aria-level="4" id="kCuts">Cuts and shots</p><dl class="klist">
+      <div><dt>Cut at the playhead</dt><dd><kbd>M</kbd></dd></div>
+      <div><dt>Previous / next shot</dt><dd><kbd>[</kbd><kbd>]</kbd></dd></div>
+      <div><dt>Move a cut</dt><dd>drag its triangle</dd></div>
+      <div><dt>Swap two shots</dt><dd>drag a card onto another</dd></div>
+      <div><dt>Slide a shot in between<small>it gets half of that slot</small></dt><dd>drag its card onto an edge or gap</dd></div>
+    </dl></section>
+    <section aria-labelledby="kTime"><p class="kh" role="heading" aria-level="4" id="kTime">Timeline</p><dl class="klist">
+      <div><dt>Scrub</dt><dd>drag on the waveform</dd></div>
+      <div><dt>Move sideways</dt><dd>scroll over the waveform</dd></div>
+      <div><dt>Zoom</dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll</dd></div>
+      <div><dt>Move along the shots<small>a mouse wheel works too</small></dt><dd>scroll over the shot cards</dd></div>
+    </dl></section>
+    <section aria-labelledby="kFiles"><p class="kh" role="heading" aria-level="4" id="kFiles">Files</p><dl class="klist">
+      <div><dt>Load the song</dt><dd>drop an mp3</dd></div>
+      <div><dt>Media for the selected shot</dt><dd>drop an image, GIF or clip</dd></div>
+      <div><dt>Import a project</dt><dd>drop a .cueboard.json</dd></div>
+    </dl></section>
+  </div>
+</div></dialog>
 <dialog id="dlgSettings"><form class="dlg" id="setForm">
   <h3>Settings</h3>
   <div class="field"><label for="setKey">OpenRouter API key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
@@ -1455,6 +1500,19 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();seek(now()+(e.key==="ArrowLeft"?-1:1)*(e.shiftKey?5:1))}
   else if((e.key==="["||e.key==="]")&&cur){const i=secAt(now())+(e.key==="]"?1:-1);const s=S()[Math.max(0,Math.min(S().length-1,i))];select(s.id,true)}
 });
+
+/* shortcuts panel: ? (not while typing) or the footer button; Escape, a click outside or Close shut it, focus goes back */
+let keysFrom=null;
+function openKeys(){const d=$("dlgKeys");if(d.open)return;keysFrom=document.activeElement;d.showModal();$("kBody").focus()}
+$("keysb").onclick=openKeys;$("kClose").onclick=()=>$("dlgKeys").close();
+$("dlgKeys").addEventListener("click",e=>{if(e.target===e.currentTarget)e.currentTarget.close()});
+/* while it's open no key reaches the editor, wherever focus is (Tab can leave the dialog for the browser and come back on body) */
+document.addEventListener("keydown",e=>{if($("dlgKeys").open)e.stopPropagation()},true);
+$("dlgKeys").addEventListener("close",()=>{if(keysFrom&&keysFrom.isConnected)keysFrom.focus();keysFrom=null});
+document.addEventListener("keydown",e=>{
+  if(e.key!=="?"||side!=="a"||e.metaKey||e.ctrlKey||e.altKey||document.querySelector("dialog[open]"))return;
+  const tg=e.target;if(tg&&(/INPUT|TEXTAREA|SELECT/.test(tg.tagName)||tg.isContentEditable))return;
+  e.preventDefault();openKeys()});
 
 /* ---------- import / export: one .cueboard.json file per project, media embedded ---------- */
 function blobToDataURL(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsDataURL(b)})}
