@@ -186,7 +186,7 @@ try {
   check('after Leave: Join in the bar with the focus, no bubbles, no indicator', await page.evaluate(() => document.activeElement?.id === 'joinb' && document.getElementById('presence').hidden && document.getElementById('mstatw').hidden));
   await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await bar('13-join');
   await page.click('#joinb'); await sleep(250);
-  check('Join opens the join dialog (paste the invite link)', await page.isVisible('#dlgJoin') && await page.evaluate(() => document.getElementById('dlgJoin').dataset.step) === 'link');
+  check('Collaborate opens the panel (Share this project / Join with a link)', await page.isVisible('#dlgJoin') && await page.evaluate(() => document.getElementById('dlgJoin').dataset.step) === 'collab');
   await page.keyboard.press('Escape'); await sleep(150);
   check('cancelling Join hands focus back to Join', await page.evaluate(() => document.activeElement?.id) === 'joinb');
 

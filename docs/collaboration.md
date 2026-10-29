@@ -50,7 +50,8 @@ The top-left chip is gone: the room's state is the header line of the files pane
 | Syncing… | connecting, or connected and waiting for the first sync |
 | Offline, changes will sync | the browser is offline (the provider is disconnected until it's back) |
 | Downloading N files · All files here · N files not available yet · N files skipped: over the size limit · … | as Synced, in a project with media files: their transfer state (`docs/media-p2p.md`, "Limits and UX") |
-| Can't reach the room | the connection fails (it keeps retrying, up to every 10 s), or the server refused the token or room (4400/4401/4404: it stops retrying) |
+| Can't reach the room | the connection fails (it keeps retrying, up to every 10 s) |
+| This invite link no longer works | the server refused the token or room (4400/4401/4404: the link was replaced or revoked, or it's incomplete); it stops retrying, the local copy stays |
 
 ## Server change
 
@@ -83,6 +84,14 @@ sync.example.dev {
 ```
 
 The header key is the canonical Go form Caddy logs it under (`Sec-Websocket-Protocol`, lowercase `s` in `Websocket`). Not checked against a running Caddy or the hephaestus config: after deploying, open a room once and grep the log for the token. Any other proxy or CDN in front needs the same treatment.
+
+## Rooms from the app (Collaborate)
+
+The bar's **Collaborate** button (`#joinb`; the phone's Project sheet has the same) opens one panel with two choices. **Share this project** creates a room on the server from the open project and shows the invite link at once; **Join with a link** is the join flow as before, open to anyone with a link. Creating is gated: the server's `canCreateRoom(identity)` (`packages/sync-server/src/access.mjs`, the one seam a plans system replaces later) only says yes to a **verified token**, which a browser gets once by entering a **verification code** the operator made (`npm run create-code -w @cue-board/sync-server -- --label "Nacho" [--max-users N]`; `list-codes`, `revoke-code <id>`). The app keeps it as `settings/collab.verified` (`{ token, label }`), the one client-side state; a token whose code was revoked drops back to the code prompt. Codes and tokens are random, stored hashed (`DATA_DIR/codes.json`, written by the CLI only; `verified.json`, by the server only), compared in constant time, never logged; redeeming is rate-limited per IP (5 failures: 15 minutes).
+
+The creator's browser also stores an **owner token** with the binding (`rooms[pid].owner`, hashed in the room's `project.json`). Owners get **New link** in the invite dialog (More → Invite link…; every holder of the old link, connected or not, is closed with 4401 and needs the new one, the owner's app reconnects by itself) and **Delete room** (More, two taps; the server closes members with 4410, their apps show "This room was deleted" and keep the local copy, and the folder is wiped). Rooms made by `create-project` have no owner; `npm run attach-owner -- <roomId>` gives them one and prints an owner link (`#join=<room>.<token>.<ownerToken>`, for the owner's browser only). Server caps, all plain errors: `MAX_ROOMS` (507), `MAX_ROOM_BYTES` (an update that would pass it is refused with 4413, status "Room is over its size limit"), `CREATE_PER_HOUR` per verified token. The HTTP API (`packages/sync-server/src/api.mjs`, same host as the WebSocket, tokens in `Authorization`, never in URLs) only answers browser origins listed in `CORS_ORIGINS`.
+
+Checks: `packages/sync-server/test/rooms-api.test.mjs` (9 tests: create with/without verification, bad/revoked/full/rate-limited codes, owner-only actions, legacy rooms, caps, CORS, no secrets in the log, restart persistence, two creates at once, delete racing a join, the CLIs), `packages/collab-client/test/api.test.mjs`, and `node design/rooms-check.mjs . <out>` (35 browser checks at 1440×900, 390×844 and 390×700: the code prompt, a wrong code, creating, the link, a second browser joining and editing both ways, New link, Delete room, the phone sheet).
 
 ## Checks
 
