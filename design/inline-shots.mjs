@@ -171,7 +171,8 @@ try {
   // ---- leaving the room with the panel open: panel and indicator go, focus isn't lost in a hidden panel ----
   await open();
   await page.evaluate(() => { window.__STUB.status = 'synced'; });
-  await page.click('#proj'); await page.click('#projmenu [data-act="leave"]'); await sleep(200);
+  // from the keyboard (a click outside would close the panel first): Leave in the bar, two presses
+  await page.focus('#leaveb'); await page.keyboard.press('Enter'); await page.keyboard.press('Enter'); await sleep(200);
   check('leaving the room with the panel open hides the indicator and the panel', await page.$eval('#mstatw', e => e.hidden) && await page.$eval('#mpanel', e => e.hidden));
 
   // ---- 820px: the panel fits and scrolls; nothing overflows 1920 to 820 ----

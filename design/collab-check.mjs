@@ -87,8 +87,13 @@ async function nameStep(page, name) {
   await page.waitForSelector('#dlgJoin[open][data-step="name"]', { timeout: 6000 });
   await page.fill('#jName', name); await page.click('#jGo');
 }
-const menu = async (page, act) => { await page.click('#proj'); await page.click(`#projmenu [data-act="${act}"]`); };
-const presence = page => page.evaluate(() => { const p = document.getElementById('presence'); return p.hidden ? '' : [...p.children].map(c => c.textContent).join(','); });
+// Join and Leave are top-level buttons in the bar; Leave confirms with a second tap
+const menu = async (page, act) => { if (act === 'join') await page.click('#joinb'); else { await page.click('#leaveb'); await page.click('#leaveb'); } };
+// everyone else in the presence row (your own bubble, .self, comes first and is left out here)
+const presence = page => page.evaluate(() => { const p = document.getElementById('presence'); return p.hidden ? '' : [...p.children].filter(c => !c.classList.contains('self')).map(c => c.textContent).join(','); });
+// the whole row as [initials, tooltip] pairs, and what a bubble's tooltip shows on hover / keyboard focus
+const bubbles = page => page.evaluate(() => [...document.querySelectorAll('#presence:not([hidden]) .pchip')].map(c => [c.textContent, c.dataset.tip, c.classList.contains('self')]));
+const tipShown = (page, sel) => page.evaluate(sel => { const c = document.querySelector(sel), a = c && getComputedStyle(c, '::after'); return a && a.display !== 'none' && a.visibility === 'visible' ? a.content.replace(/^"|"$/g, '') : ''; }, sel);
 /* this browser's room project as saved in IndexedDB (pid: the first bound one), whether the room's offline copy
    ("cueboard-collab" docs) exists, and the device id. Never creates a database. */
 const stored = (page, pid) => page.evaluate(async pid => {
@@ -131,7 +136,9 @@ try {
   check('no room bound: collab.js is not loaded, no socket opened', !(await A.page.evaluate(() => performance.getEntriesByType('resource').some(e => /collab\.js|:3360/.test(e.name)))));
   const exampleBefore = await A.page.evaluate(() => document.querySelectorAll('.card').length);
   // a take from before collaboration (no `dev`) in the project A is about to share, written once A has nothing left to save
-  await until(() => A.page.evaluate(() => document.getElementById('status').textContent === 'Saved locally')); await sleep(1000);
+  check('not in a room: Join collaboration in the bar, no Leave, no bubbles', await A.page.isVisible('#joinb') && !(await A.page.isVisible('#leaveb')) && !(await A.page.isVisible('#presence'))
+    && await A.page.evaluate(() => !document.querySelector('#projmenu [data-act="join"], #projmenu [data-act="leave"]')));
+  await until(() => A.page.evaluate(() => document.getElementById('status').textContent === 'Saved')); await sleep(1000);
   // (a save still pending when the page goes is flushed on pagehide, over this write: reload, then check it held)
   const hasLegacy = async () => !!(await stored(A.page, 'p-example')).project?.sections.some(s => (s.takes || []).some(t => t.id === 't-legacy'));
   let injected = false;
@@ -156,6 +163,9 @@ try {
   check('join dialog offers sharing (room is empty) and opening as a new project', !(await A.page.$eval('#jShare', b => b.disabled)) && await A.page.isVisible('#jNew'));
   await A.page.click('#jShare');
   check('A: chip says Synced after sharing', (await until(async () => (await chip(A.page)) === 'Synced')) , await chip(A.page));
+  const aAlone = await until(async () => { const b = await bubbles(A.page); return b.length ? b : null; });
+  check('A, alone in the room: its own bubble, Leave instead of Join, saved state "Saved" (synced)', JSON.stringify(aAlone) === JSON.stringify([['AT', 'Ana Torres (you)', true]]) && await A.page.isVisible('#leaveb') && !(await A.page.isVisible('#joinb'))
+    && await A.page.evaluate(() => document.getElementById('status').textContent === 'Saved' && /synced with the room/.test(document.getElementById('status').title)), JSON.stringify(aAlone));
 
   /* ---- B: a new device, joins from the link, gets the shared project ---- */
   B = await newPage('B');
@@ -195,8 +205,18 @@ try {
   await A.page.locator('.card').nth(4).click(); await B.page.locator('.card').nth(0).click();
   const mark = await until(() => B.page.evaluate(() => { const m = document.querySelectorAll('.card')[4]?.querySelector('.pmark'); return m ? m.textContent : ''; }));
   check('B sees A\'s selection as a quiet marker on shot 05', mark === 'AT', mark);
-  const pres = await until(() => A.page.evaluate(() => { const p = document.getElementById('presence'); return p.hidden ? '' : p.textContent; }));
-  check('A\'s header lists B', pres === 'BI', pres);
+  const pres = await until(async () => { const b = await bubbles(A.page); return b.length > 1 ? b : null; });
+  check('A\'s header lists itself first, then B', JSON.stringify(pres?.map(b => [b[0], b[2]])) === '[["AT",true],["BI",false]]' && pres[1][1] === 'Ben Ito · on shot 01', JSON.stringify(pres));
+  const bRow = await until(async () => { const b = await bubbles(B.page); return b.length > 1 ? b : null; });
+  check('the second user sees itself first (Ben Ito (you)) and the first user', JSON.stringify(bRow?.map(b => [b[0], b[1].replace(/ · .*/, ''), b[2]])) === '[["BI","Ben Ito (you)",true],["AT","Ana Torres",false]]', JSON.stringify(bRow));
+  await A.page.hover('#presence .pchip.self'); await sleep(150);
+  const tipHover = await tipShown(A.page, '#presence .pchip.self');
+  await shot(A.page, 'own-bubble-hover');
+  await A.page.mouse.move(700, 600); await A.page.focus('#presence .pchip.self'); await A.page.keyboard.press('ArrowRight'); await sleep(150);
+  const tipFocus = await tipShown(A.page, '#presence .pchip:not(.self)');
+  check('bubble names show on hover (own: "Ana Torres (you)") and on keyboard focus (arrows move along the row)', tipHover === 'Ana Torres (you)' && /^Ben Ito/.test(tipFocus), `${tipHover} / ${tipFocus}`);
+  check('the own bubble is not the accent colour', await A.page.evaluate(() => { const cs = getComputedStyle(document.querySelector('#presence .self')); return !(cs.color + cs.backgroundColor + cs.boxShadow).includes('240, 163, 58'); }));
+  await A.page.evaluate(() => document.activeElement.blur());
   check('the marker is not the accent colour', await B.page.evaluate(() => { const b = document.querySelector('.pmark b'), cs = getComputedStyle(b), acc = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(); return !!b && !(cs.color + cs.backgroundColor).includes('240, 163, 58') && acc === '#f0a33a'; }));
   await sleep(300); await shot(A.page, 'side-a-two-users'); await shot(B.page, 'presence-b');
 
@@ -245,7 +265,7 @@ try {
   check('B shows a quiet "not on this device yet" placeholder for A\'s image', ph === 'Not on this device yet', ph);
   check('A still shows its own image', await A.page.evaluate(() => !!document.querySelector('.card .thumb img')));
   await B.page.locator('.card').nth(0).click(); await sleep(300); await shot(B.page, 'placeholder');
-  const own = await B.page.evaluate(() => [...document.querySelectorAll('.pmark b,#presence .pchip')].map(e => e.textContent));
+  const own = await B.page.evaluate(() => [...document.querySelectorAll('.pmark b,#presence .pchip:not(.self)')].map(e => e.textContent));
   check('B never sees itself (not even its pre-reload session) as someone else', !own.includes('BI') && own.includes('AT'), own.join(','));
 
   /* ---- A sets a frame that takes a while to hash while B keeps typing: A's image stays and reaches B as its hash ---- */
@@ -393,7 +413,10 @@ try {
 
   /* ---- B leaves: keeps a local copy, stops syncing ---- */
   const bKeep = await cards(B.page);
-  await menu(B.page, 'leave');
+  await B.page.click('#leaveb'); await sleep(100);
+  check('Leave asks for a second tap first (still in the room)', await B.page.evaluate(() => document.getElementById('leaveb').textContent === 'Tap again to leave') && (await chip(B.page)) !== '');
+  await B.page.click('#leaveb'); await sleep(200);
+  check('after leaving: Join is back in the bar and has the focus, no bubbles', await B.page.evaluate(() => document.activeElement?.id === 'joinb' && document.getElementById('leaveb').hidden && document.getElementById('presence').hidden));
   await A.page.locator('.card').nth(0).click(); await A.page.click('#f-title'); await A.page.keyboard.press('End'); await A.page.keyboard.type(' after B left'); await A.page.evaluate(() => document.activeElement.blur());
   await sleep(800); await B.page.reload(); await B.page.waitForSelector('.card'); await sleep(600);
   check('leave: B keeps its copy, no chip, and no longer receives edits', JSON.stringify(await cards(B.page)) === JSON.stringify(bKeep) && (await chip(B.page)) === '' && !(await B.page.evaluate(() => performance.getEntriesByType('resource').some(e => /collab\.js/.test(e.name)))), (await cards(B.page))[0]);
@@ -458,7 +481,7 @@ try {
     await until(async () => (await chip(A.page)) === 'Synced', 9000);
     const second = await until(async () => { const s = await stored(A.page); return s.pid && s.pid !== first.pid && s.project ? s : null; }, 6000);
     const shared = pIds.filter(id => ids(second?.project).includes(id));
-    await A.page.click('#delp'); await A.page.click('#delp');
+    await A.page.click('#moreb'); await A.page.click('#delp'); await A.page.click('#delp');
     const gone = await until(async () => !(await stored(A.page, second?.pid)).project, 6000); await sleep(800);
     const lost = []; for (const id of pIds) if (!(await hasBlob(A.page, id))) lost.push(id);
     const kept = !!(await stored(A.page, first.pid)).project;

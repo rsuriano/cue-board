@@ -64,7 +64,7 @@
   --h-xs:20px; --h-sm:28px; --h-md:32px; --h-lg:36px; --hit:32px;
   --icon-sm:6px; --icon-md:10px; --icon-lg:16px; --stroke:1.5px;
   /* layout */
-  --w-project:220px; --w-project-min:160px; --w-menu-max:360px; --menu-max-h:min(420px,60vh); --w-panel:400px; --mlist-max:min(360px,40vh); --mbar-w:120px;--w-play:88px; --w-tc:76px; --h-prompt:96px; --genbox-min:360px; --measure-short:60ch;
+  --w-project:220px; --w-project-min:160px; --w-menu-max:360px; --w-menu-min:200px; --w-saved:72px; --menu-max-h:min(420px,60vh); --w-panel:400px; --mlist-max:min(360px,40vh); --mbar-w:120px;--w-play:88px; --w-tc:76px; --h-prompt:96px; --genbox-min:360px; --measure-short:60ch;
   --app-max:1920px; --gutter:var(--sp-5); --header-h:48px;
   --inspector-w:clamp(320px,26vw,400px); --list-w:248px; --card-w:176px; --thumb-w:72px; --ref-w:100px;
   --monitor-min-h:280px; --stage-h:max(var(--monitor-min-h),calc(100vh - 400px)); --dialog-w:560px; --measure:72ch; --take-min:400px; --var-min:140px;
@@ -97,16 +97,22 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 
 /* ---------- app shell ---------- */
 .app{max-width:var(--app-max);margin:0 auto;padding:0 var(--gutter) var(--sp-10);display:grid;gap:var(--gutter)}
-.top{display:flex;flex-wrap:nowrap;align-items:center;gap:var(--sp-2) var(--sp-4);min-height:var(--header-h);padding:var(--sp-2) var(--gutter);margin-inline:calc(-1 * var(--gutter));background:var(--surface-1);border-bottom:var(--hairline) solid var(--border-subtle)}
+/* app bar: three zones on one row. The two outer columns share the width equally, so the side switch sits on the
+   bar's true centre; a zone whose content can't fit its half takes what it needs (min-content) and the switch moves
+   over instead of anything overlapping or wrapping. Labels give way to icons, then to the More menu, by width */
+.top{display:grid;grid-template-columns:minmax(min-content,1fr) auto minmax(min-content,1fr);align-items:center;column-gap:var(--sp-4);min-height:var(--header-h);padding:var(--sp-2) var(--gutter);margin-inline:calc(-1 * var(--gutter));background:var(--surface-1);border-bottom:var(--hairline) solid var(--border-subtle)}
+.tzone{display:flex;align-items:center;gap:var(--sp-4);min-width:0}
+.tzone>*{flex:none}
+.tright{justify-content:flex-end}
 .tgroup{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
+.tgroup.collab{gap:var(--gap-related)}
 .brand{display:flex;align-items:center;gap:var(--sp-2);font:var(--w-semibold) var(--text-lg)/var(--lh-control) var(--font-ui);letter-spacing:var(--track-tight);white-space:nowrap}
 .brand i{width:var(--icon-md);height:var(--icon-md);background:var(--accent);clip-path:polygon(0 0,100% 0,50% 100%)}
 .top select,.top input{width:auto;min-width:0}
-/* one row down to 1360px: only the project picker gives up width; below that the groups wrap whole */
-.top>*{flex-shrink:0}
-.top>.tgroup:has(#proj){flex-shrink:1}
-/* project picker: one control that shows the name, switches projects and renames in place */
-.projpick{position:relative;display:flex;flex:0 1 var(--w-project);min-width:var(--w-project-min)}
+/* project: the name (picker) and its rename button read as one group; only the picker gives up width */
+.tleft>.projgroup{flex:0 1 calc(var(--w-project) + var(--gap-tight) + var(--h-md))}
+/* inline-size containment: the name's length never widens the zone's minimum, the picker just truncates it */
+.projpick{position:relative;display:flex;flex:1 1 var(--w-project);min-width:var(--w-project-min);contain:inline-size}
 #proj{display:flex;align-items:center;width:100%;height:var(--h-md);padding:0 var(--sp-3);background-color:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);font-weight:var(--w-medium);font-size:var(--text-md);text-align:left}
 #proj:hover,#proj[aria-expanded="true"]{border-color:var(--ink-3)}
 #proj:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 var(--hairline) var(--accent)}
@@ -124,7 +130,25 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .mi:hover,.mi:focus{background:var(--surface-3);color:var(--ink)}
 .mi:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
 .menu hr{margin:var(--sp-1) 0;border:0;border-top:var(--hairline) solid var(--border)}
+/* action items (New project, the example, More's entries) keep their icon; only the project list uses the check slot */
+.mi.act .ico,#moremenu .mi .ico{visibility:visible;color:var(--ink-3)}
+.mi.act:hover .ico,.mi.act:focus .ico,#moremenu .mi:hover .ico,#moremenu .mi:focus .ico{color:inherit}
+.menu .mi[hidden]{display:none}
 .top .btn.ghost{padding:0 var(--sp-2)}
+.top .btn.icon{padding:0}
+/* the More menu opens under its button, right edges aligned when the button sits near the right of its zone */
+.more{position:relative}
+#moremenu{min-width:var(--w-menu-min)}
+#moremenu .mi.narrow,#moremenu .mi.narrowest{display:none}
+#moremenu .mi[data-armed]{color:var(--error)}
+/* destructive items: quiet until hovered (same as Delete shot), the two-tap confirm lives in the label */
+#moremenu #delp:hover,#moremenu #delsong:hover,#leaveb:hover,#leaveb[data-armed]{color:var(--error)}
+#leaveb:hover,#leaveb[data-armed]{background:var(--error-subtle);border-color:transparent}
+/* saved state: quiet. A check when this browser (and the room) has every change, dots while saving, red only on failure */
+.saved{display:inline-flex;align-items:center;gap:var(--sp-1-5);min-width:var(--w-saved);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);white-space:nowrap}
+.saved .ico{color:var(--ok)}
+.saved[data-k="busy"] .ico,.saved[data-k="local"] .ico{color:var(--ink-3)}
+.saved[data-k="err"],.saved[data-k="err"] .ico{color:var(--error)}
 
 /* side switch: segmented control */
 .sides{display:flex;gap:var(--sp-0-5);padding:var(--sp-0-5);background:var(--inset);border-radius:var(--r-sm);box-shadow:inset 0 0 0 var(--hairline) var(--border)}
@@ -160,10 +184,11 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .btn.primary[disabled],.btn.primary[disabled]:hover{background:var(--accent);border-color:var(--accent)}
 .btn.ghost[disabled],.btn.ghost[disabled]:hover{background:transparent;border-color:transparent}
 /* destructive: quiet until hovered; the two-tap confirm lives in the label */
-#delp:hover,#delsong:hover,#f-del:hover,.take [data-act="del"]:hover{color:var(--error);background:var(--error-subtle);border-color:transparent}
-/* once a song is loaded, "Replace song" steps down from primary: Play becomes the one primary on side A */
-.top:has(#delsong:not([hidden])) #songlbl,body:has(#sideB:not([hidden])) #songlbl{background:var(--surface-2);border-color:var(--border-strong);color:var(--ink);font-weight:var(--w-medium)}
-.top:has(#delsong:not([hidden])) #songlbl:hover,body:has(#sideB:not([hidden])) #songlbl:hover{background:var(--surface-3);border-color:var(--border-control)}
+#f-del:hover,.take [data-act="del"]:hover{color:var(--error);background:var(--error-subtle);border-color:transparent}
+/* "Load song" is side A's primary until a song is loaded (then it moves into More as "Replace song" and Play is the
+   primary); side B has its own primary, so there it steps down to secondary */
+body:has(#sideB:not([hidden])) #songlbl{background:var(--surface-2);border-color:var(--border-strong);color:var(--ink);font-weight:var(--w-medium)}
+body:has(#sideB:not([hidden])) #songlbl:hover{background:var(--surface-3);border-color:var(--border-control)}
 /* joined buttons that act as one control (zoom) */
 .seg{display:flex}
 .seg .btn{border-radius:0}
@@ -404,8 +429,6 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .incut-badge{position:absolute;right:var(--sp-2);top:var(--sp-2);padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--ok);color:var(--ok-ink);font:var(--w-semibold) var(--text-sm)/var(--h-xs) var(--font-ui)}
 
 /* ---------- collaboration: media status indicator and its panel, who else is here, their selections, the join dialog ---------- */
-/* in a shared project the indicator speaks for saving too; the header status only shows up to report a local save error */
-.top:has(#mstatw:not([hidden])) #status:not(.err){display:none}
 /* the indicator: a quiet icon button. A thin neutral ring while files arrive, a dot when something is missing or wrong */
 .mstat{position:relative}
 .top .mstat>.btn.icon{padding:0}
@@ -417,7 +440,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 #mstat[data-k="off"] .mdot{display:block;box-shadow:inset 0 0 0 var(--hairline) var(--ink-2)}
 #mstat[data-k="err"] .mdot{display:block;background:var(--error)}
 /* its state in words on hover and keyboard focus (the panel says it once open) */
-.mlabel{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink);white-space:nowrap;pointer-events:none;visibility:hidden}
+.mlabel,.pchip::after{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink);white-space:nowrap;pointer-events:none;visibility:hidden}
 #mstat[aria-expanded="false"]:is(:hover,:focus-visible)~.mlabel{visibility:visible}
 /* the dropdown panel: non-modal, anchored under the indicator, right edges aligned (script keeps it on screen) */
 .mpanel{position:absolute;top:calc(100% + var(--sp-1));right:var(--mp-shift,0);z-index:var(--z-menu);display:grid;gap:var(--gap-block);width:var(--w-panel);max-width:calc(100vw - 2 * var(--gutter));max-height:var(--mp-max,var(--menu-max-h));overflow:auto;padding:var(--inset-panel);background:var(--surface-2);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-md);box-shadow:var(--shadow-float)}
@@ -445,9 +468,15 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 /* a thin neutral progress line: files arriving, in the panel and in place */
 .mbar{display:block;width:100%;height:var(--sp-0-5);overflow:hidden;background:var(--border-strong);border-radius:var(--r-xs)}
 .mbar b{display:block;width:var(--w,0);height:100%;background:var(--ink-2)}
+/* who is in the room: you first (a hollow ring), then the others (filled), then +N. Each bubble says its name on
+   hover and on keyboard focus (one tab stop, arrows move along the row), in the same label as the indicator's */
 .presence{display:flex;align-items:center;gap:var(--sp-0-5)}
-.pchip{display:inline-grid;place-items:center;width:var(--h-sm);height:var(--h-sm);border-radius:var(--r-round);background:var(--surface-3);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui)}
+.pchip{position:relative;display:inline-grid;place-items:center;width:var(--h-sm);height:var(--h-sm);border-radius:var(--r-round);background:var(--surface-3);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong);color:var(--ink-2);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-ui);cursor:default}
+.pchip.self{background:transparent;box-shadow:inset 0 0 0 var(--hairline) var(--border-control);color:var(--ink)}
 .pchip.more{background:transparent;color:var(--ink-3);font-weight:var(--w-medium)}
+.pchip:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
+.pchip::after{content:attr(data-tip);display:none}
+.pchip:is(:hover,:focus-visible)::after{display:block;visibility:visible}
 /* someone else has this shot selected: their initials on the thumbnail, neutral (orange stays "yours") */
 .pmark{position:absolute;right:var(--sp-2);top:var(--sp-2);display:flex;gap:var(--sp-0-5)}
 .bitem .bt{position:relative}
@@ -488,7 +517,33 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 @keyframes mspin{from{rotate:-90deg}to{rotate:270deg}}
 
 /* ---------- responsive: 1280-1920 primary, down to ~820 ---------- */
-@media (max-width:1359px){.top{flex-wrap:wrap}}
+/* the app bar never wraps: as it narrows, labels step back to their icons (still the accessible name, the title on
+   hover), then whole actions move into More. A Leave waiting for its second tap shows its words at any width */
+@media (max-width:1799px){
+  .projops .btn:not(.icon){width:var(--h-md);padding:0}
+  .projops .btn .ico:first-child{margin:0}
+  .projops .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+@media (max-width:1439px){
+  #importb,#exportb{display:none}
+  #moremenu .mi.narrow{display:flex}
+  .collab .btn:not([data-armed]){width:var(--h-md);padding:0}
+  .collab .btn:not([data-armed]) .ico:first-child{margin:0}
+  .collab .btn:not([data-armed]) .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+@media (max-width:1279px){
+  .brand .lbl{display:none}
+  .saved{min-width:0}
+  .saved .lbl,#settingsb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  #settingsb{width:var(--h-md);padding:0}
+  #settingsb .ico:first-child{margin:0}
+}
+@media (max-width:959px){
+  :root{--w-project-min:120px}
+  .songops{display:none}
+  #moremenu .mi.narrowest:not([hidden]){display:flex}
+  .sidetab .lbl{display:none}
+}
 @media (max-width:1180px){
   :root{--gutter:var(--sp-4);--list-w:220px;--inspector-w:320px;--gap-group:var(--sp-4)}
 }
@@ -511,36 +566,60 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-arrow-right" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
   <symbol id="i-swap" viewBox="0 0 16 16"><path d="M3 5.5h10M10 2.5l3 3-3 3M13 10.5H3M6 7.5l-3 3 3 3"/></symbol>
   <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
-  <symbol id="i-tray" viewBox="0 0 16 16"><path d="M8 2.5v7M5 6.5l3 3 3-3M2.5 10v2.5h11V10"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 16 16"><path d="M2.75 8A5.25 5.25 0 0 1 12 4.6l1.25 1.15M13.25 2.75v3h-3M13.25 8A5.25 5.25 0 0 1 4 11.4l-1.25-1.15M2.75 13.25v-3h3"/></symbol>
+  <symbol id="i-import" viewBox="0 0 16 16"><path d="M8 2.5v7M5 6.5l3 3 3-3M2.5 10v2.5h11V10"/></symbol>
+  <symbol id="i-export" viewBox="0 0 16 16"><path d="M8 9.5v-7M5 5.5l3-3 3 3M2.5 10v2.5h11V10"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 16 16"><path d="M10.25 3.25l2.5 2.5L6 12.5l-3 .5.5-3zM8.75 4.75l2.5 2.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.75 8h.01M8 8h.01M12.25 8h.01" stroke-width="2.5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 16 16"><path d="M6 7.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5zM2 13c0-2 1.75-3.25 4-3.25S10 11 10 13M10.75 3.1a2.25 2.25 0 0 1 0 4.3M12 9.9c1.25.4 2 1.5 2 3.1"/></symbol>
+  <symbol id="i-leave" viewBox="0 0 16 16"><path d="M6.5 2.5h-3v11h3M10 5l3 3-3 3M13 8H6.5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 16 16"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6M10 3v3M6 10v3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.25a5.75 5.75 0 1 0 0 11.5 5.75 5.75 0 0 0 0-11.5zM8 5v3.5M8 10.75h.01"/></symbol>
   <symbol id="i-x"viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
 </defs></svg>
 <div class="app">
   <header class="top">
-    <div class="brand"><i></i>Cue Board</div>
-    <nav class="sides" role="tablist" aria-label="Side"><button type="button" class="sidetab" role="tab" data-side="a" aria-selected="true">Side A · Cut</button><button type="button" class="sidetab" role="tab" data-side="b" aria-selected="false">Side B · Takes</button></nav>
-    <div class="tgroup">
-      <div class="projpick">
-        <button type="button" id="proj" aria-haspopup="menu" aria-expanded="false" aria-controls="projmenu"><span id="projname"></span></button>
-        <input id="ptitle" aria-label="Project name" placeholder="Project name" hidden>
-        <div id="projmenu" class="menu" role="menu" aria-label="Projects" hidden></div>
+    <!-- left: the project (name, rename, its operations, its song); centre: the side switch; right: the room, saving, settings -->
+    <div class="tzone tleft">
+      <div class="brand"><i></i><span class="lbl">Cue Board</span></div>
+      <div class="tgroup projgroup">
+        <div class="projpick">
+          <button type="button" id="proj" aria-haspopup="menu" aria-expanded="false" aria-controls="projmenu"><span id="projname"></span></button>
+          <input id="ptitle" aria-label="Project name" placeholder="Project name" hidden>
+          <div id="projmenu" class="menu" role="menu" aria-label="Projects" hidden></div>
+        </div>
+        <button type="button" id="renamep" class="btn ghost icon" aria-label="Rename project" title="Rename project"><svg class="ico" aria-hidden="true"><use href="#i-pencil"/></svg></button>
       </div>
-      <span id="presence" class="presence" role="group" hidden></span>
-      <button type="button" id="newp" class="btn ghost">New</button>
-      <button type="button" id="delp" class="btn ghost">Delete</button>
+      <div class="tgroup projops">
+        <button type="button" id="newp" class="btn ghost" title="New project"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span class="lbl">New</span></button>
+        <button type="button" id="importb" class="btn ghost" data-for="importf" title="Import a project file (.cueboard.json)"><svg class="ico" aria-hidden="true"><use href="#i-import"/></svg><span class="lbl">Import</span></button><input id="importf" type="file" accept=".json,application/json" hidden>
+        <button type="button" id="exportb" class="btn ghost" title="Export this project"><svg class="ico" aria-hidden="true"><use href="#i-export"/></svg><span class="lbl">Export</span></button>
+        <div class="more">
+          <button type="button" id="moreb" class="btn ghost icon" aria-haspopup="menu" aria-expanded="false" aria-controls="moremenu" aria-label="More project actions" title="More project actions"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg></button>
+          <div id="moremenu" class="menu" role="menu" aria-label="More project actions" hidden>
+            <button type="button" class="mi narrow" role="menuitem" tabindex="-1" data-for="importf"><svg class="ico" aria-hidden="true"><use href="#i-import"/></svg><span>Import…</span></button>
+            <button type="button" class="mi narrow" role="menuitem" tabindex="-1" data-for="exportb"><svg class="ico" aria-hidden="true"><use href="#i-export"/></svg><span>Export…</span></button>
+            <button type="button" class="mi narrowest" role="menuitem" tabindex="-1" data-for="song" id="mLoad"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>Load song…</span></button>
+            <button type="button" class="mi" role="menuitem" tabindex="-1" data-for="song" id="mReplace" hidden><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span>Replace song…</span></button>
+            <button type="button" class="mi" role="menuitem" tabindex="-1" id="delsong" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Remove song</span></button>
+            <hr role="separator">
+            <button type="button" class="mi" role="menuitem" tabindex="-1" id="delp"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete project</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="tgroup songops">
+        <button type="button" class="btn primary" data-for="song" id="songlbl">Load song</button>
+        <input id="song" type="file" accept="audio/*" hidden>
+      </div>
     </div>
-    <span class="grow"></span>
-    <div class="tgroup">
-      <label class="btn primary" for="song" id="songlbl">Load song</label>
-      <button type="button" id="delsong" class="btn ghost" hidden>Remove song</button>
-      <input id="song" type="file" accept="audio/*" hidden>
-    </div>
-    <div class="tgroup">
-      <button type="button" id="examplep" class="btn ghost" title="Open a sample project: a 13-shot cut of a public-domain song">Example</button>
-      <label class="btn ghost" for="importf">Import</label><input id="importf" type="file" accept=".json,application/json" hidden>
-      <button type="button" id="exportb" class="btn ghost">Export</button>
-      <button type="button" id="settingsb" class="btn ghost">Settings</button>
+    <nav class="sides" role="tablist" aria-label="Side"><button type="button" class="sidetab" role="tab" data-side="a" aria-selected="true">Side A<span class="lbl">&nbsp;· Cut</span></button><button type="button" class="sidetab" role="tab" data-side="b" aria-selected="false">Side B<span class="lbl">&nbsp;· Takes</span></button></nav>
+    <div class="tzone tright">
+      <div class="tgroup collab">
+      <button type="button" id="joinb" class="btn ghost" title="Join collaboration" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span class="lbl">Join collaboration</span></button>
+      <button type="button" id="leaveb" class="btn ghost" title="Leave collaboration (this project stays here as a local copy)" hidden><svg class="ico" aria-hidden="true"><use href="#i-leave"/></svg><span class="lbl">Leave collaboration</span></button>
+      <div id="presence" class="presence" role="group" hidden></div>
       <div class="mstat" id="mstatw" hidden>
-        <button type="button" id="mstat" class="btn ghost icon" aria-haspopup="dialog" aria-expanded="false" aria-controls="mpanel" aria-label="Files"><svg class="ico" aria-hidden="true"><use href="#i-tray"/></svg><svg class="mring" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="13" pathLength="100"/><circle class="arc" cx="14" cy="14" r="13" pathLength="100"/></svg><span class="mdot"></span></button>
+        <button type="button" id="mstat" class="btn ghost icon" aria-haspopup="dialog" aria-expanded="false" aria-controls="mpanel" aria-label="Files"><svg class="ico" aria-hidden="true"><use href="#i-sync"/></svg><svg class="mring" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="13" pathLength="100"/><circle class="arc" cx="14" cy="14" r="13" pathLength="100"/></svg><span class="mdot"></span></button>
         <span class="mlabel" id="mlabel" aria-hidden="true"></span>
         <div class="mpanel" id="mpanel" role="dialog" tabindex="-1" aria-labelledby="mhead" aria-describedby="mtip" hidden>
           <div class="mp-head"><h3 id="mhead" aria-live="polite"></h3><p class="muted" id="mtip"></p></div>
@@ -556,8 +635,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
           </div>
         </div>
       </div>
+      </div>
+      <span id="status" class="saved" data-k="busy" title="Loading"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Loading</span></span>
+      <button type="button" id="settingsb" class="btn ghost" title="Settings"><svg class="ico" aria-hidden="true"><use href="#i-sliders"/></svg><span class="lbl">Settings</span></button>
     </div>
-    <span id="status" class="status">Loading</span>
   </header>
 
   <div id="sideA">
@@ -760,7 +841,18 @@ function localStore(){let cb=null;const all=async()=>{const r=await idbS("projec
     set:async p=>{const r=await idbS("projects","readwrite",st=>st.put(p,p.id));if(r===null)throw{code:"write_failed"};cb&&cb(await all())},
     del:async id=>{await idbS("projects","readwrite",st=>st.delete(id));cb&&cb(await all())},
     subscribe(f){cb=f;all().then(f)}}}
-function setStatus(kind,text){const s=$("status");s.className="status "+kind;s.textContent=text}
+/* saved state, in the bar: what this browser's save says (busy/ok/err) together with the room's state when the
+   project is in one. Nothing to press: every change saves itself, here and to the room */
+let saveK="busy",saveT="Loading",roomSt="";
+function setStatus(kind,text){saveK=kind;saveT=text;renderSaved()}
+function renderSaved(){const s=$("status"),r=SYNC_URL&&cur&&cset.rooms[cur.id]?roomSt:"";let k=saveK,t,tip;
+  if(k==="err"){t=saveT;tip=saveT+(saveT==="Browser storage unavailable"?". This browser blocks local storage, so nothing will be saved.":". Your latest changes are only in this tab; export the project to keep a copy.")}
+  else if(k==="busy"){t=saveT==="Loading"?"Loading":"Saving…";tip=t==="Loading"?"Loading your projects":r?"Saving your changes in this browser and sending them to the room":"Saving your changes in this browser"}
+  else if(!r){t="Saved";tip="Every change is saved in this browser"}
+  else if(r==="synced"){t="Saved";tip="Every change is saved in this browser and synced with the room"}
+  else if(r==="syncing"){k="busy";t="Syncing…";tip="Saved in this browser. Connecting to the room…"}
+  else{k="local";t="Saved locally";tip="Saved in this browser. Your changes go to the room once it can be reached again."}
+  s.dataset.k=k;s.title=tip;s.querySelector(".lbl").textContent=t;s.querySelector("use").setAttribute("href",k==="err"?"#i-alert":k==="busy"?"#i-more":"#i-check")}
 
 /* media: blobs in IndexedDB, shown through object URLs cached per session */
 const mediaCache=new Map();
@@ -837,7 +929,7 @@ const editing=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.close
 
 /* ---------- projects ---------- */
 function selectProject(p){
-  stop();cur=clone(p);selId=cur.sections[0]&&cur.sections[0].id;ls(KEY_LAST,cur.id);vt=0;pps=null;lastKey="";
+  if(renaming)endRename(true);stop();cur=clone(p);selId=cur.sections[0]&&cur.sections[0].id;ls(KEY_LAST,cur.id);vt=0;pps=null;lastKey="";
   loadAudio();renderAll();
   const pid=cur.id;loadProjectMedia(cur).then(()=>{if(!cur||cur.id!==pid)return;lastKey="";renderAll();renderB();ensurePolling();refreshCredits()});
   collabFor(cur);
@@ -892,9 +984,14 @@ function renderAll(){renderProjSelect();renderSongbar();renderTransport();render
 function renderProjSelect(){
   const b=$("proj"),name=cur?cur.title||"Untitled project":"No projects";
   $("projname").textContent=name;b.title=cur?name:"";b.setAttribute("aria-label","Project: "+name);
-  b.disabled=!cur&&!projects.length;$("delp").disabled=!cur;
+  $("delp").disabled=!cur;renderRenameBtn();renderCollabBtns();renderSaved();
   if(!$("projmenu").hidden)renderProjMenu();
 }
+/* the room, at the top level: Join while the open project isn't in one (also with no project), Leave while it is */
+function renderCollabBtns(){const inRoom=!!(cur&&cset.rooms[cur.id]),j=$("joinb"),l=$("leaveb"),foc=document.activeElement;
+  j.hidden=!SYNC_URL||inRoom;l.hidden=!SYNC_URL||!inRoom;if(l.hidden)resetLeave();
+  /* the one that was focused went away: its counterpart takes the focus */
+  if(foc===j&&j.hidden&&!l.hidden)l.focus();else if(foc===l&&l.hidden&&!j.hidden)j.focus()}
 function renderSongbar(){
   const el=$("songbar");
   if(cur&&cur.song&&cur.song.name&&!hasAudio){el.hidden=false;el.dataset.stale=songStale?"1":"";
@@ -904,7 +1001,8 @@ function renderSongbar(){
       :`<span>This project uses <b>${esc(cur.song.name)}</b>. Load it here to hear it.</span>${ph}<label class="btn small" for="song">Load ${esc(cur.song.name)}</label>`;missSoon()}
   else el.hidden=true;
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
-  $("delsong").hidden=!has;$("songlbl").textContent=has?"Replace song":"Load song";
+  /* no song: "Load song" in the bar (in More when the bar is narrow); a song: Replace and Remove, in More */
+  $("songlbl").hidden=has;$("mLoad").hidden=has;$("mReplace").hidden=!has;$("delsong").hidden=!has;
 }
 function renderTransport(){
   const pl=$("play"),pi=playing?"pause":"play";$("play").disabled=!hasAudio;
@@ -1082,59 +1180,90 @@ $("zin").onclick=()=>{pps=Math.min(400,(pps==null?P:pps)*1.6);renderTimeline()};
 $("zout").onclick=()=>{const cw=scroller.clientWidth;let v=(pps==null?P:pps)/1.6;pps=v*dur()<=cw?null:v;renderTimeline()};
 $("zfit").onclick=()=>{pps=null;renderTimeline()};
 $("song").onchange=e=>{const f=e.target.files[0];e.target.value="";loadSongFile(f)};
-/* project menu: every project (the open one checked), then Rename…; arrows move, Escape closes and hands focus back */
+/* menus in the bar (projects, More): arrows, Home and End move, Escape closes and hands focus back to the button,
+   Tab or a click outside closes. Items hidden at this width (More's narrow entries) or disabled are skipped */
+const menuItems=m=>[...m.querySelectorAll(".mi")].filter(x=>!x.disabled&&x.getClientRects().length);
+function openMenu(btn,m,focus){
+  if(m.id==="projmenu")renderProjMenu();m.hidden=false;btn.setAttribute("aria-expanded","true");
+  /* a separator only between two visible parts */
+  const hr=m.querySelector("hr");if(hr&&m.id==="moremenu"){hr.hidden=false;hr.hidden=!menuItems(m).some(x=>hr.compareDocumentPosition(x)&Node.DOCUMENT_POSITION_PRECEDING)}
+  const it=menuItems(m);(focus==="last"?it[it.length-1]:it.find(x=>x.getAttribute("aria-checked")==="true")||it[0])?.focus();
+}
+function closeMenu(btn,m,refocus){if(m.hidden)return;m.hidden=true;btn.setAttribute("aria-expanded","false");if(m.id==="moremenu")disarmMore();if(refocus)btn.focus()}
+const closeProjMenu=refocus=>closeMenu($("proj"),$("projmenu"),refocus),closeMore=refocus=>closeMenu($("moreb"),$("moremenu"),refocus);
+[[$("proj"),$("projmenu")],[$("moreb"),$("moremenu")]].forEach(([btn,m])=>{
+  btn.onclick=()=>m.hidden?openMenu(btn,m):closeMenu(btn,m,true);
+  btn.addEventListener("keydown",e=>{
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();e.stopPropagation();openMenu(btn,m,e.key==="ArrowUp"?"last":"")}
+    else if(e.key===" "||e.key==="Enter")e.stopPropagation();
+  });
+  m.addEventListener("keydown",e=>{
+    const it=menuItems(m),i=it.indexOf(document.activeElement);e.stopPropagation();
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();it[(i+(e.key==="ArrowDown"?1:-1)+it.length)%it.length]?.focus()}
+    else if(e.key==="Home"||e.key==="End"){e.preventDefault();it[e.key==="Home"?0:it.length-1]?.focus()}
+    else if(e.key==="Escape"){e.preventDefault();closeMenu(btn,m,true)}
+    else if(e.key==="Tab")closeMenu(btn,m,false);
+  });
+  document.addEventListener("pointerdown",e=>{if(!btn.parentNode.contains(e.target))closeMenu(btn,m,false)});
+});
+/* project menu: it only switches projects. Every project (the open one checked), then New project, and the example
+   while it isn't one of them */
 function renderProjMenu(){
   const list=projects.map(p=>cur&&p.id===cur.id?cur:p);if(cur&&!list.includes(cur))list.unshift(cur);
+  const ex=list.some(p=>p.id==="p-example");
   $("projmenu").innerHTML=list.map(p=>{const t=p.title||"Untitled project";
     return `<button type="button" class="mi" role="menuitemradio" tabindex="-1" aria-checked="${p===cur}" data-pid="${esc(p.id)}" title="${esc(t)}">${ico("check")}<span>${esc(t)}</span></button>`}).join("")
-    +(cur||SYNC_URL?`<hr role="separator">`:"")
-    +[cur&&["rename","Rename…"],SYNC_URL&&["join","Join collaboration…"],SYNC_URL&&cur&&cset.rooms[cur.id]&&["leave","Leave collaboration"]].filter(Boolean)
-      .map(([a,t])=>`<button type="button" class="mi" role="menuitem" tabindex="-1" data-act="${a}">${ico("check")}<span>${t}</span></button>`).join("");
+    +(list.length?`<hr role="separator">`:"")
+    +`<button type="button" class="mi act" role="menuitem" tabindex="-1" data-act="new">${ico("plus")}<span>New project</span></button>`
+    +(ex?"":`<button type="button" class="mi" role="menuitem" tabindex="-1" data-act="example" title="Open a sample project: a 13-shot cut of a public-domain song">${ico("check")}<span>Example project</span></button>`);
 }
-const menuItems=()=>[...$("projmenu").querySelectorAll(".mi")];
-function openProjMenu(focus){
-  renderProjMenu();$("projmenu").hidden=false;$("proj").setAttribute("aria-expanded","true");
-  const it=menuItems();(focus==="last"?it[it.length-1]:it.find(x=>x.getAttribute("aria-checked")==="true")||it[0])?.focus();
-}
-function closeProjMenu(refocus){if($("projmenu").hidden)return;$("projmenu").hidden=true;$("proj").setAttribute("aria-expanded","false");if(refocus)$("proj").focus()}
-$("proj").onclick=()=>$("projmenu").hidden?openProjMenu():closeProjMenu(true);
-$("proj").addEventListener("keydown",e=>{
-  if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();e.stopPropagation();openProjMenu(e.key==="ArrowUp"?"last":"")}
-  else if(e.key===" "||e.key==="Enter")e.stopPropagation();
-});
-$("projmenu").addEventListener("keydown",e=>{
-  const it=menuItems(),i=it.indexOf(document.activeElement);e.stopPropagation();
-  if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();it[(i+(e.key==="ArrowDown"?1:-1)+it.length)%it.length]?.focus()}
-  else if(e.key==="Home"||e.key==="End"){e.preventDefault();it[e.key==="Home"?0:it.length-1]?.focus()}
-  else if(e.key==="Escape"){e.preventDefault();closeProjMenu(true)}
-  else if(e.key==="Tab")closeProjMenu(false);
-});
 $("projmenu").onclick=e=>{
   const b=e.target.closest(".mi");if(!b)return;
-  if(b.dataset.act==="rename"){closeProjMenu(false);startRename();return}
-  if(b.dataset.act==="join"){closeProjMenu(false);joinFlow(null);return}
-  if(b.dataset.act==="leave"){closeProjMenu(true);leaveRoom();return}
-  closeProjMenu(true);const p=projects.find(x=>x.id===b.dataset.pid);
+  if(b.dataset.act==="new"){closeProjMenu(false);newProject($("proj"));return}
+  closeProjMenu(true);
+  if(b.dataset.act==="example"){openExample();return}
+  const p=projects.find(x=>x.id===b.dataset.pid);
   if(p&&(!cur||p.id!==cur.id)){if(dirty)flush();selectProject(p)}
 };
-document.addEventListener("pointerdown",e=>{if(!e.target.closest(".projpick"))closeProjMenu(false)});
-/* rename in place: the picker turns into a field; Enter or leaving it saves, Escape cancels */
-let renaming=false;
-function startRename(){
-  if(!cur)return;renaming=true;const t=$("ptitle");
-  $("proj").parentNode.classList.add("renaming");t.hidden=false;t.value=cur.title||"";t.focus();t.select();
+/* More: what doesn't fit the bar at this width, the song's Replace and Remove, and Delete project last. An entry
+   stands in for its bar button (data-for); the two destructive ones confirm with a second tap and keep the menu open */
+$("moremenu").onclick=e=>{
+  const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong")return;
+  closeMore(true);$(b.dataset.for).click();
+};
+/* Space and Enter on a button in the bar press it (side A's Space-to-play is for the rest of the page) */
+document.querySelector(".top").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&e.target.closest("button"))e.stopPropagation()});
+$("importb").onclick=()=>$("importf").click();
+$("songlbl").onclick=()=>$("song").click();
+/* rename in place: the pencil next to the name turns the picker into a field and itself into a check. Enter or the
+   check saves, Escape cancels, leaving the field saves. Focus goes back to whatever started it */
+let renaming=false,renamePid=null,renameFrom=null;
+function renderRenameBtn(){const b=$("renamep"),t=renaming?"Save name":"Rename project";
+  b.querySelector("use").setAttribute("href",renaming?"#i-check":"#i-pencil");b.setAttribute("aria-label",t);b.title=t;b.disabled=!cur}
+function startRename(from){
+  if(!cur||renaming)return;closeProjMenu(false);renaming=true;renamePid=cur.id;renameFrom=from||$("renamep");const t=$("ptitle");
+  $("proj").parentNode.classList.add("renaming");t.hidden=false;t.value=cur.title||"";renderRenameBtn();t.focus();t.select();
 }
 function endRename(save){
   if(!renaming)return;renaming=false;const t=$("ptitle"),had=document.activeElement===t;
-  if(save&&cur){const v=t.value.trim()||"Untitled project";if(v!==cur.title){cur.title=v;dirty=true;clearTimeout(timer);timer=null;flush();if(csess)csess.changed(true)}}
-  t.hidden=true;$("proj").parentNode.classList.remove("renaming");renderProjSelect();if(had)$("proj").focus();
+  /* only into the project it was started on: a switch underneath it (an invite, a remote change) ends it first */
+  if(save&&cur&&cur.id===renamePid){const v=t.value.trim()||"Untitled project";if(v!==cur.title){cur.title=v;dirty=true;clearTimeout(timer);timer=null;flush();if(csess)csess.changed(true)}}
+  t.hidden=true;$("proj").parentNode.classList.remove("renaming");renderRenameBtn();renderProjSelect();
+  if(had){const f=renameFrom&&renameFrom.isConnected&&!renameFrom.disabled&&renameFrom.getClientRects().length?renameFrom:$("proj");f.focus()}
 }
 $("ptitle").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key==="Escape"){e.preventDefault();e.stopPropagation();endRename(e.key==="Enter")}});
 $("ptitle").addEventListener("blur",()=>endRename(true));
-$("newp").onclick=()=>{if(dirty)flush();const p=makeProject();selectProject(p);projects.unshift(clone(p));renderProjSelect();flush();startRename()};
-function twoTap(btn,label,confirmLabel,fn){let armed=false,tm=null;btn.onclick=()=>{if(!armed){armed=true;btn.textContent=confirmLabel;tm=setTimeout(()=>{armed=false;btn.textContent=label},2600);return}clearTimeout(tm);armed=false;btn.textContent=label;fn()};return()=>{clearTimeout(tm);armed=false;btn.textContent=label}}
-twoTap($("delp"),"Delete","Tap again to delete",async()=>{
-  if(!cur||!store)return;const id=cur.id,imgs=projectMediaIds(cur);
+/* the check: pressing it must not blur the field first (that would save, and the click would then start a new rename) */
+$("renamep").addEventListener("mousedown",e=>{if(renaming)e.preventDefault()});
+$("renamep").onclick=()=>renaming?endRename(true):startRename($("renamep"));
+function newProject(from){if(dirty)flush();const p=makeProject();selectProject(p);projects.unshift(clone(p));renderProjSelect();flush();startRename(from)}
+$("newp").onclick=()=>newProject($("newp"));
+/* two taps: the first arms (the label asks to confirm, data-armed shows it at any width), the second acts */
+function twoTap(btn,label,confirmLabel,fn){let armed=false,tm=null;const l=btn.querySelector("span")||btn;
+  const set=on=>{armed=on;l.textContent=on?confirmLabel:label;btn.toggleAttribute("data-armed",on)};
+  btn.onclick=()=>{if(!armed){set(true);tm=setTimeout(()=>set(false),2600);return}clearTimeout(tm);set(false);fn()};return()=>{clearTimeout(tm);set(false)}}
+const resetDelp=twoTap($("delp"),"Delete project","Tap again to delete",async()=>{
+  closeMore(true);if(!cur||!store)return;const id=cur.id,imgs=projectMediaIds(cur);
   clearTimeout(timer);timer=null;dirty=false;stop();
   try{await store.del(id)}catch(e){toast("Couldn't delete");return}
   idbDo("readwrite",st=>st.delete(id));if(assets)imgs.forEach(x=>{if(!mediaInUse(x,id))assets.delete(x).catch(()=>{})});
@@ -1142,11 +1271,12 @@ twoTap($("delp"),"Delete","Tap again to delete",async()=>{
   projects=projects.filter(p=>p.id!==id);cur=null;selId=null;hasAudio=false;lastKey="";
   if(projects.length)selectProject(projects[0]);else renderAll();toast("Project deleted");
 });
-twoTap($("delsong"),"Remove song","Tap again to remove",()=>{
-  if(!cur)return;stop();idbDo("readwrite",st=>st.delete(cur.id));
+const resetDelsong=twoTap($("delsong"),"Remove song","Tap again to remove",()=>{
+  closeMore(true);if(!cur)return;stop();idbDo("readwrite",st=>st.delete(cur.id));
   if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}audio.removeAttribute("src");try{audio.load()}catch(e){}
   hasAudio=false;cur.song=null;vt=0;scheduleSave();renderAll();toast("Song removed. Your cuts and shots are kept.");
 });
+function disarmMore(){resetDelp();resetDelsong()}
 const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",()=>{
   const s=S(),i=s.findIndex(x=>x.id===selId);if(i<0)return;
   if(s.length===1){Object.assign(s[0],{title:"",shot:"",notes:"",imgPrompt:"",vidPrompt:""});}
@@ -1326,7 +1456,6 @@ async function openExample(quiet){
   const data=window.CUEBOARD_EXAMPLE;if(!data){if(!quiet)toast("Couldn't load the example (example/example.js is missing)");return}
   await importFile(new File([JSON.stringify(data)],"example.cueboard.json",{type:"application/json"}));setSide("a");
 }
-$("examplep").onclick=openExample;
 document.addEventListener("click",e=>{if(e.target.closest("[data-example]"))openExample()});
 $("exportb").onclick=()=>{if(!cur){toast("Nothing to export yet");return}$("dlgExport").showModal()};
 $("expGo").onclick=async()=>{$("dlgExport").close();await exportProject($("expSong").checked)};
@@ -1835,7 +1964,7 @@ function mediaChip(x){if(!x||!x.total)return null;
   if(x.relay)return["off",plural(x.relay,"too large to relay"),"Too big to pass through the sync server. It arrives when you and someone who has it can connect directly (for example, on the same network).","relay"];
   if(x.skipped)return["off",plural(x.skipped,"skipped: over the size limit"),"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
   return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
-function renderCollab(s){const w=$("mstatw"),b=$("mstat");
+function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSaved();
   if(!s){w.hidden=true;closeFiles();for(const k of ["state","media","unshared","k"])delete b.dataset[k];peers=[];renderPresence();return}
   let [k,t,tip]=CST[s]||CST.syncing,media="";
   const m=cmedia(),x=s==="synced"&&m?m.summary():null;
@@ -1933,12 +2062,30 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
 if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
-function renderPresence(){const el=$("presence"),l=csess?peers:[];
-  const chip=(t,title,cls)=>{const c=document.createElement("span");c.className="pchip"+(cls||"");c.textContent=t;c.title=title;return c};
-  el.replaceChildren(...l.slice(0,4).map(p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return chip(p.initials,p.name+(i>=0?" · on shot "+pad(i+1):""))}));
-  if(l.length>4)el.append(chip("+"+(l.length-4),l.slice(4).map(p=>p.name).join(", ")," more"));
-  el.hidden=!l.length;el.setAttribute("aria-label",l.length?"Also in this project: "+l.map(p=>p.name).join(", "):"");
+/* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
+   Bubbles are rebuilt on every change; the focused one (by person) keeps the focus, or the row's first takes it */
+const initialsOf=n=>{const w=n.split(/\s+/).filter(Boolean);return((w.length>1?[...w[0]][0]+[...w[w.length-1]][0]:[...(w[0]||"?")].slice(0,2).join(""))||"?").toUpperCase()};
+const narrowBar=matchMedia("(max-width:1279px)");
+function renderPresence(){const el=$("presence"),b=cur&&csess&&csessPid===cur.id?cset.rooms[cur.id]:null,l=b?peers:[],cap=narrowBar.matches?2:4;
+  const foc=el.contains(document.activeElement)?document.activeElement.dataset.key:null;
+  const chip=(t,tip,key,cls)=>{const c=document.createElement("span");c.className="pchip"+(cls||"");c.textContent=t;c.dataset.tip=tip;c.dataset.key=key;
+    c.setAttribute("role","img");c.setAttribute("aria-label",tip);c.tabIndex=-1;return c};
+  const me=b?b.name||cset.name||"You":"";
+  const kids=b?[chip(initialsOf(me),me+" (you)","self"," self"),...l.slice(0,cap).map(p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return chip(p.initials,p.name+(i>=0?" · on shot "+pad(i+1):""),"p"+p.id)})]:[];
+  if(l.length>cap)kids.push(chip("+"+(l.length-cap),l.slice(cap).map(p=>p.name).join(", "),"more"," more"));
+  el.replaceChildren(...kids);el.hidden=!kids.length;el.setAttribute("aria-label",kids.length?"In this room: "+[me+" (you)",...l.map(p=>p.name)].join(", "):"");
+  if(kids.length){const f=kids.find(c=>c.dataset.key===foc)||kids[0];f.tabIndex=0;if(foc!=null)f.focus()}
+  else if(foc!=null)(!$("joinb").hidden?$("joinb"):$("proj")).focus();
 }
+narrowBar.addEventListener("change",renderPresence);
+/* one tab stop for the row; arrows move along it */
+$("presence").addEventListener("keydown",e=>{const it=[...$("presence").children],i=it.indexOf(document.activeElement);if(i<0)return;
+  const j={ArrowRight:i+1,ArrowDown:i+1,ArrowLeft:i-1,ArrowUp:i-1,Home:0,End:it.length-1}[e.key];if(j==null)return;
+  e.preventDefault();e.stopPropagation();const t=it[Math.max(0,Math.min(it.length-1,j))];it.forEach(c=>c.tabIndex=-1);t.tabIndex=0;t.focus()});
+$("joinb").onclick=async()=>{await joinFlow(null);
+  /* the dialog hands focus back to Join; once joined that's hidden, so Leave takes it */
+  const a=document.activeElement;if(!a||a===document.body||a===$("joinb")&&$("joinb").hidden)(!$("leaveb").hidden?$("leaveb"):$("joinb")).focus()};
+const resetLeave=twoTap($("leaveb"),"Leave collaboration","Tap again to leave",()=>leaveRoom());
 /* who else has which shot selected: their initials on the card / list thumbnail */
 function renderMarks(){
   document.querySelectorAll(".pmark").forEach(x=>x.remove());if(!csess||!peers.length)return;
@@ -1958,7 +2105,7 @@ async function collabFor(p){
   const m=await loadCollab();
   if(!cur||cur.id!==p.id||csessPid===p.id||!cset.rooms[p.id])return;
   if(!m){renderCollab("unreachable");return}
-  csessPid=p.id;cunshared=0;csess=m.open(p.id,{roomId:b.roomId,token:b.token,name:cset.name,dev:deviceId},{mode:b.share?"share":"normal"});csess.select(selId);
+  csessPid=p.id;cunshared=0;csess=m.open(p.id,{roomId:b.roomId,token:b.token,name:cset.name,dev:deviceId},{mode:b.share?"share":"normal"});csess.select(selId);renderPresence();
 }
 /* the room's offline copy (collab.js' "cueboard-collab" database), also from a tab that never loaded collab.js.
    Never creates the database: collab.js makes its stores on first open, which an empty one here would skip */
