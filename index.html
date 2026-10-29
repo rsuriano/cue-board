@@ -615,8 +615,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
     --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px;
     /* the timeline's rows: the ruler (the zoom on its right), the shot strip, the waveform. A fixed height; the preview takes the rest */
-    --tl-ruler-h:var(--hit); --tl-strip:56px; --tl-wave:clamp(72px,12dvh,120px);
-    --tl-h:calc(var(--tl-ruler-h) + var(--sp-1) + var(--tl-strip) + var(--sp-2) + var(--tl-wave) + var(--sp-2) + 2 * var(--hairline));
+    --tl-ruler-h:var(--hit); --tl-strip-h:56px; --tl-wave-h:clamp(72px,12dvh,120px);
+    --tl-h:calc(var(--tl-ruler-h) + var(--sp-1) + var(--tl-strip-h) + var(--sp-2) + var(--tl-wave-h) + var(--sp-2) + 2 * var(--hairline));
     --grip-w:var(--sp-3); --icon-tool:var(--sp-5); --z-sheet:14;
     --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px); --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px)}
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
@@ -2566,7 +2566,7 @@ function mDraw(){
       g.restore();
       if(sel){g.strokeStyle=MT["--accent"];g.lineWidth=2;g.strokeRect(a+3,b.top+1,Math.max(0,e-a-6),b.h-2)}});
     const pk=cur.song&&cur.song.peaks,sd=(cur.song&&cur.song.duration)||d;
-    if(pk&&pk.length){g.fillStyle=T["--tl-wave"];for(let px=Math.max(0,Math.ceil(X(0)/2)*2);px<Math.min(cw,X(sd));px+=2){const t=(px+off)/P,idx=Math.min(pk.length-1,Math.floor(t/sd*pk.length));const am=Math.max(.75,pk[idx]*wh);g.fillRect(px,mid-am,1.4,am*2)}}
+    if(pk&&pk.length){g.fillStyle=T["--tl-wave"];for(let px=Math.max(0,Math.ceil(X(0)/2)*2);px<Math.min(cw,X(sd));px+=2){const t=(px+off)/P,idx=Math.min(pk.length-1,Math.floor(t/sd*pk.length));const am=Math.max(.75,Math.sqrt(pk[idx])*wh);g.fillRect(px,mid-am,1.4,am*2)}}
     else{g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(Math.max(0,X(0)),mid+.5);g.lineTo(Math.min(cw,X(d)),mid+.5);g.stroke();
       g.fillStyle=T["--tl-label"];g.font="500 12px 'Instrument Sans', sans-serif";g.textAlign="center";g.fillText(hasAudio?"Analyzing…":"Load the song to see the waveform",cw/2,mid-12);g.textAlign="left"}
     /* cuts: neutral lines; the one being moved in ink. Their grips are buttons (#mGrips) */

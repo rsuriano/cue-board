@@ -38,8 +38,16 @@ for (const [w, h] of SIZES) {
     s.length = 12; s.forEach((x, i) => { x.start = +(i * d / 12).toFixed(2); }); a.renderAll(); });
   await page.waitForFunction(() => document.getElementById('audio').duration > 0, null, { timeout: 10000 }).catch(() => {});
   await page.evaluate(() => { const sc = document.getElementById('tl-scroll'); sc.scrollLeft = Math.round((sc.scrollWidth - sc.clientWidth) * .3); });
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.getElementById('toast').hidden, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
   await page.screenshot({ path: join(out, `${dev}.png`) });
+  // at the song's start the playhead is still centred: the left half is before 0:00, ruled, not an empty column
+  const sl = await page.evaluate(() => document.getElementById('tl-scroll').scrollLeft);
+  await page.evaluate(() => { document.getElementById('tl-scroll').scrollLeft = 0; });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(out, `${dev}-start.png`) });
+  await page.evaluate(x => { document.getElementById('tl-scroll').scrollLeft = x; }, sl);
+  await page.waitForTimeout(400);
   const m = await page.evaluate(() => {
     const R = id => { const e = document.getElementById(id) || document.querySelector(id); return e && e.getClientRects().length ? e.getBoundingClientRect() : null; };
     const tl = R('.timeline'), cv = R('tl'), ph = R('ph'), mon = R('monitor'), tabs = R('mTabs'), tool = R('mTool'), zoom = R('.transport .seg');
