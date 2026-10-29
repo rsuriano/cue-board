@@ -196,7 +196,10 @@ export function createMedia(ctx) {
   function frameIn(/** @type {any} */ p, /** @type {Uint8Array} */ f, /** @type {boolean} */ viaSignal) {
     if (p.banned || p.gone || stopped) return;
     if (++p.pending > MAX_PENDING) { ban(p, 'flood'); return; }
-    p.chain = p.chain.then(() => handle(p, f, viaSignal)).catch(() => {}).finally(() => { p.pending--; });
+    const run = () => handle(p, f, viaSignal).catch(() => {}).finally(() => { p.pending--; });
+    // control messages in order; chunks (self-contained, each checked against what was asked) are decrypted and
+    // written side by side, so one IndexedDB write doesn't hold up the next chunk. MAX_PENDING still bounds memory.
+    if (f[0] === F_CHUNK) run(); else p.chain = p.chain.then(run);
   }
   async function handle(/** @type {any} */ p, /** @type {Uint8Array} */ f, /** @type {boolean} */ viaSignal) {
     await keyP;
@@ -305,7 +308,10 @@ export function createMedia(ctx) {
   function lost(/** @type {string[]} */ hs) { for (const p of peers.values()) if (p.heard && !p.banned) ctl(p, { t: 'lost', h: hs }); }
 
   /* ---------- scheduling ---------- */
-  function schedule() { if (!tickTimer && !stopped) tickTimer = setTimeout(tick, 0); }
+  /* run the scheduler now. The 1 s fallback timer it leaves behind (stale requests, new holders) must not stand in the
+     way: refilling the window only once a second capped every transfer at 16 chunks/s. */
+  let tickSoon = false;
+  function schedule() { if (stopped || tickSoon) return; clearTimeout(tickTimer); tickSoon = true; tickTimer = setTimeout(tick, 0); }
   let changeTimer = /** @type {any} */ (0);
   const changed = () => { clearTimeout(changeTimer); changeTimer = 0; if (!stopped) ctx.onChange(); };
   const changedSoon = () => { if (!changeTimer) changeTimer = setTimeout(changed, 250); };
@@ -325,7 +331,7 @@ export function createMedia(ctx) {
   }
   const holders = (/** @type {string} */ h) => [...peers.values()].filter(p => p.heard && !p.banned && !p.gone && p.have.has(h));
   async function tick() {
-    tickTimer = 0;
+    tickTimer = 0; tickSoon = false;
     if (stopped) return;
     const { w, fetch } = plan();
     // a crash after a file landed and before its parts were dropped leaves them behind: drop them for files that are here

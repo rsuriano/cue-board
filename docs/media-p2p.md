@@ -102,6 +102,16 @@ Each has a test (Node: `packages/collab-client/test/media.test.mjs`; browser: `d
 - Firefox and Safari not tested (Chromium only).
 - The relay shares the doc's WebSocket: a big relayed transfer can delay doc updates by up to ~1 MiB of queue (about 0.3 s at the paced rate).
 
+## Measured (this machine, headless Chromium, everything on 127.0.0.1)
+
+From `design/media-check.mjs`, a 6.7 MB frame plus a 31.5 MB take plus the example's song:
+
+- WebRTC, A → B: about **9 MB/s** from join to verified (4.3 s); B's JS heap peaked at 37 MB (chunks go to IndexedDB as they arrive, and the hash is computed over 4 MiB slices).
+- Relay, D → server → F (direct blocked): **3.3 MB/s**, which is the clients' own pacing (3 MB/s, under the server's 4 MiB/s per-IP cap). F's heap peaked at 40 MB. The sync server used **8% of one core**, RSS 83 → 97 MB peak, and nothing in its data dir or log held any of the plaintext.
+- A first build ran at ~1.1 MB/s on both paths: the scheduler's 1 s fallback timer blocked the immediate refills, so the request window was refilled once a second. Fixed in `schedule()`; the number above is after the fix.
+
+Incognito contexts keep IndexedDB blobs in memory, so these heap numbers say nothing about a normal profile's disk use.
+
 ## Checks
 
 - `npm test -w @cue-board/collab-client`: `test/media.test.mjs` (KATs, envelope, validation, `Download`, backpressure, and end to end through the real server's relay: replication, offline originator, foreign key, resume, corruption, source leaving, remote delete, storage full, limits, unreferenced hash).
