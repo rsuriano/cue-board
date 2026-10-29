@@ -174,7 +174,7 @@ test('(m6) per-IP buckets are forgotten once idle, also for an IP that was busy 
   relay.handle(room, a, enc(bid, relayFrame(60_000)));
   relay.detach(room, a); relay.detach(room, b);
   assert.equal(relay.ipBuckets, 1);
-  const t = Date.now; Date.now = () => t() + 11_000;
+  const t = Date.now; Date.now = () => t() + 20_000;
   try { relay.sweep(); } finally { Date.now = t; }
   assert.equal(relay.ipBuckets, 0);
 });

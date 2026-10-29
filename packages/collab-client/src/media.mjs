@@ -49,7 +49,7 @@ export function createMedia(ctx) {
   let myId = 0, sseq = 0, stopped = false, paused = false, override = false, storageFull = false, relayMax = OLD_RELAY_MAX;
   const reMs = () => T.reannounceMs || REANNOUNCE_MS;
   const storeState = () => (ctx.storage ? ctx.storage() : 'ok');
-  /** @type {Map<string, { until: number, sent: number }>} */ const cancelled = new Map();   // hex -> late chunks are expected
+  /** @type {Map<string, { until: number, sent: number, late: number[][] }>} */ const cancelled = new Map();   // hex -> late chunks are expected
   /** @type {Map<number, any>} */ const peers = new Map();
   /** @type {Map<string, any>} */ const dls = new Map();          // hex -> { d: Download, src, fails, state, finishing }
   /** @type {Set<string>} */ const failed = new Set();
@@ -390,7 +390,9 @@ export function createMedia(ctx) {
     dls.delete(h);
     const to = new Set(x.d ? [...x.d.inflight.values()].map(v => v.peer) : []); if (x.src) to.add(x.src.id);
     for (const id of to) { const p = peers.get(id); if (p) ctl(p, { t: 'cancel', h }); }
-    const now = Date.now(); cancelled.set(h, { until: now + CANCEL_GRACE_MS, sent: now });
+    // what was asked is still on its way: if the file starts again soon, those chunks are late, not unasked
+    const late = x.d ? [...x.d.inflight].map(([i, v]) => [i, v.peer]) : [];
+    const now = Date.now(); cancelled.set(h, { until: now + CANCEL_GRACE_MS, sent: now, late });
     if (keep) kept.add(h); else { kept.delete(h); ctx.store.drop(h); }
   }
   /** @type {Set<string>} */ const kept = new Set();   // stopped with their chunks kept: dropped if the doc lets go of them
@@ -428,10 +430,12 @@ export function createMedia(ctx) {
       const v = /** @type {Want} */ (w.get(h));
       if (dls.has(h) || paused || storageFull || busy || !usable(h, v.bytes).length) continue;
       const x = { d: /** @type {Download | null} */ (null), src: null, fails: 0, finishing: false, opening: true };
+      const was = cancelled.get(h);
       dls.set(h, /** @type {any} */ (x)); cancelled.delete(h);
       const have = await ctx.store.open(h, { size: v.bytes, mime: v.mime, pid: ctx.pid, t: Date.now() });
       if (dls.get(h) !== x || stopped) continue;
       x.d = new Download(h, v.bytes, have); x.opening = false;
+      if (was) for (const [i, peer] of was.late) x.d.late.set(i, peer);
       if (x.d.done) finish(x);
     }
     for (const x of dls.values()) {

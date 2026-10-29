@@ -82,7 +82,7 @@ test('an old tab holding the v1 database: the session still connects and syncs; 
     const app = {
       cur: null, pulls: 0, status: '', media: 0,
       project: () => app.cur, applyRemote: (_pid, p) => { app.pulls++; app.cur = { ...p, id: 'p1' }; },
-      busy: () => false, focusedText: () => null, mediaBlob: async () => null, songBlob: async () => null,
+      busy: () => false, focusedText: () => null, reads: 0, mediaBlob: async () => { app.reads++; return new Blob(['local image'], { type: 'image/png' }); }, songBlob: async () => null,
       onStatus: (_pid, s) => { app.status = s; }, onPeers() {}, onEvent() {}, onMedia: () => { app.media++; },
       storeMedia: async () => 'm1', storeSong: async () => {},
     };
@@ -92,9 +92,15 @@ test('an old tab holding the v1 database: the session still connects and syncs; 
     assert.ok(Date.now() - t0 < 6000, 'within a few seconds, not "until the old tab closes"');
     assert.equal(dbs.get('cueboard-collab').version, 1, 'the upgrade is still waiting on the old tab');
     await until(() => sess.media() && sess.media().summary().storageBusy === 'blocked', 'media: storage busy');
-    // the old tab goes away: the upgrade runs, this tab picks the database up, media goes on
+    // a local file put in a shot meanwhile: not hashed yet (the stored hashes aren't loaded: hashing now would redo
+    // every file), so the doc keeps the old value for now
+    app.cur = structuredClone(app.cur); app.cur.sections[0].img = 'm-local'; sess.changed(true);
+    await sleep(300);
+    assert.equal(app.reads, 0, 'nothing read or hashed while the database is blocked');
+    // the old tab goes away: the upgrade runs, this tab picks the database up, media goes on, the field goes out
     old.close();
     await until(() => sess.media().summary().storageBusy === '', 'storage free again');
+    await until(() => app.reads === 1 && sess.media().files().some(f => f.label === 'Shot 01 · image' && f.state === 'here'), 'the held field was hashed and shared');
     const rec = dbs.get('cueboard-collab');
     assert.equal(rec.version, 2);
     assert.ok(['docs', 'hashes', 'parts', 'chunks'].every(n => rec.stores.has(n)));

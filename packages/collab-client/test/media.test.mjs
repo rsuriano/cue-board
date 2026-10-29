@@ -85,6 +85,16 @@ test('control messages from peers are validated; replays refused', () => {
   assert.deepEqual(parseIce(''), []);
 });
 
+test('an offer at the SDP limit still fits the server\'s signal cap once sealed (Chromium\'s real offer is ~460-720 chars: design/sdp-size.mjs)', async () => {
+  const { RELAY_DEFAULTS } = await import('../../sync-server/src/media-relay.mjs');
+  const { key } = await roomKeys('token-token-token-1', 'room-1');
+  const line = 'a=candidate:1 1 udp 2113937151 0123abcd-4567-89ef-0123-456789abcdef.local 54321 typ host generation 0 network-cost 999\r\n';
+  const sdp = line.repeat(Math.ceil(12000 / line.length)).slice(0, 12000);
+  assert.ok(checkCtl({ t: 'offer', s: 2 ** 31, sdp }), 'accepted at the limit');
+  const f = await sealCtl(key, 2 ** 31, 2 ** 31 - 1, { t: 'offer', sdp, s: 2 ** 31 });
+  assert.ok(f.length + 16 <= RELAY_DEFAULTS.signalMaxBytes, 'sealed: ' + f.length + ' bytes');
+});
+
 test('Download: window, resume from stored chunks, only asked chunks from the asked peer, stale requests, reset', () => {
   const hex = 'b'.repeat(64), size = CHUNK * 10 + 1, d = new Download(hex, size, [0, 1, 2, 99]);
   assert.equal(d.count, 11); assert.equal(d.n, 3, 'resumed: three stored, out-of-range ignored');
@@ -94,6 +104,7 @@ test('Download: window, resume from stored chunks, only asked chunks from the as
   d.stored(7, 3); assert.equal(d.accept(7, 3), 'dup');
   assert.deepEqual([...d.stale(1000, 5000)], [7]);
   assert.equal(d.release(7), 3); assert.deepEqual(d.take(8, 100, 0), [4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(d.accept(7, 4), 'late', 'asked of 7 before it timed out: expected, not hostile'); assert.equal(d.accept(9, 4), 'unasked');
   for (const i of [4, 5, 6, 7, 8, 9, 10]) d.stored(8, i);
   assert.ok(d.done); assert.equal(d.bytes, size); assert.deepEqual([...d.sources].sort(), [7, 8]);
   d.reset(); assert.equal(d.n, 0); assert.ok(!d.done);

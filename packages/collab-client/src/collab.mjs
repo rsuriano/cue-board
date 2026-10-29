@@ -257,7 +257,9 @@ export function createCollab(app, syncUrl, opts = {}) {
       return (wantCache = m);
     }
     const mediaChanged = () => { wantCache = null; if (media) media.refresh(); };
-    dbWatch.add(mediaChanged);                    // the database opened late (hashes loaded) or went away: the chip, transfers
+    // the database opened late (hashes loaded: the held fields go out) or went away: the chip, transfers
+    const onDb = () => { mediaChanged(); if (ready && !stopped) push(); };
+    dbWatch.add(onDb);
     async function landed(/** @type {string} */ hex, /** @type {Blob} */ blob, /** @type {any} */ w) {
       if (stopped) throw new Error('session stopped');
       if (w.song) {
@@ -301,7 +303,9 @@ export function createCollab(app, syncUrl, opts = {}) {
       if (!stopped) push();
     }
     async function hashQueued() {
-      if (hashing) return; hashing = true;
+      // the stored hashes aren't loaded while an old tab blocks the database: hashing now would redo every file
+      // (each one read whole). The fields wait (held) and go out once it opens (dbWatch).
+      if (hashing || dbState === 'blocked') return; hashing = true;
       while (needHash.size && !stopped) {
         const [id] = needHash; needHash.delete(id);
         if (hashes.has(id) || noFile.has(id) || failed.has(id)) continue;
@@ -495,7 +499,7 @@ export function createCollab(app, syncUrl, opts = {}) {
         window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline);
         window.removeEventListener('pagehide', onHide); globalThis.document?.removeEventListener('visibilitychange', onVis);
         if (!marks) unlist();
-        dbWatch.delete(mediaChanged);
+        dbWatch.delete(onDb);
         if (media) media.stop();
         if (prov) { prov.awareness.setLocalState(null); prov.destroy(); }
         setTimeout(() => doc.destroy(), 0);

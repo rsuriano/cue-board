@@ -52,7 +52,8 @@ export function createMediaRelay(opts, log, send) {
   let nextId = 1;
   /** @type {Map<string, Bucket>} */ const ipBuckets = new Map();
   const maxChunks = Math.ceil(o.relayMaxTransferBytes / MEDIA_CHUNK);
-  /** Forget the per-IP buckets that are full again (idle for 2 s or more): at most every 10 s, and on each detach. */
+  /** Forget the per-IP buckets that are full again (idle for 2 s or more), at most every 10 s (on a relayed frame or a
+      detach), so an IP that was busy when it left isn't kept forever. */
   let swept = Date.now();
   function sweep(now = Date.now(), force = false) {
     if (!force && now - swept < 10_000) return;
@@ -104,7 +105,7 @@ export function createMediaRelay(opts, log, send) {
       if (!m || rs.peers.get(m.id) !== ws) return;
       rs.peers.delete(m.id);
       for (const p of rs.peers.values()) send(p, frame(K.LEFT, m.id, none));
-      sweep(Date.now(), true);
+      sweep();
     },
     /** A MSG_MEDIA message from `ws`, type already read. Throws on a malformed one (the server closes with 4400). */
     handle(/** @type {{ id: string }} */ room, /** @type {any} */ ws, /** @type {decoding.Decoder} */ dec) {
