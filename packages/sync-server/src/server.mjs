@@ -3,7 +3,10 @@
    one Y.Doc per project room, persisted by ProjectStore.
 
    Join:   ws://<host>/r/<roomId>?token=<invite token>
-   Close codes: 4400 malformed message · 4401 bad token · 4404 unknown room · 4429 too many connections from this IP
+   HTTP:   api.mjs (rooms created from the app, verification codes, owner actions), /health
+   Close codes: 4400 malformed message · 4401 bad token (also sent to everyone in a room whose invite link the owner
+                replaced) · 4404 unknown room · 4410 room deleted by its owner · 4413 room full: an update would take
+                the room's log past MAX_ROOM_BYTES, so it was not applied · 4429 too many connections from this IP
                 4500 room unavailable (unreadable project.json or updates.bin, or the room is degraded: an append to its log
                 failed and it refuses joins until a compaction gets its state on disk; see the error log)
                 Message type 10 is media signaling and relay (media-relay.mjs, docs/media-p2p.md); a type-10 frame the
@@ -23,8 +26,11 @@ import * as decoding from 'lib0/decoding';
 import { ProjectStore, CorruptLogError } from './store.mjs';
 import { createLogger } from './log.mjs';
 import { createMediaRelay, MSG_MEDIA } from './media-relay.mjs';
+import { createApi } from './api.mjs';
+import { initProject } from './schema.mjs';
 
 const MSG_SYNC = 0, MSG_AWARENESS = 1, MSG_QUERY_AWARENESS = 3;
+const SYNC_STEP1 = 0;   // y-protocols/sync: the only sync message that carries no update
 const DEMO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../demo');
 const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.js': ['dist/client.js', 'text/javascript'] };
 
@@ -32,13 +38,15 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
+ *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, createPerHour?: number, verifyFails?: number, verifyBlockMs?: number,
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
 export async function startServer(opts = {}) {
   const o = {
     port: 3300, host: '127.0.0.1', dataDir: './data', maxMessageBytes: 2 * 1024 * 1024, maxConnsPerIp: 16,
     compactEvery: 500, compactIntervalMs: 60_000, unloadAfterMs: 30_000, pingMs: 30_000, maxBufferedBytes: 8 * 1024 * 1024,
-    trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info', ...opts,
+    trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info',
+    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, createPerHour: 30, ...opts,
   };
   const log = o.log || createLogger(o.logLevel), store = new ProjectStore(o.dataDir, log);
   /** @type {Map<string, Room>} */ const rooms = new Map();
@@ -48,8 +56,10 @@ export async function startServer(opts = {}) {
 
   /** failing: compaction is failing (logged once per burst). degraded: an append failed, so the log on disk is behind the
       doc (maybe with a torn tail); nothing more is appended until a compaction rewrites it, and new joins get 4500.
-      @typedef {{ id: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness, conns: Map<import('ws').WebSocket, Set<number>>, records: number, unloadTimer: NodeJS.Timeout | null,
-        failing: boolean, degraded: boolean }} Room */
+      bytes: the update log's size on disk (the room-size cap, MAX_ROOM_BYTES, is checked against it before an update is
+      applied). deleted: the owner deleted the room while it was loaded: nothing is appended, broadcast or compacted anymore.
+      @typedef {{ id: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness, conns: Map<import('ws').WebSocket, Set<number>>, records: number, bytes: number, unloadTimer: NodeJS.Timeout | null,
+        failing: boolean, degraded: boolean, deleted: boolean }} Room */
 
   /** @param {string} id */
   function getRoom(id) {
@@ -59,12 +69,13 @@ export async function startServer(opts = {}) {
     if (torn) log.warn('dropped torn tail of update log (original kept as updates.bin.torn-*)', { room: id, bytes: torn });
     const awareness = new awarenessProtocol.Awareness(doc);
     awareness.setLocalState(null);
-    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, unloadTimer: null, failing: false, degraded: false });
+    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, bytes, unloadTimer: null, failing: false, degraded: false, deleted: false });
     rooms.set(id, r);
     doc.on('update', (/** @type {Uint8Array} */ update, /** @type {any} */ origin) => {
       // on disk before anyone hears about it. Nothing may throw from here: it would escape the Yjs transaction mid-cleanup.
+      if (r.deleted) return;
       if (!r.degraded) {
-        try { store.append(id, update); } catch (err) {
+        try { store.append(id, update); r.bytes += 4 + update.length; } catch (err) {
           r.degraded = true;
           log.error('append failed: room degraded, refusing joins until a compaction succeeds', { room: id, ...fsErr(err) });
           if (r.conns.has(origin)) origin.close(4500, 'room unavailable');
@@ -95,9 +106,11 @@ export async function startServer(opts = {}) {
   /** Rewrite the room's log as one record. Never throws: on a disk error (ENOSPC, EACCES, DATA_DIR gone) it logs once per
       failure burst, leaves the room as it is and returns false; the compaction tick retries. @param {Room} r */
   function compact(r) {
+    if (r.deleted) return true;
     if (r.records <= 1 && !r.degraded) return true;
     try {
       const bytes = store.compact(r.id, r.doc);
+      r.bytes = bytes;
       log.debug('compacted', { room: r.id, records: r.records, bytes });
     } catch (err) {
       if (!r.failing) log.error('compaction failed, retrying every tick', { room: r.id, degraded: r.degraded, ...fsErr(err) });
@@ -134,6 +147,34 @@ export async function startServer(opts = {}) {
     ws.send(msg, err => { if (err) ws.terminate(); });
   }
 
+  /** Close every connection in a room (the owner replaced the invite link: 4401, so every holder of the old one is out).
+      @param {string} id @param {number} code @param {string} reason */
+  function kickRoom(id, code, reason) {
+    const r = rooms.get(id); if (!r) return;
+    for (const c of [...r.conns.keys()]) c.close(code, reason);
+  }
+
+  /** The owner deleted the room: members are closed with 4410 (their apps keep the local copy and stop retrying), the
+      loaded room is dropped without a final compaction (nothing may be written back), then the folder is wiped. All
+      synchronous, so no join or update can slip in between: a join after this gets 4404. @param {string} id */
+  function deleteRoom(id) {
+    const r = rooms.get(id);
+    if (r) {
+      r.deleted = true;
+      if (r.unloadTimer) { clearTimeout(r.unloadTimer); r.unloadTimer = null; }
+      rooms.delete(id);
+      for (const c of [...r.conns.keys()]) c.close(4410, 'room deleted');
+      r.awareness.destroy(); r.doc.destroy();
+    }
+    return store.deleteProject(id);
+  }
+
+  const api = createApi({
+    store, log, dataDir: o.dataDir, corsOrigins: o.corsOrigins, maxRooms: o.maxRooms, createPerHour: o.createPerHour,
+    verifyFails: o.verifyFails, verifyBlockMs: o.verifyBlockMs, clientIp, kickRoom, deleteRoom,
+    initDoc: name => { const d = new Y.Doc(); initProject(d, { title: name }); return d; },
+  });
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://x');
     if (url.pathname === '/health') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, rooms: rooms.size, degraded: [...rooms.values()].filter(r => r.degraded).length })); return; }
@@ -145,7 +186,11 @@ export async function startServer(opts = {}) {
       });
       return;
     }
-    res.writeHead(404); res.end();
+    api.handle(req, res, url).then(handled => { if (!handled) { res.writeHead(404); res.end(); } }, err => {
+      // handle() catches its own errors; this is the net under it
+      log.error('api failed', { path: url.pathname, err: /** @type {any} */ (err)?.name });
+      if (!res.headersSent) { res.writeHead(500); res.end(); }
+    });
   });
 
   // A browser can't set headers on a WebSocket, so the app sends the token as the second subprotocol
@@ -213,11 +258,19 @@ export async function startServer(opts = {}) {
     relay.attach(room, ws, ip);
 
     ws.on('message', (data, isBinary) => {
+      if (room.deleted) return;                  // closing with 4410; nothing of what arrives meanwhile is applied
       try {
         if (!isBinary) throw new Error('text frame');
         const dec = decoding.createDecoder(new Uint8Array(/** @type {Buffer} */ (data)));
         const type = decoding.readVarUint(dec);
         if (type === MSG_SYNC) {
+          // the room-size cap: an update (or a step-2 answer carrying one) that would take the log past the cap is not
+          // applied, and the sender is told plainly (4413). Nothing is lost on the server; the client keeps its copy.
+          if (decoding.peekVarUint(dec) !== SYNC_STEP1 && room.bytes + (dec.arr.length - dec.pos) > o.maxRoomBytes) {
+            log.warn('closing: room full (MAX_ROOM_BYTES)', { room: id, ip, bytes: room.bytes, update: dec.arr.length - dec.pos, max: o.maxRoomBytes });
+            ws.close(4413, 'room full');
+            return;
+          }
           const enc = encoding.createEncoder();
           encoding.writeVarUint(enc, MSG_SYNC);
           syncProtocol.readSyncMessage(dec, enc, room.doc, ws);
@@ -241,6 +294,7 @@ export async function startServer(opts = {}) {
       relay.detach(room, ws);
       const left = (perIp.get(ip) || 1) - 1;
       if (left) perIp.set(ip, left); else perIp.delete(ip);
+      if (room.deleted) { log.debug('left', { room: id, ip, code, deleted: true }); return; }   // the doc and awareness are gone
       if (ids && ids.size) awarenessProtocol.removeAwarenessStates(room.awareness, [...ids], null);
       if (code === 1009) log.warn('closed: message too big', { room: id, ip });
       log.debug('left', { room: id, ip, code, conns: room.conns.size });
@@ -291,5 +345,5 @@ export async function startServer(opts = {}) {
     log.info('stopped');
   }
 
-  return { port: addr.port, url: `ws://${o.host}:${addr.port}/r`, rooms, store, close, mediaStats: relay.stats };
+  return { port: addr.port, url: `ws://${o.host}:${addr.port}/r`, httpUrl: `http://${o.host}:${addr.port}`, rooms, store, access: api.access, deleteRoom, close, mediaStats: relay.stats };
 }

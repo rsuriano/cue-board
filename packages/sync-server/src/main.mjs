@@ -5,6 +5,10 @@
    TRUSTED_PROXY_HOPS (1: how many of your own proxies append to X-Forwarded-For; the client IP is that many entries from the right)
    MAX_BUFFERED_BYTES (8 MiB: a client whose unsent queue would pass this is dropped)
    RELAY_ROOM_BYTES_PER_SEC (8 MiB) · RELAY_IP_BYTES_PER_SEC (4 MiB) · RELAY_MAX_TRANSFER_BYTES (2 GiB: largest file relayed, sent to clients): media relay caps
+   CORS_ORIGINS (comma-separated app origins allowed to call the HTTP API, e.g. https://cue.bedrocklabs.dev; empty: no
+     browser origin is allowed, so rooms can't be created from the app) · MAX_ROOMS (10000: rooms on disk, then 507)
+   MAX_ROOM_BYTES (64 MiB: a room's update log; an update that would pass it is refused with 4413)
+   CREATE_PER_HOUR (30: rooms one verified token may create per hour, a safety net)
    SERVE_DEMO=1 (serve demo/ at /demo/, dev only) · LOG_LEVEL (info) */
 import { startServer } from './server.mjs';
 import { createLogger } from './log.mjs';
@@ -23,6 +27,8 @@ srv = await startServer({
   maxMessageBytes: num(env.MAX_MESSAGE_BYTES, 2 * 1024 * 1024), maxConnsPerIp: num(env.MAX_CONNS_PER_IP, 16),
   maxBufferedBytes: num(env.MAX_BUFFERED_BYTES, 8 * 1024 * 1024),
   trustProxy: env.TRUST_PROXY === '1', trustedProxyHops: num(env.TRUSTED_PROXY_HOPS, 1), serveDemo: env.SERVE_DEMO === '1', logLevel: env.LOG_LEVEL,
+  corsOrigins: (env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
+  maxRooms: num(env.MAX_ROOMS, 10_000), maxRoomBytes: num(env.MAX_ROOM_BYTES, 64 * 1024 * 1024), createPerHour: num(env.CREATE_PER_HOUR, 30),
   media: {
     relayRoomBytesPerSec: num(env.RELAY_ROOM_BYTES_PER_SEC, 8 * 1024 * 1024), relayIpBytesPerSec: num(env.RELAY_IP_BYTES_PER_SEC, 4 * 1024 * 1024),
     relayMaxTransferBytes: num(env.RELAY_MAX_TRANSFER_BYTES, RELAY_MAX_FILE),
