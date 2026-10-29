@@ -701,11 +701,27 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #mShotChips .chip[aria-pressed="true"]{background:var(--accent-subtle);border-color:var(--accent-border);color:var(--accent)}
   .chip{height:var(--h-sm);font-size:var(--text-sm)}
   /* side B: a rail of shots, the header stacked, frames and takes in one column; no generation on the phone */
-  .blist{grid-auto-columns:var(--list-w);margin-inline:calc(-1 * var(--gutter));padding-inline:var(--gutter);border-radius:0;border-width:0;background:none}
-  .bitem{grid-template-columns:minmax(0,1fr);gap:var(--sp-1);padding:var(--sp-1)}
-  .bitem .cv{display:none}
+  /* a scroll container's automatic minimum height is 0, so in this height-bound scrolling grid an auto row collapses
+     to it and the header draws under the rail: every row is its content's height */
+  .sideB{grid-auto-rows:max-content}
+  /* the rail: thumbnails (a frame, or the title on the screen colour), number and takes under each; the selected one
+     has the orange edge */
+  .blist{grid-auto-columns:var(--list-w);gap:var(--sp-2);margin-inline:calc(-1 * var(--gutter));padding:0 var(--gutter) var(--sp-3);border-width:0 0 var(--hairline);border-radius:0;border-color:var(--border-subtle);background:none}
+  .bitem,.bitem:hover,.bitem.sel{grid-template-columns:minmax(0,1fr);gap:var(--sp-1);padding:0;background:none;border-color:transparent}
+  .bitem .bt{border:var(--hairline) solid var(--border)}
+  .bitem.sel .bt{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
+  .bitem .bph{display:-webkit-box;padding:0 var(--sp-2);overflow:hidden;font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);text-align:center;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+  .bitem .bi{grid-template-columns:auto minmax(0,1fr);gap:var(--sp-2);align-items:baseline}
+  .bitem .ct,.bitem .bd{display:none}
+  .bitem .cv{text-align:right}
   .bbar{gap:var(--sp-2) var(--gap-block)}
-  .bshot{flex-basis:100%}
+  /* the header: number and title, then the timecode and the spend line from the left edge */
+  .bshot{flex-basis:100%;row-gap:var(--sp-1)}
+  .bshot>div{display:contents}
+  .bshot .ed-n{align-self:center;margin-top:0}
+  .bshot .tc{grid-column:1/-1}
+  .bbar>.grow{display:none}
+  .statbox{display:flex;align-items:baseline;gap:var(--sp-1-5)}
   #bConn,#fStartGen,#fEndGen,#fEndFrom,.fgen,.genbox,.take [data-act="retry"]{display:none!important}
   .takes{grid-template-columns:minmax(0,1fr)}
   /* sheets: dialogs, the Project sheet and the files panel rise from the bottom, above the keyboard */
@@ -1852,7 +1868,7 @@ function renderBHead(){
 function renderBList(){
   $("bList").innerHTML=S().map((s,i)=>{const d=slotDur(s),st=startFrameId(s),tk=s.takes||[],busy=tk.some(isBusy),cut=s.img&&s.kind==="video";
     const th=cut&&mediaURL(s.img)?`<video src="${mediaURL(s.img)}#t=0.1" muted preload="metadata"></video>`:st&&mediaURL(st)?`<img src="${mediaURL(st)}" alt="">`:"";
-    return `<button type="button" class="bitem${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><span class="bt">${th}</span><span class="bi"><span class="tc">${pad(i+1)} · ${d.toFixed(1)} s</span><span class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="cv">${tk.length?tk.length+(tk.length>1?" takes":" take"):"no takes"}${busy?" · rendering":""}${cut?" · in cut":""}</span></span></button>`}).join("");
+    return `<button type="button" class="bitem${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><span class="bt">${th||`<span class="bph m-only">${s.title?esc(s.title):"Untitled"}</span>`}</span><span class="bi"><span class="tc">${pad(i+1)}<span class="bd"> · ${d.toFixed(1)} s</span></span><span class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="cv">${tk.length?tk.length+(tk.length>1?" takes":" take"):"no takes"}${busy?" · rendering":""}${cut?" · in cut":""}</span></span></button>`}).join("");
   renderMarks();if(csess)csess.select(selId);
 }
 function renderBShot(){
