@@ -26,6 +26,8 @@ A small purpose-made protocol instead of BitTorrent: with 2-5 people per project
 
 **Storage.** `cueboard-collab` (now version 2): `parts` (sha256 → `{ size, mime, pid, t }`) and `chunks` (`[sha256, i]` → Blob, plaintext, already verified). Each chunk is one IndexedDB transaction, so a crash leaves whole chunks only, and a reload resumes from the last verified chunk. When the file verifies it's stored like any other media file in the app's own `cueboard-local` / `media` (a new id, as if uploaded; ids are never reused), its hash goes into `hashes`, the parts are dropped, and the session pulls: the field's `sha256-…` id becomes the local id and the placeholder becomes the media. A song lands in `songs` for that project. Parts of a file the doc no longer references are dropped (at the first sync of a session, and as soon as it happens).
 
+**A replaced song.** Each project stores one song, under its own id in `songs`. When the doc's song is another file than the stored one (its sha256 differs) and no replacement made on this device is waiting to go out (being hashed, or before the first sync), the doc's song is newer: a collaborator replaced it, or won a concurrent replace. The doc's own order decides (the Yjs map entry; a replace made after seeing another one wins over it), never a clock. That song is then wanted like any missing file: the Files list shows "Song · <name>" downloading, the chip counts it, and the song bar says it was replaced and plays once it arrives. The stored song stays in place but isn't played under the new name (`onSong(pid, true)`; its length isn't taken as the song's). When the new file verifies, `storeSong` replaces the stored one in a single write and playback switches to it. Since songs are stored per project, nothing else can point at the old blob, so nothing more is released (the media `mediaInUse` check is about frame and take ids, which projects can share). A stored song older than the doc's never goes back out: a metadata edit (the length) sends the doc's file, and only a song that changed name here is sent as a replacement. Known limit: replacing a song with a different file of the same name is only noticed on the next session start.
+
 **An old tab blocking the upgrade.** A tab still running the previous version holds `cueboard-collab` at version 1 and never lets go, so the upgrade to 2 waits until it closes. After 2.5 s (`onblocked`) the new tab goes on without the database: the doc connects and syncs (without the offline copy), file transfers wait and the chip says "Storage busy, close other tabs", and local files aren't re-hashed meanwhile (their stored hashes aren't loaded yet; the fields wait). Once the old tab goes, the upgrade runs, this tab picks the database up and everything resumes. Every connection now sets `onversionchange` to close itself, so a later version never waits on this one; the tab that let go says "Storage busy, reload this tab".
 
 ## Crypto envelope
@@ -51,15 +53,19 @@ Message type 10 on the room's WebSocket (`media-relay.mjs`, wire format in its h
 
 | Cap | Default | Env |
 |---|---|---|
-| Signal message | 16 KiB (bigger: 4400) | |
+| Signal message | 16 KiB (bigger: ignored) | |
 | Signals | 40/s per connection, 200/s per room (2 s burst; over: dropped) | |
-| Relay frame | 80 KiB (bigger: 4400) | |
+| Relay frame | 80 KiB (bigger: ignored) | |
 | Relay bandwidth | 8 MiB/s per room, 4 MiB/s per IP (2 s burst) | `RELAY_ROOM_BYTES_PER_SEC`, `RELAY_IP_BYTES_PER_SEC` |
 | Per file: a chunk frame's index must be `< ceil(cap / 64 KiB)`, so a file up to the cap always fits and a chunk sent again never counts twice | 2 GiB (`RELAY_MAX_FILE`), sent to clients in `WELCOME` | `RELAY_MAX_TRANSFER_BYTES` |
 | Receiver's queue | 2 MiB: frame dropped, sender told (`DROPPED`) | |
 | Per-IP buckets | forgotten once idle (swept at most every 10 s) | |
 
-Over a cap the frame is dropped and the sender gets `DROPPED` with the reason and the frame's 8-byte tag (on the per-file cap it stops sending that file to that peer); drops are logged as one line per room every 10 s with counts only. Nothing about contents, tokens or file names is logged. Tests: `packages/sync-server/test/media-relay.test.mjs` (ids and fan-out, no cross-room delivery, byte-for-byte relay, nothing on disk or in the log, each cap, malformed and oversized messages).
+Over a cap the frame is dropped and the sender gets `DROPPED` with the reason and the frame's 8-byte tag (on the per-file cap it stops sending that file to that peer); drops are logged as one line per room every 10 s with counts only. Nothing about contents, tokens or file names is logged.
+
+A type-10 frame the server doesn't take (a kind it doesn't know, a kind only the server sends, a signal or relay frame over its size cap, a relay frame too short to carry a tag, trailing bytes) is **ignored**: not forwarded, counted (`mediaStats.ignored`), and logged at debug level as one line per room every 10 s. It never closes the socket, so a newer client that adds a media kind or raises a cap, against a server that wasn't redeployed, loses only media and keeps doc sync (the client lists 4400 as "rejected" and would stop retrying). Only a frame that can't be read at all (truncated varints) still closes with 4400, as does any malformed doc message or unknown message type. The client likewise ignores media kinds it doesn't know.
+
+Tests: `packages/sync-server/test/media-relay.test.mjs` (ids and fan-out, no cross-room delivery, byte-for-byte relay, nothing on disk or in the log, each cap, frames ignored and logged once (m3), unreadable ones still 4400, doc edits still flowing on the same socket after an unknown kind (m7)); `packages/collab-client/test/media.test.mjs` "a media frame the client doesn't know".
 
 ## ICE servers (owner to choose)
 
@@ -102,6 +108,9 @@ Each has a test (Node: `packages/collab-client/test/media.test.mjs`; browser: `d
 | Relayed `have` / `get` / `cancel` dropped (silently or with `DROPPED`) | Re-announced; the transfer completes | Node "relayed control frames…" (fault-injecting proxy) |
 | An old tab holds the database at version 1 | Session connects and syncs; "Storage busy"; switches over when the old tab goes; a newer version gets the database at once | `test/idb-blocked.test.mjs` |
 | Scheduler poked while it awaits storage | One tick at a time, at most one timer pending, none after `stop()` | Node "one tick at a time" |
+| A collaborator replaces the song others already have | Fetched like a missing file, verified, then replaces the stored one; the old one isn't played meanwhile | browser "song" steps |
+| A replace here while the room still has an older song, or both replace at once | The replace here goes out and stays; at once: the doc's order picks one and both end with it | browser "song" steps |
+| A newer client sends a media kind or size this server doesn't take | Ignored and counted; doc sync on the same socket goes on | server (m3, m7); Node "a media frame the client doesn't know" |
 
 ## Not done
 
@@ -130,5 +139,5 @@ Incognito contexts keep IndexedDB blobs in memory, so these heap numbers say not
 - `npm test -w @cue-board/collab-client`: `test/media.test.mjs` (KATs, envelope, validation, `Download`, backpressure, and end to end through the real server's relay: replication, offline originator, foreign key, resume, corruption, source leaving, remote delete, storage full, limits, unreferenced hash, partial downloads kept through Pause and limits, too large to relay, dropped control frames, single-flight scheduler, SDP limit vs signal cap); `test/idb-blocked.test.mjs` (an old tab holding the database).
 - `npm test -w @cue-board/sync-server`: `test/media-relay.test.mjs` (also the per-file cap against the app's limit options, re-sends not counted, IP buckets swept).
 - `node design/sdp-size.mjs`: Chromium's SDP sizes for the media data channel.
-- `node design/media-check.mjs . <out>`: three browser contexts at a time against a server on 3360, listed in its output.
+- `node design/media-check.mjs . <out>`: three browser contexts at a time against a server on 3360, listed in its output. The "song" steps (A replaces the song, B gets it and never plays the old one under the new name; B's own replace stays; a concurrent replace converges) fail on the bundle before this fix (23/28).
 - `design/collab-check.mjs` runs with media transfers off (`__CUE_MEDIA_TEST.off`), since it checks the doc side ("not on this device yet" stays).
