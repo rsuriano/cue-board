@@ -2600,8 +2600,9 @@ cv.addEventListener("pointerup",e=>{if(!phone())return;
   /* a tap: on a shot, select it and go to its start; on the waveform, go there */
   if(mCutId||mMode){mCutId="";mMode="";renderMTool()}
   const t=Math.max(0,Math.min(dur()-.01,p.t));mScrollAt=0;if(p.band){const s=S()[secAt(t)];if(s)select(s.id,true)}else seek(t)});
-/* the preview: a tap plays or pauses */
-$("monitor").addEventListener("click",()=>{if(phone())toggle()});
+/* the preview: a tap plays or pauses, except on a control in it (the slate's Download / Retry, a link);
+   Enter or Space on a focused button also arrives here as a click */
+$("monitor").addEventListener("click",e=>{if(phone()&&!e.target.closest("button,a,input,select,textarea,label,[data-mact]"))toggle()});
 cv.addEventListener("pointercancel",()=>{if(mPress){clearTimeout(mPress.timer);mPress=null}if(mLift)mLiftEnd(false)});
 function mLiftStart(e){const p=mPress;if(!p||!cur)return;const s=S()[secAt(p.t)];if(!s)return;
   mPress=null;try{cv.setPointerCapture(p.pid)}catch(_){}

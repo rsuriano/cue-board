@@ -69,6 +69,8 @@ async function touch(page, pts, { hold = 0, steps = 8 } = {}) {
   await c.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await c.detach(); await page.waitForTimeout(250);
 }
+const filesHidden = page => page.evaluate(() => document.getElementById('mpanel').hidden);
+const openFiles = async page => { if (await filesHidden(page)) { await page.tap('#mstat'); await page.waitForTimeout(200); } };
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
 const app = page => page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(); return { n: s.length, ids: s.map(x => x.id), starts: s.map(x => x.start), img: s.map(x => x.img), sel: document.querySelector('#mPeek .ed-n')?.textContent }; });
 const tl = page => page.evaluate(() => { const r = document.querySelector('.timeline').getBoundingClientRect(), c = document.getElementById('tl').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, band: c.y + 24 + 20 }; });
@@ -258,19 +260,34 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   check(dev, 'Download on a take asks first, with its size', ask.open && /31\.5 MB/.test(ask.text), ask.text);
   await p2.screenshot({ path: join(out, `${dev}-size.png`) });
   await p2.tap('#dlgSize button[value=""]'); await p2.waitForTimeout(200);
-  check(dev, 'Cancel downloads nothing', (await p2.evaluate(() => window.__STUB.dl.length)) === 0);
-  await p2.tap('#mstat'); await p2.waitForTimeout(200); await p2.tap('#fList [data-mact="download"]'); await p2.waitForTimeout(200); await p2.tap('#szGo'); await p2.waitForTimeout(200);
+  check(dev, 'Cancel downloads nothing, the files sheet stays open behind the dialog', (await p2.evaluate(() => window.__STUB.dl.length)) === 0 && !(await filesHidden(p2)));
+  await openFiles(p2); await p2.tap('#fList [data-mact="download"]'); await p2.waitForTimeout(200); await p2.tap('#szGo'); await p2.waitForTimeout(200);
   check(dev, 'confirming downloads that take', (await p2.evaluate(() => window.__STUB.dl.join())) === 'aa');
-  await p2.tap('#mstat'); await p2.waitForTimeout(200);
+  await openFiles(p2);
   check(dev, '"Download everything now" is there', (await p2.textContent('#fAll')) === 'Download everything now');
   await p2.tap('#fAll'); await p2.waitForTimeout(200); await p2.tap('#szGo'); await p2.waitForTimeout(200);
   const listed = await p2.evaluate(() => ({ all: window.__STUB.all, only: window.__STUB.allList, want: window.__STUB.files.filter(f => f.state !== 'here').map(f => f.hex) }));
   check(dev, 'Download everything now asks, then downloads exactly the files it listed (a one-off)', listed.all === 1 && Array.isArray(listed.only) && listed.only.join() === listed.want.join() && listed.want.length > 0, JSON.stringify(listed));
+  check(dev, 'after confirming "Download everything now" the files sheet stays open and shows progress', await p2.evaluate(() => !document.getElementById('mpanel').hidden && !!document.querySelector('#fList li')));
   // a collaborator adds a take afterwards: still held for Wi-Fi, not downloaded
   await p2.evaluate(() => { const S = window.__STUB; S.files.push({ hex: 'cc', label: 'Shot 01 · take 2', bytes: 12e6, song: false, state: 'skipped', skip: 'video', got: 0, who: ['Julia'] }); S.ping(); });
-  await p2.waitForTimeout(300); await p2.tap('#mstat'); await p2.waitForTimeout(200);
+  await p2.waitForTimeout(300); await openFiles(p2);
   const late = await p2.evaluate(() => ({ st: window.__STUB.files.find(f => f.hex === 'cc').state, dl: window.__STUB.dl.includes('cc'), row: [...document.querySelectorAll('#fList li')].map(l => l.textContent).find(t => /take 2/.test(t)) || '' }));
   check(dev, 'a take added after "Download everything now" is not downloaded and shows as waiting for Wi-Fi', late.st === 'skipped' && !late.dl && /Waits for Wi-Fi/.test(late.row), JSON.stringify(late));
+  // a held clip in the monitor's slate: its Download asks for the size and doesn't play or pause (the monitor's tap does)
+  await p2.evaluate(() => { const S = window.__STUB, p = JSON.parse(JSON.stringify(window.__CUE_MEDIA_TEST.app.cur()));
+    S.files.push({ hex: 'dd', label: 'Shot 01 · clip', bytes: 8e6, song: false, state: 'skipped', skip: 'video', got: 0, who: ['Julia'] });
+    p.sections[0].img = 'sha256-dd'; p.sections[0].kind = 'video'; S.app.applyRemote(S.pid, p); S.ping(); });
+  if (!(await filesHidden(p2))) await p2.tap('#fClose');
+  await p2.evaluate(() => { document.getElementById('toast').hidden = true; }); await p2.waitForTimeout(400);
+  const slateBtn = await p2.$('#slate [data-mact="download"]');
+  if (slateBtn) { await slateBtn.tap(); await p2.waitForTimeout(300); }
+  const sl = await p2.evaluate(() => ({ dlg: document.getElementById('dlgSize').open, toast: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent }));
+  check(dev, 'Download on a held clip in the slate: #dlgSize opens, nothing plays or pauses', !!slateBtn && sl.dlg && !/song|playback/i.test(sl.toast), JSON.stringify({ btn: !!slateBtn, ...sl }));
+  if (sl.dlg) { await p2.tap('#dlgSize button[value=""]'); await p2.waitForTimeout(200); }
+  await p2.tap('#slate .t'); await p2.waitForTimeout(200);
+  check(dev, 'a tap elsewhere on the monitor still plays (here: asks for the song)', await p2.isVisible('#toast') && /Load the song/.test(await p2.textContent('#toast')));
+  await openFiles(p2);
   await p2.tap('#fWifi'); await p2.waitForTimeout(100);
   check(dev, 'turning Wi-Fi only off lets video download', await p2.evaluate(() => window.__STUB.app.mediaLimits(window.__STUB.pid).video === undefined && window.__STUB.refreshes > 0));
   // long project name
