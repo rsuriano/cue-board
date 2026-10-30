@@ -532,7 +532,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 #mstat[data-k="off"] .mdot{display:block;box-shadow:inset 0 0 0 var(--hairline) var(--ink-2)}
 #mstat[data-k="err"] .mdot{display:block;background:var(--error)}
 /* its state in words on hover and keyboard focus (the panel says it once open) */
-.mlabel,.pchip::after,#settingsb::after{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink);white-space:nowrap;pointer-events:none;visibility:hidden}
+.mlabel,.pchip::after,#reportb::after,#settingsb::after{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink);white-space:nowrap;pointer-events:none;visibility:hidden}
 #mstat[aria-expanded="false"]:is(:hover,:focus-visible)~.mlabel{visibility:visible}
 /* the dropdown panel: non-modal, anchored under the indicator, right edges aligned (script keeps it on screen) */
 .mpanel{position:absolute;top:calc(100% + var(--sp-1));right:var(--mp-shift,0);z-index:var(--z-menu);display:grid;gap:var(--gap-block);width:var(--w-panel);max-width:calc(100vw - 2 * var(--gutter));max-height:var(--mp-max,var(--menu-max-h));overflow:auto;padding:var(--inset-panel);background:var(--surface-2);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-md);box-shadow:var(--shadow-float)}
@@ -576,7 +576,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
    bubbles', on hover and on keyboard focus. Its padding hangs into the bar's gutter, so its ink ends where the
    logo's starts from the other edge (and the zones stay even, the side switch on the centre) */
 #settingsb{margin-right:calc(-1 * var(--sp-2))}
-#settingsb::after{content:attr(data-tip);display:none}
+#reportb::after,#settingsb::after{content:attr(data-tip);display:none}
+/* Report a problem: an app action, not a project one, so it sits with Settings, 4px before it (a row of ghost
+   buttons). Always the icon alone (a flag: the alert circle already means "not saved" right next to it), its name in
+   the same label on hover and on keyboard focus */
+#reportb:is(:hover,:focus-visible)::after{display:block;visibility:visible}
 /* someone else has this shot selected: their initials on the thumbnail, neutral (orange stays "yours") */
 .pmark{position:absolute;right:var(--sp-2);top:var(--sp-2);display:flex;gap:var(--sp-0-5)}
 .bitem .bt{position:relative}
@@ -712,7 +716,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .app{display:flex;flex-direction:column;gap:0;height:100dvh;max-width:none;padding:0}
   /* app bar: the project's name, who's here, the files indicator */
   .top{display:flex;flex:none;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
-  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,#settingsb,.mlabel{display:none!important}
+  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,.appops,.mlabel{display:none!important}
   .tleft{flex:1}
   .tleft>.projgroup,.projpick{flex:1 1 auto;min-width:0}
   #proj{width:auto;max-width:100%;background-color:transparent;border-color:transparent;padding-left:var(--sp-2);font:var(--w-semibold) var(--text-xl)/var(--lh-xl) var(--font-ui);letter-spacing:var(--track-tight)}
@@ -883,11 +887,12 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9"/></symbol>
   <symbol id="i-wave" viewBox="0 0 16 16"><path d="M2 7v2M5 5v6M8 2.5v11M11 5v6M14 7v2"/></symbol>
   <symbol id="i-film" viewBox="0 0 16 16"><path d="M2.5 3h11v10h-11zM5.5 3v10M10.5 3v10M2.5 6h3M2.5 10h3M10.5 6h3M10.5 10h3"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 16 16"><path d="M3.5 14V2.5M3.5 3h8.5l-2 3.25 2 3.25H3.5"/></symbol>
   <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
 </defs></svg>
 <div class="app">
   <header class="top">
-    <!-- left: the project (name, rename, its operations, its song); centre: the side switch; right: the room, saving, settings -->
+    <!-- left: the project (name, rename, its operations, its song); centre: the side switch; right: the room, saving, then the app's own actions (report a problem, settings) -->
     <div class="tzone tleft">
       <div class="brand"><i></i><span class="lbl">Cue Board</span></div>
       <div class="tgroup projgroup">
@@ -910,7 +915,6 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
             <button type="button" class="mi narrowest" role="menuitem" tabindex="-1" data-for="song" id="mLoad"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>Load song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" data-for="song" id="mReplace" hidden><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span>Replace song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delsong" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Remove song</span></button>
-            <button type="button" class="mi" role="menuitem" tabindex="-1" id="reportb"><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg><span>Report a problem…</span></button>
             <hr role="separator">
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delp"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete project</span></button>
           </div>
@@ -948,7 +952,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       </div>
       </div>
       <span id="status" class="saved" data-k="busy" title="Loading"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Loading</span></span>
-      <button type="button" id="settingsb" class="btn ghost" data-tip="Settings" aria-label="Settings"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg><span class="lbl">Settings</span></button>
+      <div class="tgroup appops">
+        <button type="button" id="reportb" class="btn ghost icon" data-tip="Report a problem" aria-label="Report a problem"><svg class="ico" aria-hidden="true"><use href="#i-flag"/></svg></button>
+        <button type="button" id="settingsb" class="btn ghost" data-tip="Settings" aria-label="Settings"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg><span class="lbl">Settings</span></button>
+      </div>
     </div>
   </header>
 
@@ -1642,7 +1649,7 @@ $("projmenu").onclick=e=>{
    stands in for its bar button (data-for); the two destructive ones confirm with a second tap and keep the menu open */
 $("moremenu").onclick=e=>{
   const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong")return;
-  closeMore(true);if(b.id==="reportb"){openReport();return}$(b.dataset.for).click();
+  closeMore(true);$(b.dataset.for).click();
 };
 /* Space and Enter on a button in the bar press it (side A's Space-to-play is for the rest of the page) */
 document.querySelector(".top").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&e.target.closest("button"))e.stopPropagation()});
@@ -2985,7 +2992,7 @@ window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"
 
 /* ---------- toast / boot ---------- */
 let tt=null;function toast(t,ms=1800){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,ms)}
-/* ---------- Report a problem (docs/reports.md): More → Report a problem…, or the phone's Projects sheet ----------
+/* ---------- Report a problem (docs/reports.md): the flag next to Settings, or the phone's Projects sheet ----------
    What goes out is exactly the JSON under "See what will be sent": cueReport.build() (the allow-list in <head>) over
    the state gathered here, rebuilt when the dialog changes and once more right before sending. It goes to the sync
    server's POST /reports; with no sync server, or when sending fails, Copy report and Download report hand over the
@@ -3038,6 +3045,7 @@ $("rDown").onclick=()=>{const t=renderReport(),a=document.createElement("a"),u=U
   a.href=u;a.download="cue-board-report-"+new Date().toISOString().slice(0,19).replace(/[-:]/g,"")+".json";document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(u),2000);$("rDown").textContent="Downloaded"};
 $("mReport").onclick=()=>{mProj.close();openReport()};
+$("reportb").onclick=()=>openReport();
 let rz=0;try{new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(renderTimeline)}).observe(scroller)}catch(e){window.addEventListener("resize",renderTimeline)}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>renderTimeline());
 renderAll();

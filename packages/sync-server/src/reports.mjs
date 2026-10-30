@@ -1,5 +1,5 @@
 // @ts-check
-/* Problem reports sent from the app (More → Report a problem; docs/reports.md). Anyone can send one: no token, so
+/* Problem reports sent from the app (the flag next to Settings; docs/reports.md). Anyone can send one: no token, so
    everything that arrives is treated as hostile. The app builds its report from an allow-list (index.html, the
    `cue-report` script in <head>); this file is the same allow-list on the server: every field is checked and clipped,
    unknown fields are dropped, free text has control characters taken out and URLs, tokens and e-mail addresses

@@ -49,12 +49,13 @@ page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|
 page.on('pageerror', e => errs.push(e.message));
 
 // The intended gaps, by kind of neighbour. A ghost button's 8px padding counts as space, so these box gaps all give
-// the same 32px of empty bar between groups (logo|project, project|operations, operations|song, room|saved|Settings),
-// 16px inside the room group (Join/Leave, bubbles, sync), 20px along a row of ghost buttons, and the bar ends on
+// the same 32px of empty bar between groups (logo|project, project|operations, operations|song, room|saved|Report),
+// 16px inside the room group (Join/Leave, bubbles, sync), 20px along a row of ghost buttons (New … More, Report
+// Settings), and the bar ends on
 // Settings' ink at the gutter. Bubbles overlap by 4. Gaps to and from Side A/B are the bar's free space (at least 32, 16 below 1280).
 const GUTTER = w => (w > 1180 ? 20 : 16);
 const EXPECT = { 'logo→picker': 32, 'picker→pencil': 4, 'pencil→op': 16, 'op→op': 4, 'op→song': 24,
-  'room→bubble': 8, 'bubble→bubble': -4, 'bubble→sync': 8, 'room→saved': 24, 'sync→saved': 24, 'saved→settings': 24 };
+  'room→bubble': 8, 'bubble→bubble': -4, 'bubble→sync': 8, 'room→saved': 24, 'sync→saved': 24, 'saved→report': 24, 'report→settings': 4 };
 const KIND = { new: 'op', import: 'op', export: 'op', more: 'op', join: 'room', leave: 'room', you: 'bubble' };
 const kind = n => KIND[n] || (/^p\d/.test(n) ? 'bubble' : n);
 
@@ -74,6 +75,7 @@ const measure = () => page.evaluate(() => {
   document.querySelectorAll('#presence .pchip').forEach((c, i) => add(c.classList.contains('self') ? 'you' : 'p' + i, c));
   add('sync', document.getElementById('mstat'));
   add('saved', document.getElementById('status'));
+  add('report', document.getElementById('reportb'));
   add('settings', document.getElementById('settingsb'));
   const gaps = [{ a: '|', b: items[0].name, v: items[0].l - t.left }];
   for (let i = 1; i < items.length; i++) gaps.push({ a: items[i - 1].name, b: items[i].name, v: items[i].l - items[i - 1].r });
@@ -140,7 +142,7 @@ try {
     await at(w); const base = xs(await measure());
     for (const [k, t] of [['busy', 'Saving…'], ['busy', 'Syncing…'], ['local', 'Saved locally'], ['err', "Couldn't save"], ['err', 'Out of storage space'], ['ok', 'Saved']]) {
       await page.evaluate(([k, t]) => { const s = document.getElementById('status'); s.dataset.k = k; s.querySelector('.lbl').textContent = t; }, [k, t]); await sleep(60);
-      const m = await measure(); shifts.push(...moved(base, xs(m), ['logo', 'sides', 'room', 'you', 'p0', 'sync', 'saved', 'settings']).map(x => `${w} saved "${t}": ${x}`));
+      const m = await measure(); shifts.push(...moved(base, xs(m), ['logo', 'sides', 'room', 'you', 'p0', 'sync', 'saved', 'report', 'settings']).map(x => `${w} saved "${t}": ${x}`));
       if (w === 1440 && t === "Couldn't save") await bar('room-saved-error-1440');
     }
     if (w === 1440 || w === 1920 || w === 1280) await bar(`room-this-room-${w}`, 40);
@@ -157,7 +159,7 @@ try {
   await at(1440); await page.click('#newp'); await sleep(400); await page.keyboard.type('Spacing'); await page.keyboard.press('Enter'); await sleep(400);
   await pass('nosong');
 
-  check('every gap is its intended step (±1px): logo 32 picker 4 pencil 16 ops 4 … 24 song; room 8, bubbles −4, 8 sync, 24 saved 24 Settings; edges gutter / gutter−8 (1920 to 820, local, room, crowd, no song)', !bad.length, bad.slice(0, 4).join(' | '));
+  check('every gap is its intended step (±1px): logo 32 picker 4 pencil 16 ops 4 … 24 song; room 8, bubbles −4, 8 sync, 24 saved 24 Report 4 Settings; edges gutter / gutter−8 (1920 to 820, local, room, crowd, no song)', !bad.length, bad.slice(0, 4).join(' | '));
   check('Side A/B on the bar\'s centre at 1440 and 1920 (±2px) unless a zone is full and holds it at 32px',!centre.length, centre.join(' | '));
   check('the words in the bar (logo, project, sides, Join/Leave, saved, Settings) sit on its middle (±1px)', !words.length, words.slice(0, 3).join(' | '));
 } catch (e) { check('run completed', false, e.stack.split('\n').slice(0, 3).join(' ')); }

@@ -101,7 +101,7 @@ try {
   await page.keyboard.press('Escape');
   await page.click('#moreb'); await sleep(150); await page.mouse.move(700, 600);
   const more = await page.evaluate(() => [...document.querySelectorAll('#moremenu .mi')].filter(e => e.getClientRects().length).map(e => e.textContent));
-  check('More at 1440: Replace song, Remove song, Report a problem, Delete project (Import/Export are in the bar)', more.join('|') === 'Replace song…|Remove song|Report a problem…|Delete project', more.join(' | '));
+  check('More at 1440: Replace song, Remove song, Delete project (Import/Export are in the bar; Report a problem is next to Settings)', more.join('|') === 'Replace song…|Remove song|Delete project', more.join(' | '));
   await bar('05-more-menu-1440', 140); await page.keyboard.press('Escape');
 
   // ---------- in a room: you and others ----------
@@ -207,14 +207,14 @@ try {
   const gearAt = () => page.evaluate(() => { const s = document.getElementById('settingsb'), m = document.getElementById('moreb'), j = document.getElementById('joinb'), r = s.getBoundingClientRect(), mr = m.getBoundingClientRect(), l = s.querySelector('.lbl').getBoundingClientRect();
     return { ico: s.querySelector('svg[aria-hidden="true"] use')?.getAttribute('href'), aria: s.getAttribute('aria-label'), title: s.title, text: s.textContent.trim(), lw: Math.round(l.width), w: r.width, h: r.height, mw: mr.width, mh: mr.height,
       font: getComputedStyle(s).font === getComputedStyle(j).font && getComputedStyle(s).color === getComputedStyle(m).color,
-      sw: getComputedStyle(s.querySelector('.ico')).strokeWidth, msw: getComputedStyle(m.querySelector('.ico')).strokeWidth, tag: s.tagName, last: s === document.querySelector('.tright').lastElementChild }; });
+      sw: getComputedStyle(s.querySelector('.ico')).strokeWidth, msw: getComputedStyle(m.querySelector('.ico')).strokeWidth, tag: s.tagName, last: s === [...document.querySelectorAll('.tright button')].pop() }; });
   const gear = await gearAt(), named = await page.getByRole('button', { name: 'Settings', exact: true }).count();
   check('Settings: the gear then the word "Settings" (aria-label matches the word), styled like Join, same height and stroke as More, last in the bar', gear.ico === '#i-gear' && gear.text === 'Settings' && gear.lw > 40 && named === 1 && gear.aria === "Settings" && !gear.title && gear.font
     && gear.tag === 'BUTTON' && gear.h === gear.mh && gear.sw === gear.msw && gear.last && await page.locator('#i-sliders').count() === 0, JSON.stringify(gear));
   await page.hover('#settingsb'); await sleep(150);
   check('with its word showing, no tooltip on Settings (at rest or on hover)', await tip('#settingsb') === '');
   await bar('14-settings-label-hover', 40);
-  await page.mouse.move(700, 600); await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
+  await page.mouse.move(700, 600); await page.focus('#reportb'); await page.keyboard.press('Tab'); await sleep(150);
   const ring = await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [document.activeElement.id, s.outlineStyle, s.outlineWidth, s.outlineColor]; });
   await page.focus('#moreb'); const mring = await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; });
   check('Settings: the same focus ring as More, no tooltip while its word shows', ring[0] === 'settingsb' && ring[1] !== 'none' && JSON.stringify(ring.slice(1)) === JSON.stringify(mring), `${ring} / ${mring}`);
@@ -224,12 +224,35 @@ try {
   await page.hover('#settingsb'); await sleep(150);
   check('below 1280: its name on hover', await tip('#settingsb') === 'Settings');
   await bar('14-settings-gear-hover-1024', 40);
-  await page.mouse.move(700, 600); await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
+  await page.mouse.move(700, 600); await page.focus('#reportb'); await page.keyboard.press('Tab'); await sleep(150);
   check('below 1280: its name on keyboard focus', await page.evaluate(() => document.activeElement?.id) === 'settingsb' && await tip('#settingsb') === 'Settings');
   await bar('15-settings-gear-focus-1024', 40);
   await page.keyboard.press('Enter'); await sleep(250);
   check('the gear opens Settings', await page.isVisible('#dlgSettings')); await page.keyboard.press('Escape'); await sleep(150);
   await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150);
+
+  // ---------- Report a problem: a flag right before Settings, icon only at every width, named on hover and on focus ----------
+  const flagAt = () => page.evaluate(() => { const f = document.getElementById('reportb'), m = document.getElementById('moreb'), s = document.getElementById('settingsb'), r = f.getBoundingClientRect(), mr = m.getBoundingClientRect(), sr = s.getBoundingClientRect();
+    return { ico: f.querySelector('use')?.getAttribute('href'), aria: f.getAttribute('aria-label'), text: f.textContent.trim(), w: r.width, h: r.height, mw: mr.width, mh: mr.height, top: r.top === sr.top,
+      sw: getComputedStyle(f.querySelector('.ico')).strokeWidth, msw: getComputedStyle(m.querySelector('.ico')).strokeWidth, color: getComputedStyle(f).color === getComputedStyle(m).color,
+      before: f.nextElementSibling === s, gap: Math.round(sr.left - r.right), inMore: !!document.querySelector('#moremenu #reportb, #moremenu [data-for="reportb"]'), barH: document.querySelector('.top').getBoundingClientRect().height }; });
+  const flags = {};
+  for (const w of [1920, 1440, 1280, 1024, 820]) { await page.setViewportSize({ width: w, height: 900 }); await sleep(150); flags[w] = await flagAt(); }
+  check('Report a problem: a flag right before Settings (4px), same size, stroke and colour as More, no word, not in More, one row at 1920–820',
+    Object.values(flags).every(f => f.ico === '#i-flag' && f.aria === 'Report a problem' && f.text === '' && f.w === f.mw && f.h === f.mh && f.sw === f.msw && f.color && f.before && f.gap === 4 && f.top && !f.inMore && f.barH === flags[1920].barH)
+    && await page.getByRole('button', { name: 'Report a problem', exact: true }).count() === 1, JSON.stringify(flags[820]));
+  await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150); await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur());
+  check('Report a problem: no tooltip at rest', await tip('#reportb') === '');
+  await page.hover('#reportb'); await sleep(150);
+  check('Report a problem: its name on hover', await tip('#reportb') === 'Report a problem');
+  await bar('17-report-hover-1440', 40);
+  await page.mouse.move(700, 600); await page.focus('#joinb'); await page.keyboard.press('Tab'); await sleep(150);
+  check('Report a problem: reached by Tab before Settings, its name on keyboard focus', await page.evaluate(() => document.activeElement?.id) === 'reportb' && await tip('#reportb') === 'Report a problem');
+  await page.keyboard.press('Enter'); await sleep(300);
+  check('the flag opens the report dialog', await page.isVisible('#dlgReport'));
+  await page.keyboard.press('Escape'); await sleep(200);
+  check('closing the report dialog hands focus back to the flag', await page.evaluate(() => document.activeElement?.id) === 'reportb');
+  await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur());
 
   // ---------- an armed Leave does not outlive its panel or follow you into another room ----------
   await db(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
@@ -257,15 +280,16 @@ try {
   await page.reload(); await page.waitForFunction(() => document.getElementById('projname').textContent === 'No projects', null, { timeout: 15000 }); await sleep(300);
   const moreAt = async w => { await page.setViewportSize({ width: w, height: 900 }); await sleep(150); return page.isVisible('#moreb'); };
   const vis = { 1920: await moreAt(1920), 1440: await moreAt(1440), 1280: await moreAt(1280), 900: await moreAt(900) };
-  // Report a problem works without a project (that's when something may be broken), so More stays at every width
-  check('no project: More stays at every width (Report a problem; below 1440 also Import, Export)', vis[1920] && vis[1440] && vis[1280] && vis[900], JSON.stringify(vis));
+  check('no project: More is hidden at 1440 and 1920 (only a disabled Delete project), back below 1440 (Import, Export)', !vis[1920] && !vis[1440] && vis[1280] && vis[900], JSON.stringify(vis));
+  // Report a problem works without a project (that's when something may be broken): it's in the bar, not in More
+  check('no project: Report a problem is still in the bar, enabled', await page.isVisible('#reportb') && await page.isEnabled('#reportb'));
   await page.setViewportSize({ width: 1280, height: 900 }); await sleep(150);
   await page.focus('#moreb'); await page.keyboard.press('ArrowDown'); await sleep(150);
   check('no project, narrow bar: opening More by keyboard focuses its first enabled entry', await page.evaluate(() => document.activeElement?.closest('#moremenu') && !document.activeElement.disabled && document.activeElement.textContent) === 'Import…');
   await page.keyboard.press('Escape'); await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150);
   const ord = []; await page.focus('#proj');
   for (let i = 0; i < 8; i++) { await page.keyboard.press('Tab'); const id = await page.evaluate(() => document.activeElement?.closest('.top') ? document.activeElement.id : null); if (!id) break; ord.push(id); }
-  check('no project, wide bar: Tab goes from the project zone to More, then on', ord.indexOf('moreb') > ord.indexOf('newp') && ord.includes('newp'), ord.join(' → '));
+  check('no project, wide bar: Tab skips straight from the project zone past the missing More', !ord.includes('moreb') && ord.includes('newp'), ord.join(' → '));
   await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await bar('16-no-project-1440');
 } catch (e) { check('run completed', false, e.stack.split('\n').slice(0, 3).join(' ')); }
 check('no console errors', errs.length === 0, errs.slice(0, 3).join(' | '));

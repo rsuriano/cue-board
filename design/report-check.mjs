@@ -1,4 +1,4 @@
-// Report a problem: the More entry (desktop) and the Projects sheet row (phone), the dialog by keyboard and focus
+// Report a problem: the button next to Settings (desktop) and the Projects sheet row (phone), the dialog by keyboard and focus
 // return, Send to a real sync server (the stored file equals "See what will be sent"), a project full of secrets that
 // never reaches the report, errors with tokens and invite links scrubbed, the offline and failed-send fallbacks
 // (Copy report, Download report), no horizontal overflow, 16px inputs on the phone.
@@ -84,17 +84,16 @@ try {
   // ---- desktop ----
   const A = await newPage('A');
   check('desktop: the secret project is open', (await A.page.evaluate(() => document.getElementById('projname').textContent)) === SECRETS[0]);
-  await A.page.focus('#moreb'); await A.page.keyboard.press('ArrowDown');
-  check('desktop: More has "Report a problem…"', await A.page.isVisible('#reportb') && (await A.page.textContent('#reportb')).trim() === 'Report a problem…');
-  for (let i = 0; i < 12 && !(await A.page.evaluate(() => document.activeElement.id === 'reportb')); i++) await A.page.keyboard.press('ArrowDown');
-  await A.page.keyboard.press('Enter'); await sleep(300);
-  check('desktop: Enter on the entry opens the dialog, focus in the text box', (await mode(A.page)) === 'edit' && await A.page.evaluate(() => document.activeElement.id === 'rText'));
+  check('desktop: "Report a problem" is the button next to Settings, not in More', await A.page.isVisible('#reportb') && await A.page.getAttribute('#reportb', 'aria-label') === 'Report a problem'
+    && await A.page.evaluate(() => document.getElementById('reportb').nextElementSibling?.id === 'settingsb' && !document.querySelector('#moremenu').textContent.includes('Report')));
+  await A.page.focus('#reportb'); await A.page.keyboard.press('Enter'); await sleep(300);
+  check('desktop: Enter on the button opens the dialog, focus in the text box', (await mode(A.page)) === 'edit' && await A.page.evaluate(() => document.activeElement.id === 'rText'));
   check('desktop: technical details on, project shape off', await A.page.isChecked('#rTech') && !(await A.page.isChecked('#rShape')));
   await shot(A.page, 'desktop-dialog');
   await A.page.keyboard.press('Escape'); await sleep(200);
-  check('desktop: Escape closes it and focus goes back to More', !(await mode(A.page)) && await A.page.evaluate(() => document.activeElement.id === 'moreb'));
+  check('desktop: Escape closes it and focus goes back to the button', !(await mode(A.page)) && await A.page.evaluate(() => document.activeElement.id === 'reportb'));
 
-  await A.page.click('#moreb'); await A.page.click('#reportb'); await sleep(300);
+  await A.page.click('#reportb'); await sleep(300);
   // side A's shortcuts stay out of an open dialog: Space opens the summary, M and L change nothing behind it
   const cuts = () => A.page.evaluate(() => document.querySelectorAll('button.card[data-id]').length);
   const before = await cuts(); await A.page.focus('#rSee summary');
@@ -124,8 +123,8 @@ try {
   check('server: the stored report equals "See what will be sent"', !!f && isDeepStrictEqual(strip(f.j), j), f && Object.keys({ ...j, ...strip(f.j) }).filter(k => !isDeepStrictEqual(j[k], f.j[k])).map(k => `${k}: shown ${JSON.stringify(j[k])} stored ${JSON.stringify(f.j[k])}`).join(' · '));
   check('server log: no report contents (text, ua)', !serverLog.includes('timeline went blank') && !serverLog.includes(j.ua) && /report stored/.test(serverLog));
   await A.page.click('#rCancel'); await sleep(200);
-  check('desktop: Close returns focus to More', await A.page.evaluate(() => document.activeElement.id === 'moreb'));
-  await A.page.click('#moreb'); await A.page.click('#reportb'); await sleep(300);
+  check('desktop: Close returns focus to the button', await A.page.evaluate(() => document.activeElement.id === 'reportb'));
+  await A.page.click('#reportb'); await sleep(300);
   check('desktop: after a send the dialog starts clean', (await A.page.inputValue('#rText')) === '' && (await mode(A.page)) === 'edit');
   await A.page.keyboard.press('Escape');
   await A.ctx.close();
@@ -168,7 +167,7 @@ try {
 
   // ---- no sync server (standalone copy): Copy and Download are the way out ----
   const S = await newPage('S', { q: '?sync=none' });
-  await S.page.click('#moreb'); await S.page.click('#reportb'); await sleep(400);
+  await S.page.click('#reportb'); await sleep(400);
   check('standalone: offline mode, no Send, Copy and Download offered', (await mode(S.page)) === 'offline' && !(await S.page.isVisible('#rSend')) && await S.page.isVisible('#rCopy') && await S.page.isVisible('#rDown'));
   j = await shown(S.page);
   check('standalone: collab = off', j.collab === 'off');
@@ -186,7 +185,7 @@ try {
 
   // ---- the server can't be reached ----
   const D = await newPage('D', { q: '?sync=dead' });
-  await D.page.click('#moreb'); await D.page.click('#reportb'); await sleep(300);
+  await D.page.click('#reportb'); await sleep(300);
   await D.page.click('#rSend'); await D.page.waitForSelector('#dlgReport[data-mode="failed"]', { timeout: 20000 }).catch(() => {});
   check('unreachable server: failed mode, Try again focused, fallback offered', (await D.page.textContent('#rSend')) === 'Try again' && await D.page.evaluate(() => document.activeElement.id === 'rSend') && await D.page.isVisible('#rDown'));
   await shot(D.page, 'desktop-failed');

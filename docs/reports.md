@@ -1,6 +1,6 @@
 # Problem reports
 
-**Report a problem** is in **More** on the desktop bar and in the phone's Projects sheet. It opens a dialog with an optional text box, two checkboxes and **See what will be sent**, which shows the exact JSON that goes out (sent without the indentation; rebuilt at Send, so a room that dropped meanwhile shows up in it). Send posts it to the sync server; the user gets "Thanks, sent. Report `<id>`." With no sync server (`cue-sync-url` empty) or when sending fails, **Copy report** and **Download report** give the same JSON to send by hand.
+**Report a problem** is the flag button just left of Settings at the right end of the desktop bar, and a row in the phone's Projects sheet. It opens a dialog with an optional text box, two checkboxes and **See what will be sent**, which shows the exact JSON that goes out (sent without the indentation; rebuilt at Send, so a room that dropped meanwhile shows up in it). Send posts it to the sync server; the user gets "Thanks, sent. Report `<id>`." With no sync server (`cue-sync-url` empty) or when sending fails, **Copy report** and **Download report** give the same JSON to send by hand.
 
 ## What a report holds
 
