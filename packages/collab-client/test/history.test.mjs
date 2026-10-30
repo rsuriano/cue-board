@@ -168,6 +168,36 @@ test('shots keep their order by start after an undo; a take comes back at its po
   assert.ok(h.undo(p).ok); assert.deepEqual(p.sections[2].takes.map(t => t.id), ['t1', 't2']);
 });
 
+test('a remote edit to the open field: openLocs flags it, breakMerge ends the step, the next keystroke keeps their text', () => {
+  const h = H.create(), p = project();
+  const type = v => { const s = p.sections[1], b = s.notes; s.notes = v; h.push('notes of shot 02', [{ k: 'sf', id: 's2', f: 'notes', b, a: v }], { pid: 'p1', merge: 'text:s2:notes' }); };
+  type('two,'); type('two, A');
+  // the app, on a remote pull, sees the open step touches [s2, notes] and that the doc's value moved: it breaks the merge
+  assert.deepEqual(h.openLocs(), [['s2', 'notes']]);
+  p.sections[1].notes = 'two, A and B';            // B's text landed
+  h.breakMerge();
+  type('two, A and B!');                            // A keeps typing: a new step whose base is B's text
+  assert.equal(h.size(), 2);
+  assert.ok(h.undo(p).ok); assert.equal(p.sections[1].notes, 'two, A and B', "A's last run undone, B's text kept");
+  // the first step now conflicts (the field no longer reads 'two, A'): it is skipped, nothing overwritten
+  const r = h.undo(p); assert.equal(r.ok, false); assert.equal(p.sections[1].notes, 'two, A and B');
+  // once no step is mergeable, openLocs is empty
+  assert.deepEqual(h.openLocs(), []);
+});
+
+test('redo after a conflict-skip: the step is gone from both stacks, a following edit is independent', () => {
+  const h = H.create(), p = project();
+  rec(h, p, 'title', q => { q.sections[0].title = 'A1'; });
+  rec(h, p, 'notes', q => { q.sections[1].notes = 'A2'; });
+  assert.ok(h.undo(p).ok);                          // undo the notes; it's on redo
+  p.sections[1].notes = 'B took it';               // a collaborator changed the same field
+  const r = h.redo(p); assert.equal(r.ok, false); assert.equal(r.where, 'shot 02');
+  assert.equal(h.canRedo(), false, 'the skipped step left the redo stack');
+  // the earlier title step still undoes cleanly
+  assert.ok(h.undo(p).ok); assert.equal(p.sections[0].title, 'one');
+  assert.equal(p.sections[1].notes, 'B took it', 'untouched');
+});
+
 test('memory: 100 steps on a large project store diffs, not snapshots', () => {
   const h = H.create(), p = project();
   for (let i = 0; i < 100; i++) p.sections.push(shot('big' + i, 30 + i, { notes: 'n'.repeat(2000), takes: Array.from({ length: 10 }, (_, j) => ({ id: 'b' + i + '-' + j, status: 'completed', media: 'm' + i + j, prompt: 'p'.repeat(500) })) }));

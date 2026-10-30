@@ -1,0 +1,212 @@
+// Undo and redo in the browser: the keys on the desktop (Ctrl and ⌘ variants, native field undo untouched, the Delete
+// key path, a dragged cut as one step, a held key), the history's life (redo cleared by a new edit, cleared by a project
+// switch, media kept while a step holds it and freed after), and the phone's Undo button (present, disabled, enabled,
+// hold for redo, no overflow) at 390×844 and 390×700. Screenshots go to <out-dir>.
+//   node design/undo-check.mjs <repo-root> <out-dir>
+// The example project, collaboration off (this repo's empty sync URL); every request outside the local server is aborted.
+import { createRequire } from 'node:module';
+import { mkdirSync, readFileSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { join, extname, normalize } from 'node:path';
+const { chromium } = createRequire('/home/ramiro/testkit/')('playwright-core');
+
+const [root, out] = process.argv.slice(2);
+mkdirSync(out, { recursive: true });
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.woff2': 'font/woff2', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.mp3': 'audio/mpeg', '.webmanifest': 'application/manifest+json' };
+const srv = createServer((q, r) => {
+  const p = join(root, normalize(decodeURIComponent(q.url.split('?')[0])).replace(/^(\.\.[/\\])+/, ''));
+  try { if (!statSync(p).isFile()) throw 0; r.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' }); r.end(readFileSync(p)); }
+  catch { r.writeHead(404); r.end(); }
+});
+await new Promise(ok => srv.listen(0, '127.0.0.1', ok));
+const origin = `http://127.0.0.1:${srv.address().port}`;
+const results = [], errs = [];
+const check = (name, ok, ev = '') => { results.push(!!ok); console.log((ok ? 'PASS ' : 'FAIL ') + name + (ev ? ' · ' + ev : '')); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const browser = await chromium.launch({ executablePath: '/snap/bin/chromium', headless: true, args: ['--no-sandbox'] });
+
+async function newPage(opts) {
+  const ctx = await browser.newContext({ deviceScaleFactor: 1, ...opts });
+  await ctx.route('**/*', r => (r.request().url().startsWith(origin) || /^(data|blob):/.test(r.request().url()) ? r.continue() : r.abort()));
+  await ctx.addInitScript(() => { window.__CUE_MEDIA_TEST = {}; window.__A = () => window.__CUE_MEDIA_TEST.app; });
+  const page = await ctx.newPage();
+  page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
+  page.on('pageerror', e => errs.push(e.message));
+  await page.goto(origin + '/index.html');
+  return { ctx, page };
+}
+// what the user sees and what the history holds
+const state = page => page.evaluate(() => { const a = __A(), h = a.hist(); return { n: a.S().length, ids: a.S().map(s => s.id), starts: a.S().map(s => s.start), sel: a.S().find(s => s.id === document.querySelector('.card.sel')?.dataset.id)?.id, undo: h.canUndo(), redo: h.canRedo(), size: h.size(), top: h.peek()?.label || '', toast: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent }; });
+const blurAll = page => page.evaluate(() => document.activeElement && document.activeElement.blur());
+const clearHist = page => page.evaluate(() => __A().hist().clear());
+const hasBlob = (page, id) => page.evaluate(async id => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); }); return new Promise(r => { const g = d.transaction('media').objectStore('media').get(id); g.onsuccess = () => r(!!g.result); g.onerror = () => r(false); }); }, id);
+const flush = page => page.evaluate(() => __A().flushNow());
+
+try {
+  // ======== desktop ========
+  const { page } = await newPage({ viewport: { width: 1440, height: 900 } });
+  await page.waitForSelector('.card', { timeout: 15000 }); await page.evaluate(() => document.fonts.ready); await sleep(600);
+  await blurAll(page);
+  let a = await state(page);
+  check('the example opens with an empty history', !a.undo && !a.redo, JSON.stringify(a));
+  await page.keyboard.press('Control+z'); await sleep(150); a = await state(page);
+  check('Ctrl+Z with nothing to undo says so', a.toast === 'Nothing to undo', a.toast);
+
+  // a cut, then the four key variants
+  await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('ArrowRight'); await sleep(100);
+  let s0 = await state(page); await page.keyboard.press('m'); await sleep(200); let s1 = await state(page);
+  check('M adds a cut and records one step', s1.n === s0.n + 1 && s1.size === 1 && /^cut at /.test(s1.top), JSON.stringify([s0.n, s1.n, s1.top]));
+  await page.keyboard.press('Control+z'); await sleep(200); a = await state(page);
+  check('Ctrl+Z undoes the cut with a notice', a.n === s0.n && a.toast === 'Undone: ' + s1.top && a.redo && !a.undo, JSON.stringify(a));
+  await page.keyboard.press('Control+Shift+z'); await sleep(200); a = await state(page);
+  check('Ctrl+Shift+Z redoes it', a.n === s1.n && a.toast === 'Redone: ' + s1.top, JSON.stringify(a));
+  await page.keyboard.press('Control+y'); await sleep(200); a = await state(page);
+  check('Ctrl+Y with nothing to redo says so, and changes nothing', a.n === s1.n && a.toast === 'Nothing to redo', a.toast);
+  await page.keyboard.press('Meta+z'); await sleep(200); a = await state(page);
+  check('⌘Z undoes', a.n === s0.n && a.toast.startsWith('Undone'), a.toast);
+  await page.keyboard.press('Control+y'); await sleep(200); a = await state(page);
+  check('Ctrl+Y redoes', a.n === s1.n && a.toast.startsWith('Redone'), a.toast);
+  await page.keyboard.press('Meta+z'); await sleep(150); await page.keyboard.press('Meta+Shift+z'); await sleep(200); a = await state(page);
+  check('⌘⇧Z redoes', a.n === s1.n && a.toast.startsWith('Redone'), a.toast);
+  await page.screenshot({ path: join(out, 'desktop-redone.png') });
+
+  // a new edit after an undo clears the redo stack
+  await page.keyboard.press('Control+z'); await sleep(150); await page.keyboard.press('ArrowRight'); await page.keyboard.press('m'); await sleep(200); a = await state(page);
+  check('a new edit after an undo clears the redo stack', a.undo && !a.redo && a.size === 1, JSON.stringify(a));
+  await page.keyboard.press('Control+z'); await sleep(200);
+
+  // typing: the field's own undo while focused; one step for the whole run once it blurs
+  clearHist(page);
+  const v0 = await page.inputValue('#f-notes');
+  await page.click('#f-notes'); await page.keyboard.press('End'); await page.keyboard.type(' typed here'); await sleep(100);
+  const typed = await page.inputValue('#f-notes'); a = await state(page);
+  check('typing records one step for the field', a.size === 1 && /^notes of shot/.test(a.top), JSON.stringify([a.size, a.top]));
+  await page.keyboard.press('Control+z'); await sleep(200);
+  const afterNative = await page.inputValue('#f-notes'); a = await state(page);
+  // the field's own undo removed the last character and the app's history did not move (still one step, nothing on redo)
+  check('Ctrl+Z inside the field is the field\'s own undo: the app did nothing', afterNative !== typed && afterNative !== v0 && a.size === 1 && a.undo && !a.redo, JSON.stringify({ typed, afterNative, size: a.size }));
+  await page.keyboard.press('Control+Shift+z'); await sleep(100);   // the field's own redo
+  const back = await page.inputValue('#f-notes');
+  await blurAll(page); await sleep(100);
+  await page.keyboard.press('Control+z'); await sleep(200); a = await state(page);
+  const val = await page.inputValue('#f-notes');
+  check('after the field blurs, Ctrl+Z undoes the whole typed run as one step', val === v0 && a.toast.startsWith('Undone: notes of shot') && !a.undo, JSON.stringify({ v0, back, val, toast: a.toast }));
+  await page.keyboard.press('Control+Shift+z'); await sleep(200);
+  check('and redo brings the typed text back', (await page.inputValue('#f-notes')) === typed);
+  await page.keyboard.press('Control+z'); await sleep(200); clearHist(page);
+
+  // Delete key, twice, then Ctrl+Z: the shot is back with its image, and its file was never deleted.
+  // Give shot 3 an image first (the example's shots carry side-B start frames, not a side-A image), one undoable step
+  const withImg = 2;
+  await page.locator('.card').nth(withImg).click(); await sleep(200);
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAAC0SDtlAAAAGklEQVR4nGP8z4AKmBgYGBgYGBgYGBgYGAAAkQABZyH5NwAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('#f-img', { name: 'shot3.png', mimeType: 'image/png', buffer: PNG }); await sleep(600);
+  clearHist(page); await blurAll(page);
+  s0 = await state(page); const gone = await page.evaluate(() => { const s = __A().S().find(s => s.id === document.querySelector('.card.sel').dataset.id); return { id: s.id, img: s.img, title: s.title }; });
+  check('the shot picked to delete has an image file', !!gone.img && await hasBlob(page, gone.img), JSON.stringify(gone));
+  await page.keyboard.press('Delete'); await sleep(120); await page.keyboard.press('Delete'); await sleep(300); s1 = await state(page);
+  check('Delete twice deletes the selected shot and records "delete shot NN"', s1.n === s0.n - 1 && !s1.ids.includes(gone.id) && s1.top === 'delete shot ' + String(withImg + 1).padStart(2, '0'), JSON.stringify([s1.n, s1.top]));
+  await flush(page); await sleep(400);
+  const parkedNow = await page.evaluate(id => __A().parked().has(id), gone.img);
+  check('after the save the shot\'s image file is parked for the history, not deleted', parkedNow && await hasBlob(page, gone.img), JSON.stringify({ parkedNow, blob: await hasBlob(page, gone.img) }));
+  await page.keyboard.press('Control+z'); await sleep(300); a = await state(page);
+  const card = await page.evaluate(id => { const c = document.querySelector(`.card[data-id="${id}"]`); return c ? { sel: c.classList.contains('sel'), img: !!c.querySelector('.thumb img'), src: c.querySelector('.thumb img')?.getAttribute('src') || '' } : null; }, gone.id);
+  check('Ctrl+Z brings the shot back, selected, with its image showing', a.n === s0.n && a.ids.includes(gone.id) && card && card.sel && card.img && /^blob:/.test(card.src) && a.toast === 'Undone: ' + s1.top, JSON.stringify({ a: a.toast, card }));
+  check('its file is still in this browser', await hasBlob(page, gone.img));
+  await page.screenshot({ path: join(out, 'desktop-undone-delete.png') });
+  clearHist(page);
+
+  // a dragged cut is one step
+  await page.click('#zfit'); await sleep(200);
+  const free = await page.evaluate(() => { const cv = document.getElementById('tl'), r = cv.getBoundingClientRect(), y = r.top + r.height * .7, xs = []; for (let x = Math.ceil(r.left) + 2; x < r.right - 2; x += 2) { cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true })); if (cv.style.cursor === 'ew-resize') xs.push(x); } return { xs, y }; });
+  const run = free.xs.filter(x => x < (free.xs[0] || 0) + 16), grab = run[Math.floor(run.length / 2)];
+  s0 = await state(page);
+  await page.mouse.move(grab, free.y); await page.mouse.down(); for (let i = 1; i <= 8; i++) { await page.mouse.move(grab + i * 6, free.y); await sleep(20); } await page.mouse.up(); await sleep(250); s1 = await state(page);
+  check('dragging a cut through many moves records one step', !!grab && s1.starts[1] > s0.starts[1] + .1 && s1.size === 1 && s1.top === 'move cut' && !s0.undo, JSON.stringify([s0.starts[1], s1.starts[1], s1.size]));
+  await page.keyboard.press('Control+z'); await sleep(250); a = await state(page);
+  check('one Ctrl+Z puts the cut back where it was', Math.abs(a.starts[1] - s0.starts[1]) < .001 && a.toast === 'Undone: move cut', JSON.stringify([a.starts[1], s0.starts[1]]));
+  clearHist(page);
+
+  // holding Ctrl+Z: repeats, capped (each step is a cut, so count by shots undone)
+  for (let i = 0; i < 6; i++) { await page.keyboard.press('ArrowRight'); await page.keyboard.press('m'); await sleep(60); }
+  s0 = await state(page);
+  const t0 = Date.now(); await page.keyboard.down('Control');
+  for (let i = 0; i < 12; i++) { await page.keyboard.down('z'); await sleep(25); }
+  await page.keyboard.up('z'); await page.keyboard.up('Control'); const held = Date.now() - t0; await sleep(300); s1 = await state(page);
+  const undone = s1.n - s0.n + s0.n - s1.n < 0 ? 0 : s0.n - s1.n;
+  check('holding Ctrl+Z steps back, at most one step per 150 ms', undone >= 1 && undone <= Math.ceil(held / 150) + 1 && undone < 12, JSON.stringify({ undone, held, before: s0.n, after: s1.n }));
+  while ((await state(page)).undo) { await page.keyboard.press('Control+z'); await sleep(60); }
+  await sleep(200); a = await state(page);
+  check('undoing everything gets back to the project as opened', !a.undo && a.n === 13, JSON.stringify([a.n, a.size]));
+  clearHist(page);
+
+  // side B: the keys work there too, outside fields
+  await page.click('.sidetab[data-side="b"]'); await sleep(300);
+  const bp0 = await page.inputValue('#bPrompt');
+  await page.click('#bPrompt'); await page.keyboard.press('End'); await page.keyboard.type(' pan left'); await blurAll(page); await sleep(100); s0 = await state(page);
+  await page.keyboard.press('Control+z'); await sleep(200); a = await state(page);
+  check('on Side B, Ctrl+Z outside a field undoes the prompt edit', s0.top.startsWith('motion prompt') && a.toast === 'Undone: ' + s0.top && (await page.inputValue('#bPrompt')) === bp0, JSON.stringify([s0.top, a.toast, bp0]));
+  await page.click('.sidetab[data-side="a"]'); await sleep(300); clearHist(page);
+
+  // a project switch clears the history, and frees the parked files nothing uses
+  await page.locator('.card').nth(withImg).click(); await sleep(150); await blurAll(page);
+  await page.keyboard.press('Delete'); await sleep(120); await page.keyboard.press('Delete'); await sleep(200); await flush(page); await sleep(400);
+  check('the deleted shot\'s file is parked again', await page.evaluate(id => __A().parked().has(id), gone.img) && await hasBlob(page, gone.img));
+  await page.click('#newp'); await sleep(400); await page.keyboard.press('Escape'); await sleep(300); a = await state(page);
+  check('a new project starts with an empty history', !a.undo && !a.redo && a.n === 1, JSON.stringify(a));
+  await page.keyboard.press('Control+z'); await sleep(150); a = await state(page);
+  check('Ctrl+Z in the new project has nothing to undo (the old project\'s steps are gone)', a.toast === 'Nothing to undo' && a.n === 1, a.toast);
+  await sleep(500);
+  check('the parked file of the old project, now unused, was freed on the switch', !(await hasBlob(page, gone.img)) && !(await page.evaluate(id => __A().parked().has(id), gone.img)));
+  await page.click('#proj'); await page.locator('#projmenu .mi[data-pid="p-example"]').click(); await sleep(500);
+  a = await state(page);
+  check('back in the example: its history is empty too, and the deleted shot stays deleted', !a.undo && a.n === 12, JSON.stringify([a.n, a.undo]));
+  await page.context().close();
+
+  // ======== phone ========
+  for (const [w, h] of [[390, 844], [390, 700]]) {
+    const { page: ph } = await newPage({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' });
+    const tag = `phone-${w}x${h}`;
+    await ph.waitForFunction(() => /Mountain/.test(document.getElementById('projname').textContent) && document.getElementById('mtUndo'), null, { timeout: 15000 });
+    await ph.evaluate(() => document.fonts.ready); await sleep(600);
+    const tool = () => ph.evaluate(() => {
+      const bs = [...document.querySelectorAll('#mTool > button')].filter(b => b.getClientRects().length), u = document.getElementById('mtUndo');
+      const box = b => { const r = b.getBoundingClientRect(), i = b.querySelector('.ico').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), icon: Math.round(i.width), stroke: getComputedStyle(b.querySelector('.ico')).strokeWidth, clipped: b.scrollWidth > b.clientWidth + 1, label: b.textContent.trim() }; };
+      return { labels: bs.map(b => b.textContent.trim()), undo: box(u), others: bs.filter(b => b !== u).map(box), disabled: u.disabled, aria: u.getAttribute('aria-label'), overflow: document.documentElement.scrollWidth - innerWidth, color: getComputedStyle(u).color };
+    });
+    let t = await tool();
+    check(`[${tag}] Undo sits in the shot toolbar, before Delete, with the five others`, t.labels.join('|') === 'Cut here|Details|Photo|Move|Undo|Delete', t.labels.join('|'));
+    check(`[${tag}] same size, icon and stroke as the other toolbar buttons, nothing clipped`, t.others.every(o => o.w === t.undo.w && o.h === t.undo.h && o.icon === t.undo.icon && o.stroke === t.undo.stroke) && !t.undo.clipped && t.others.every(o => !o.clipped) && t.undo.icon === 20, JSON.stringify({ undo: t.undo, others: t.others }));
+    check(`[${tag}] disabled while there is nothing to undo; named for the hold`, t.disabled && /hold to redo/i.test(t.aria), JSON.stringify([t.disabled, t.aria]));
+    check(`[${tag}] no horizontal overflow`, t.overflow <= 0, String(t.overflow));
+    await ph.screenshot({ path: join(out, `${tag}-toolbar-disabled.png`), clip: { x: 0, y: h - 130, width: w, height: 130 } });
+    await ph.screenshot({ path: join(out, `${tag}-full.png`) });
+    // a cut from the toolbar enables it; a tap undoes; a hold redoes
+    await ph.evaluate(() => { const a = document.getElementById('audio'), s = __A().S(); a.currentTime = (s[1].start + s[2].start) / 2; }); await sleep(300);
+    let p0 = await state(ph); await ph.tap('#mtCut'); await sleep(300); let p1 = await state(ph); t = await tool();
+    check(`[${tag}] Cut here records a step and enables Undo`, p1.n === p0.n + 1 && !t.disabled, JSON.stringify([p0.n, p1.n, t.disabled]));
+    await ph.screenshot({ path: join(out, `${tag}-toolbar-enabled.png`), clip: { x: 0, y: h - 130, width: w, height: 130 } });
+    await ph.tap('#mtUndo'); await sleep(300); a = await state(ph); t = await tool();
+    check(`[${tag}] a tap undoes the cut with a notice; the button stays on for the redo`, a.n === p0.n && a.toast === 'Undone: ' + p1.top && !t.disabled, JSON.stringify([a.n, a.toast, t.disabled]));
+    await ph.screenshot({ path: join(out, `${tag}-undone.png`) });
+    await ph.tap('#mtUndo'); await sleep(300); a = await state(ph);
+    check(`[${tag}] a tap with nothing to undo points at the hold`, a.toast === 'Nothing to undo. Hold Undo to redo' && a.n === p0.n, a.toast);
+    const bb = await ph.locator('#mtUndo').boundingBox();
+    const cdp = await ph.context().newCDPSession(ph);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: bb.x + bb.width / 2, y: bb.y + bb.height / 2, id: 1 }] });
+    await sleep(700);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await cdp.detach(); await sleep(300); a = await state(ph); t = await tool();
+    check(`[${tag}] holding Undo redoes the cut`, a.n === p1.n && a.toast === 'Redone: ' + p1.top && !t.disabled, JSON.stringify([a.n, a.toast]));
+    check(`[${tag}] still no horizontal overflow`, (await tool()).overflow <= 0);
+    // undo the cut again and leave it: the button is on (redo), which the hold reaches
+    await ph.tap('#mtUndo'); await sleep(200); await ph.evaluate(() => __A().hist().clear()); await sleep(100); t = await tool();
+    check(`[${tag}] with the history cleared the button is disabled again`, t.disabled);
+    await ph.context().close();
+  }
+} catch (e) { check('ran without throwing', false, e.stack); }
+
+check('no console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+await browser.close(); srv.close();
+const fails = results.filter(r => !r).length;
+console.log(`\n${results.length - fails}/${results.length} passed`);
+process.exit(fails ? 1 : 0);
