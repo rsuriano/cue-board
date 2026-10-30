@@ -93,6 +93,10 @@ The creator's browser also stores an **owner token** with the binding (`rooms[pi
 
 Checks: `packages/sync-server/test/rooms-api.test.mjs` (9 tests: create with/without verification, bad/revoked/full/rate-limited codes, owner-only actions, legacy rooms, caps, CORS, no secrets in the log, restart persistence, two creates at once, delete racing a join, the CLIs), `packages/collab-client/test/api.test.mjs`, and `node design/rooms-check.mjs . <out>` (35 browser checks at 1440×900, 390×844 and 390×700: the code prompt, a wrong code, creating, the link, a second browser joining and editing both ways, New link, Delete room, the phone sheet).
 
+## Problem reports
+
+The same HTTP API takes problem reports from the app (`POST /reports`, no token, rate-limited, stored under `DATA_DIR/reports/`): see `docs/reports.md`.
+
 ## Checks
 
 - `npm test -w @cue-board/collab-client`: conversion, equivalence with `cueboardToDoc()`, merge of concurrent edits, validation, `keepPending()`; `test/session.test.mjs` runs a session against a real server on port 3385 while another client types: media pending a hash (frame and take), a hash failure, two quick changes, a remote delete. `test/reopen.test.mjs` (port 3386, an in-memory IndexedDB) kills a session after its offline copy took a remote change the app never saved (notes, title, a new take) and reopens it: the change stays in the room and reaches the app, nothing is doubled; and leaving while a save is in flight doesn't bring the copy back. The three reopen cases fail on the code before this fix (the change is deleted from the room).
