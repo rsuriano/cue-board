@@ -140,5 +140,7 @@ export function createBurstLimiter({ max = 30, windowMs = 3600_000, now = Date.n
       if (l.length >= max) { m.set(key, l); return false; }
       l.push(t); m.set(key, l); return true;
     },
+    /** true when `key` has no room left in the window (nothing is taken) */
+    full(/** @type {string} */ key) { const t = now(); return (m.get(key) || []).filter(x => t - x < windowMs).length >= max; },
   };
 }

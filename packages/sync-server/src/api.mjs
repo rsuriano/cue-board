@@ -16,12 +16,17 @@
                                    connected is closed with 4401 (they rejoin with the new link; the owner's app does so itself)
      DELETE /rooms/:id             Bearer <owner token> → 200 { ok }: members get 4410 "room deleted", the folder is wiped
                                    404 unknown_room · 403 not_owner (also for a legacy room without an owner)
+     POST   /reports  { …report }  no token (anyone can report a problem) → 201 { id }; the body is cleaned against the
+                                   report allow-list (src/reports.mjs) and stored under DATA_DIR/reports/, never logged.
+                                   400 bad_request · 413 too_large (over 16 KiB) · 429 report_limit (per IP: reportsPerHour,
+                                   5; everyone: reportsPerDay, 200)
 
    CORS: a browser request carries an Origin header; it's answered with CORS headers only if that origin is in
    `corsOrigins` (exact match, scheme and host). A request from any other origin is refused with 403 origin (defence in
    depth: the browser would have blocked the answer anyway). Requests without Origin (curl, the CLI) are not CORS. */
 import { AccessStore, canCreateRoom, createFailureLimiter, createBurstLimiter } from './access.mjs';
 import { ROOM_ID } from './store.mjs';
+import { ReportStore, cleanReport } from './reports.mjs';
 
 const MAX_BODY = 16 * 1024, NAME_MAX = 120;
 const ERRORS = {
@@ -29,12 +34,14 @@ const ERRORS = {
   code_full: [409, 'That code has been used by as many people as it allows.'], too_many_attempts: [429, 'Too many attempts. Try again in 15 minutes.'],
   unverified: [401, 'Creating rooms is invite-only for now. Enter the code you were given.'], create_limit: [429, 'You created a lot of rooms in the last hour. Try again later.'],
   room_cap: [507, "The server can't take more rooms right now. Tell the operator."], unknown_room: [404, 'No such room.'], not_owner: [403, "Only the room's owner can do that."],
+  report_limit: [429, 'Too many reports right now. Try again later.'], too_large: [413, 'That report is too big.'],
   origin: [403, 'Origin not allowed'], not_found: [404, 'Not found'], server: [500, 'Something went wrong on the server.'],
 };
 
 /**
  * @param {{ store: import('./store.mjs').ProjectStore, log: ReturnType<typeof import('./log.mjs').createLogger>, dataDir: string,
  *   corsOrigins: string[], maxRooms: number, createPerHour: number, verifyFails?: number, verifyBlockMs?: number,
+ *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
  *   clientIp: (req: import('node:http').IncomingMessage) => string,
  *   initDoc: (name: string) => import('yjs').Doc,
  *   kickRoom: (id: string, code: number, reason: string) => void, deleteRoom: (id: string) => boolean }} o
@@ -43,6 +50,8 @@ export function createApi(o) {
   const access = new AccessStore(o.dataDir), log = o.log;
   const verifyLimit = createFailureLimiter({ max: o.verifyFails ?? 5, blockMs: o.verifyBlockMs ?? 15 * 60_000 });
   const createLimit = createBurstLimiter({ max: o.createPerHour });
+  const reports = new ReportStore(o.dataDir, { max: o.maxReports ?? 500 });
+  const reportIp = createBurstLimiter({ max: o.reportsPerHour ?? 5 }), reportAll = createBurstLimiter({ max: o.reportsPerDay ?? 200, windowMs: 24 * 3600_000 });
   const origins = new Set(o.corsOrigins.map(s => s.trim()).filter(Boolean));
 
   /** @param {import('node:http').ServerResponse} res @param {number} status @param {any} body */
@@ -51,14 +60,16 @@ export function createApi(o) {
   const fail = (res, error, extra = {}) => json(res, ERRORS[error][0], { error, message: ERRORS[error][1], ...extra });
   /** @param {import('node:http').IncomingMessage} req */
   const bearer = req => { const m = /^Bearer\s+([A-Za-z0-9_-]{16,128})$/.exec(String(req.headers.authorization || '')); return m ? m[1] : ''; };
+  /** requests whose body was over MAX_BODY (answered 413 by /reports, 400 elsewhere as before) */
+  const big = new WeakSet();
   /** The request body, read whole before any answer (answering with it unread resets a keep-alive connection).
       @param {import('node:http').IncomingMessage} req @returns {Promise<any>} parsed JSON ({} when empty), or undefined
       when it isn't valid JSON or is over MAX_BODY (past 4× that the socket is dropped instead of drained) */
   const body = req => new Promise(ok => {
-    /** @type {Buffer[]} */ const chunks = []; let n = 0, done = false, big = false;
+    /** @type {Buffer[]} */ const chunks = []; let n = 0, done = false;
     const end = (/** @type {any} */ v) => { if (!done) { done = true; ok(v); } };
-    req.on('data', d => { n += d.length; if (n > 4 * MAX_BODY) { end(undefined); req.destroy(); } else if (n > MAX_BODY) big = true; else chunks.push(d); });
-    req.on('end', () => { if (big) return end(undefined); try { const t = Buffer.concat(chunks).toString('utf8'); end(t ? JSON.parse(t) : {}); } catch { end(undefined); } });
+    req.on('data', d => { n += d.length; if (n > 4 * MAX_BODY) { big.add(req); end(undefined); req.destroy(); } else if (n > MAX_BODY) big.add(req); else chunks.push(d); });
+    req.on('end', () => { if (big.has(req)) return end(undefined); try { const t = Buffer.concat(chunks).toString('utf8'); end(t ? JSON.parse(t) : {}); } catch { end(undefined); } });
     req.on('error', () => end(undefined));
   });
 
@@ -86,7 +97,8 @@ export function createApi(o) {
       if (p === '/rooms' && req.method === 'POST') return createRoom(req, res, b);
       if (m && m[2] && req.method === 'POST') return ownerAction(req, res, m[1], 'invite');
       if (m && !m[2] && req.method === 'DELETE') return ownerAction(req, res, m[1], 'delete');
-      if (p === '/verify' || p === '/rooms' || m) { fail(res, 'not_found'); return true; }
+      if (p === '/reports' && req.method === 'POST') return report(req, res, b);
+      if (p === '/verify' || p === '/rooms' || p === '/reports' || m) { fail(res, 'not_found'); return true; }
       return false;
     } catch (err) {
       // only our own words are logged: a JSON.parse message can quote codes.json (hashes)
@@ -156,5 +168,22 @@ export function createApi(o) {
     return true;
   }
 
-  return { handle, access, limits: { verify: verifyLimit, create: createLimit } };
+  /** A problem report from the app: rate-limited per IP and for everyone, cleaned, stored. Only the id is logged.
+      The shared limit is checked before the IP's, so a flood from many addresses stops at reportsPerDay without
+      growing the per-IP table past that.
+      @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {any} b */
+  function report(req, res, b) {
+    const ip = o.clientIp(req);
+    if (big.has(req)) { log.warn('report refused: too large', { ip }); fail(res, 'too_large'); return true; }
+    if (!b || typeof b !== 'object' || Array.isArray(b)) { fail(res, 'bad_request'); return true; }
+    if (reportAll.full('all')) { log.warn('report refused: daily limit (everyone)', { ip }); fail(res, 'report_limit'); return true; }
+    if (!reportIp.take(ip)) { log.warn('report refused: hourly limit (IP)', { ip }); fail(res, 'report_limit'); return true; }
+    reportAll.take('all');
+    const id = reports.add(/** @type {Record<string, unknown>} */ (cleanReport(b)));
+    log.info('report stored', { id, ip });
+    json(res, 201, { id });
+    return true;
+  }
+
+  return { handle, access, reports, limits: { verify: verifyLimit, create: createLimit, reportIp, reportAll } };
 }
