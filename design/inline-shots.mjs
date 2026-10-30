@@ -172,7 +172,7 @@ try {
   await open();
   await page.evaluate(() => { window.__STUB.status = 'synced'; });
   // from the keyboard (a click outside would close the panel first): Leave in the bar, two presses
-  await page.focus('#leaveb'); await page.keyboard.press('Enter'); await page.keyboard.press('Enter'); await sleep(200);
+  await page.focus('#roomb'); await page.keyboard.press('Enter'); await page.waitForSelector('#dlgRoom[open]'); await page.focus('#rmLeave'); await page.keyboard.press('Enter'); await page.keyboard.press('Enter'); await sleep(200);
   check('leaving the room with the panel open hides the indicator and the panel', await page.$eval('#mstatw', e => e.hidden) && await page.$eval('#mpanel', e => e.hidden));
 
   // ---- 820px: the panel fits and scrolls; nothing overflows 1920 to 820 ----

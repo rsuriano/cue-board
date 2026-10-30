@@ -216,8 +216,8 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 #moremenu .mi.narrow,#moremenu .mi.narrowest{display:none}
 #moremenu .mi[data-armed]{color:var(--error)}
 /* destructive items: quiet until hovered (same as Delete shot), the two-tap confirm lives in the label */
-#moremenu #delp:hover,#moremenu #delsong:hover,#leaveb:hover,#leaveb[data-armed]{color:var(--error)}
-#leaveb:hover,#leaveb[data-armed]{background:var(--error-subtle);border-color:transparent}
+#moremenu #delp:hover,#moremenu #delsong:hover,#rmLeave:hover,#rmLeave[data-armed],#rmDel:hover,#rmDel[data-armed]{color:var(--error)}
+#rmLeave:hover,#rmLeave[data-armed],#rmDel:hover,#rmDel[data-armed]{background:var(--error-subtle);border-color:transparent}
 /* saved state: quiet. A check when this browser (and the room) has every change, dots while saving, red only on failure.
    A fixed width with its words against Settings, so a change of state never moves anything; the rare longer error is
    cut short (the tooltip has it in full). Text, not a ghost: its margins stand in for a ghost's padding */
@@ -605,7 +605,21 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .linkrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-2)}
 .linkrow input{overflow:hidden;text-overflow:ellipsis;font:var(--w-regular) var(--text-input-mono)/var(--lh-sm) var(--font-mono)}
 .ownerrow{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--sp-3);margin-top:var(--sp-2)}
-#jRegen[data-armed]{color:var(--error)}
+#rmRegen[data-armed]{color:var(--error)}
+/* This room: the name under a small caps label, Close at the corner; who's here as a list; Leave, then the owner's
+   Delete room apart under a rule (a member gets one line instead) */
+.rm-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:var(--sp-3);margin:calc(var(--sp-1) * -1) calc(var(--sp-2) * -1) 0 0}
+.rm-head .kh{margin-bottom:var(--sp-0-5)}
+#rmName{overflow-wrap:anywhere}
+.rm-sec{display:grid;gap:var(--sp-2)}
+.rm-act{grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--sp-3)}
+.rm-danger{padding-top:var(--gap-block);border-top:var(--hairline) solid var(--border-subtle)}
+#rmPeople{display:grid;gap:var(--sp-1);max-height:calc(var(--hit) * 6);margin:0;padding:0;overflow:auto;list-style:none}
+#rmPeople li{display:flex;align-items:center;gap:var(--sp-3);min-height:var(--h-md)}
+#rmPeople .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rmPeople .nm i{font-style:normal;color:var(--ink-3)}
+#rmPeople .pchip{flex:none}
+#rmState:empty{display:none}
 .jmsg:empty{display:none}
 /* Report a problem: the two choices, the line under the first one aligned with its words, and the report as sent */
 .ropts{display:grid;gap:var(--sp-1)}
@@ -649,8 +663,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .more:has(.mi.narrow:not(:disabled,[hidden])){display:block}
   .collab .btn{width:var(--h-md);padding:0}
   .collab .btn .ico:first-child{margin:0}
-  .collab .btn:not([data-armed]) .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-  #leaveb[data-armed] .lbl{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:var(--z-menu);padding:var(--sp-1) var(--sp-2);background:var(--surface-3);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--error);white-space:nowrap;pointer-events:none}
+  .collab .btn .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 }
 @media (max-width:1279px){
   .brand .lbl{display:none}
@@ -699,7 +712,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .app{display:flex;flex-direction:column;gap:0;height:100dvh;max-width:none;padding:0}
   /* app bar: the project's name, who's here, the files indicator */
   .top{display:flex;flex:none;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
-  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#leaveb,#status,#settingsb,.mlabel{display:none!important}
+  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,#settingsb,.mlabel{display:none!important}
   .tleft{flex:1}
   .tleft>.projgroup,.projpick{flex:1 1 auto;min-width:0}
   #proj{width:auto;max-width:100%;background-color:transparent;border-color:transparent;padding-left:var(--sp-2);font:var(--w-semibold) var(--text-xl)/var(--lh-xl) var(--font-ui);letter-spacing:var(--track-tight)}
@@ -829,8 +842,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit);border-top:var(--hairline) solid var(--border-subtle);cursor:pointer}
   .m-row>span:first-child{flex:1;font-weight:var(--w-medium)}
   .m-row .ico{color:var(--ink-3)}
-  .m-del,#mLeave,#mDelsong{justify-self:start}
-  .m-del:hover,.m-del[data-armed],#mLeave:hover,#mLeave[data-armed],#mDelsong[data-armed]{color:var(--error);background:var(--error-subtle);border-color:transparent}
+  .m-del,#mDelsong{justify-self:start}
+  .m-del:hover,.m-del[data-armed],#mDelsong[data-armed]{color:var(--error);background:var(--error-subtle);border-color:transparent}
   .mpanel{position:fixed;top:auto;right:0;bottom:0;left:0;width:auto;max-width:none;max-height:calc(100dvh - var(--safe-t) - var(--appbar-h));padding:var(--inset-panel) calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l));border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-overlay)}
   .mp-head{grid-template-columns:minmax(0,1fr) auto;column-gap:var(--sp-2)}
   #fClose{grid-column:2;grid-row:1 / span 2;align-self:start}
@@ -899,8 +912,6 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delsong" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Remove song</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="reportb"><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg><span>Report a problem…</span></button>
             <hr role="separator">
-            <button type="button" class="mi" role="menuitem" tabindex="-1" id="inviteb" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span>Invite link…</span></button>
-            <button type="button" class="mi" role="menuitem" tabindex="-1" id="delroom" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete room</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delp"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete project</span></button>
           </div>
         </div>
@@ -914,7 +925,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <div class="tzone tright">
       <div class="tgroup collab">
       <button type="button" id="joinb" class="btn ghost" title="Collaborate" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span class="lbl">Collaborate</span></button>
-      <button type="button" id="leaveb" class="btn ghost" title="Leave collaboration (this project stays here as a local copy)" hidden><svg class="ico" aria-hidden="true"><use href="#i-leave"/></svg><span class="lbl">Leave collaboration</span></button>
+      <button type="button" id="roomb" class="btn ghost" title="This room: invite link, who's here, leave" aria-haspopup="dialog" aria-controls="dlgRoom" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span class="lbl">This room</span></button>
       <div id="presence" class="presence" role="group" hidden></div>
       <div class="mstat" id="mstatw" hidden>
         <button type="button" id="mstat" class="btn ghost icon" aria-haspopup="dialog" aria-expanded="false" aria-controls="mpanel" aria-label="Files"><svg class="ico" aria-hidden="true"><use href="#i-sync"/></svg><svg class="mring" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="13" pathLength="100"/><circle class="arc" cx="14" cy="14" r="13" pathLength="100"/></svg><span class="mdot"></span></button>
@@ -1122,9 +1133,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <ul class="m-people" id="mPeople"></ul>
     <div class="m-state" id="mState"><b id="mStateT"></b><p class="muted" id="mStateTip"></p></div>
     <button type="button" class="m-row" id="mFiles"><span>Files and downloads</span><span class="muted" id="mFilesV"></span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
-    <button type="button" class="m-row" id="mInvite"><span>Invite link</span><span class="muted" id="mInviteV"></span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+    <button type="button" class="m-row" id="mRoomb" aria-haspopup="dialog"><span>This room</span><span class="muted">Invite link, leave</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
     <button type="button" class="btn" id="mJoin"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Collaborate</button>
-    <div class="m-acts"><button type="button" class="btn ghost" id="mLeave"><span>Leave collaboration</span></button><button type="button" class="btn ghost m-del" id="mDelRoom" hidden><span>Delete room</span></button></div>
   </section>
   <button type="button" class="m-row" id="mSettings"><span>Settings</span><span class="muted">OpenRouter key</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
   <button type="button" class="m-row" id="mCopy"><span>Copy shot list</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
@@ -1165,11 +1175,21 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <button type="button" class="opt" id="jNew"><b>Open the room as a new project</b><span>Your project stays exactly as it is. The room opens as a separate project next to it.</span></button>
     <button type="button" class="opt" id="jShare"><b>Share this project into the room</b><span id="jShareHint"></span></button>
   </div>
-  <div class="field" id="jInviteF"><label for="jInvite">Invite link</label><div class="linkrow"><input id="jInvite" readonly spellcheck="false" aria-describedby="jInviteHint"><button type="button" class="btn" id="jCopy">Copy</button></div><p class="hint" id="jInviteHint"></p>
-    <div class="ownerrow" id="jOwnerRow" hidden><button type="button" class="btn small ghost" id="jRegen"><span>New link</span></button><p class="hint">Replaces this link. Everyone who joined with it, in the room now or later, needs the new one.</p></div></div>
   <p class="jmsg" id="jMsg" role="alert"></p>
   <div class="row"><span class="grow"></span><button type="button" id="jCancel" class="btn ghost">Cancel</button><button type="submit" id="jGo" class="btn primary">Join</button></div>
 </form></dialog>
+<!-- the room the open project is in: its link, who's here, Leave; the owner's New link and Delete room live only here -->
+<dialog id="dlgRoom" aria-labelledby="rmName"><div class="dlg">
+  <div class="rm-head"><div><p class="kh">This room</p><h3 id="rmName"></h3></div><button type="button" class="btn ghost icon" id="rmClose" aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <p class="muted" id="rmLead"></p>
+  <div class="field"><label for="rmLink">Invite link</label><div class="linkrow"><input id="rmLink" readonly spellcheck="false" aria-describedby="rmLinkHint"><button type="button" class="btn" id="rmCopy">Copy</button></div><p class="hint" id="rmLinkHint">Everyone with this link can edit the project with you.</p>
+    <div class="ownerrow" id="rmOwnerRow"><button type="button" class="btn small ghost" id="rmRegen"><span>New link</span></button><p class="hint">Replaces this link. Everyone connected is disconnected and needs the new one to get back in.</p></div></div>
+  <section class="rm-sec" aria-labelledby="rmPeopleH"><p class="kh" id="rmPeopleH">Here now</p><ul class="m-people" id="rmPeople"></ul><p class="muted" id="rmState"></p></section>
+  <p class="jmsg" id="rmMsg" role="alert"></p>
+  <div class="rm-sec rm-act"><button type="button" class="btn ghost" id="rmLeave"><svg class="ico" aria-hidden="true"><use href="#i-leave"/></svg><span>Leave room</span></button><p class="hint">This project stays here as a local copy.</p></div>
+  <p class="hint" id="rmNotOwner">Only the room's owner can replace the link or delete the room.</p>
+  <div class="rm-sec rm-act rm-danger" id="rmDanger"><button type="button" class="btn ghost" id="rmDel"><span>Delete room</span></button><p class="hint">Deletes the room on the server for everyone. Each person keeps their copy as a local project.</p></div>
+</div></dialog>
 <dialog id="dlgReport" aria-labelledby="rTitle"><form class="dlg" id="repForm">
   <h3 id="rTitle">Report a problem</h3>
   <p class="muted" id="rLead"></p>
@@ -1375,13 +1395,11 @@ function renderProjSelect(){
   $("delp").disabled=!cur;renderRenameBtn();renderCollabBtns();renderSaved();
   if(!$("projmenu").hidden)renderProjMenu();
 }
-/* the room, at the top level: Join while the open project isn't in one (also with no project), Leave while it is */
-let leavePid=null;
-function renderCollabBtns(){const inRoom=!!(cur&&cset.rooms[cur.id]),j=$("joinb"),l=$("leaveb"),foc=document.activeElement,pid=cur&&cur.id;
-  /* an armed Leave belongs to the room it was armed in: another project, even another room, starts unarmed */
-  j.hidden=!SYNC_URL||inRoom;l.hidden=!SYNC_URL||!inRoom;if(l.hidden||pid!==leavePid)resetLeave();leavePid=pid;
-  /* the room's own actions live in More: its invite link for every member, Delete room for the owner */
-  $("inviteb").hidden=l.hidden;$("delroom").hidden=l.hidden||!cset.rooms[cur.id].owner;
+/* the room, at the top level: Collaborate while the open project isn't in one (also with no project), This room
+   while it is. Every room action (the link, Leave, the owner's New link and Delete room) lives in that one panel */
+function renderCollabBtns(){const inRoom=!!(cur&&cset.rooms[cur.id]),j=$("joinb"),l=$("roomb"),foc=document.activeElement;
+  j.hidden=!SYNC_URL||inRoom;l.hidden=!SYNC_URL||!inRoom;
+  if($("dlgRoom").open)renderRoomPanel();
   /* the one that was focused went away: its counterpart takes the focus */
   if(foc===j&&j.hidden&&!l.hidden)l.focus();else if(foc===l&&l.hidden&&!j.hidden)j.focus()}
 function renderSongbar(){
@@ -1623,8 +1641,8 @@ $("projmenu").onclick=e=>{
 /* More: what doesn't fit the bar at this width, the song's Replace and Remove, and Delete project last. An entry
    stands in for its bar button (data-for); the two destructive ones confirm with a second tap and keep the menu open */
 $("moremenu").onclick=e=>{
-  const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong"||b.id==="delroom")return;
-  closeMore(true);if(b.id==="inviteb"){showInvite(cur&&cur.id);return}if(b.id==="reportb"){openReport();return}$(b.dataset.for).click();
+  const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong")return;
+  closeMore(true);if(b.id==="reportb"){openReport();return}$(b.dataset.for).click();
 };
 /* Space and Enter on a button in the bar press it (side A's Space-to-play is for the rest of the page) */
 document.querySelector(".top").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&e.target.closest("button"))e.stopPropagation()});
@@ -2386,7 +2404,7 @@ function applyRemote(pid,p){
    when something isn't here (offline, nobody has it, skipped, paused), an error dot when something went wrong. */
 const CST={synced:["ok","Synced",""],syncing:["ok","Syncing…",""],offline:["off","Offline, changes will sync","Your edits are kept in this browser and go to the room when you're back online."],
   unreachable:["err","Can't reach the room","Retrying. Your edits are kept in this browser."],rejected:["err","This invite link no longer works","The room didn't accept it: the owner may have replaced the link, or it's incomplete. Ask them for the new one. Your project is still here."],
-  deleted:["err","This room was deleted","Its owner deleted the room on the server. Your project stays here as a local copy; Leave collaboration clears this."],
+  deleted:["err","This room was deleted","Its owner deleted the room on the server. Your project stays here as a local copy; Leave room, under This room, clears this."],
   full:["err","Room is over its size limit","The server refused the last change: it would take the room past its size limit. The change is kept in this browser; reload to reconnect."]};
 const plural=(k,w)=>k+" file"+(k>1?"s":"")+(w?" "+w:"");
 const fmtMB=b=>b>=1e9?(b/1e9).toFixed(1)+" GB":b>=1e6?(b/1e6).toFixed(1)+" MB":Math.max(1,Math.round(b/1e3))+" KB";
@@ -2409,7 +2427,7 @@ function mediaChip(x,m){if(!x||!x.total)return null;
   if(held)return["off",hT+" · "+bT,"Takes and clips download only on Wi-Fi on this phone; the other "+(big>1?"files are":"file is")+" bigger than this project's download limit. Download gets one now, Download everything now gets them all.","skipped"];
   if(x.skipped)return["off",bT,"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
   return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
-function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSaved();
+function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSaved();if($("dlgRoom").open)renderRoomPanel();
   if(!s){w.hidden=true;closeFiles();for(const k of ["state","media","unshared","k"])delete b.dataset[k];peers=[];renderPresence();return}
   let [k,t,tip]=CST[s]||CST.syncing,media="";
   const m=cmedia(),x=s==="synced"&&m?m.summary():null;
@@ -2521,7 +2539,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:H=>mBand(H),cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:H=>mBand(H),cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -2539,16 +2557,20 @@ function renderPresence(){const el=$("presence"),b=cur&&csess&&csessPid===cur.id
   if(kids.length){const f=kids.find(c=>c.dataset.key===foc)||kids[0];f.tabIndex=0;if(foc!=null)f.focus()}
   else if(foc!=null)(!$("joinb").hidden?$("joinb"):$("proj")).focus();
   if($("mProj").open)renderProjSheet();
+  if($("dlgRoom").open)renderRoomPanel();
 }
 narrowBar.addEventListener("change",renderPresence);
 /* one tab stop for the row; arrows move along it */
 $("presence").addEventListener("keydown",e=>{const it=[...$("presence").children],i=it.indexOf(document.activeElement);if(i<0)return;
   const j={ArrowRight:i+1,ArrowDown:i+1,ArrowLeft:i-1,ArrowUp:i-1,Home:0,End:it.length-1}[e.key];if(j==null)return;
   e.preventDefault();e.stopPropagation();const t=it[Math.max(0,Math.min(it.length-1,j))];it.forEach(c=>c.tabIndex=-1);t.tabIndex=0;t.focus()});
+/* focus that lost its place (a closed dialog's opener went away): the bar's room button, or the project's name on a phone */
+const focusCollab=()=>{const a=document.activeElement;if(a&&a!==document.body&&a.getClientRects().length)return;
+  const f=[$("roomb"),$("joinb"),$("proj")].find(x=>!x.hidden&&x.getClientRects().length);if(f)f.focus()};
 $("joinb").onclick=async()=>{await collabFlow();
-  /* the dialog hands focus back to Join; once joined that's hidden, so Leave takes it */
-  const a=document.activeElement;if(!a||a===document.body||a===$("joinb")&&$("joinb").hidden)(!$("leaveb").hidden?$("leaveb"):$("joinb")).focus()};
-const resetLeave=twoTap($("leaveb"),"Leave collaboration","Tap again to leave",()=>leaveRoom());
+  /* the dialog hands focus back to Collaborate; once in a room that's hidden, so This room takes it */
+  if(!$("dlgRoom").open)focusCollab()};
+$("roomb").onclick=()=>openRoom();
 /* who else has which shot selected: their initials on the card / list thumbnail */
 function renderMarks(){
   document.querySelectorAll(".pmark").forEach(x=>x.remove());if(!csess||!peers.length)return;
@@ -2589,17 +2611,17 @@ function leaveRoom(pid,quiet){
 let jRes=null;const jDone=v=>{const r=jRes;jRes=null;if(r)r(v)};
 function joinStep(step,title,lead){const d=$("dlgJoin");
   $("jTitle").textContent=title;$("jLead").textContent=lead||"";$("jMsg").textContent="";
-  $("jOptsC").hidden=step!=="collab";$("jLinkF").hidden=step!=="link";$("jCodeF").hidden=step!=="code";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";$("jInviteF").hidden=step!=="invite";
-  $("jGo").hidden=!["link","name","code"].includes(step);$("jGo").textContent=step==="link"?"Join":"Continue";$("jCancel").textContent=step==="err"?"Close":step==="invite"?"Done":"Cancel";
+  $("jOptsC").hidden=step!=="collab";$("jLinkF").hidden=step!=="link";$("jCodeF").hidden=step!=="code";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";
+  $("jGo").hidden=!["link","name","code"].includes(step);$("jGo").textContent=step==="link"?"Join":"Continue";$("jCancel").textContent=step==="err"?"Close":"Cancel";
   d.dataset.step=step;if(!d.open)d.showModal();
-  setTimeout(()=>{const f={link:"jLink",name:"jName",code:"jCode",choose:"jNew",collab:"jShareNew",invite:"jCopy"}[step];$(f||"jCancel").focus()},30)}
+  setTimeout(()=>{const f={link:"jLink",name:"jName",code:"jCode",choose:"jNew",collab:"jShareNew"}[step];$(f||"jCancel").focus()},30)}
 const joinAsk=(step,title,lead)=>{joinStep(step,title,lead);return new Promise(r=>{jRes=r})};
 $("joinForm").onsubmit=e=>{e.preventDefault();const st=$("dlgJoin").dataset.step;
   if(st==="link"){const inv=parseInvite($("jLink").value);if(!inv){$("jMsg").textContent="That isn't an invite link. It ends in #join= and a long code.";return}jDone(inv)}
   else if(st==="name"){const n=$("jName").value.replace(/\s+/g," ").trim().slice(0,40);if(!n){$("jMsg").textContent="Type a name first.";return}jDone(n)}
   else if(st==="code"){const c=$("jCode").value.trim();if(!c){$("jMsg").textContent="Type the code first.";return}jDone(c)}};
 $("jCancel").onclick=()=>$("dlgJoin").close();
-$("dlgJoin").addEventListener("close",()=>{resetRegen();jDone(null)});
+$("dlgJoin").addEventListener("close",()=>jDone(null));
 $("jNew").onclick=()=>jDone("new");$("jShare").onclick=()=>jDone("share");
 $("jShareNew").onclick=()=>jDone("share-new");$("jJoinLink").onclick=()=>jDone("join");
 /* the Collaborate panel: share the open project (a new room, invite-only to create) or join with a link (open to anyone) */
@@ -2637,30 +2659,57 @@ async function createRoomFlow(){
   /* as "Share this project into the room": this project's takes were all sent from here */
   S().forEach(s=>(s.takes||[]).forEach(t=>{if(!t.dev)t.dev=deviceId}));flush();
   cset.rooms[pid]={roomId:r.roomId,token:r.token,owner:r.ownerToken,name:cset.name,share:true};await saveCset();collabFor(cur);renderProjSelect();
-  showInvite(pid,"The room is ready. Send this link to the people you want in it: everyone with it can edit the project with you.");
+  $("dlgJoin").close();openRoom("The room is ready. Send the link to the people you want in it.");
 }
-/* the invite link, for any member (More, or the Project sheet on a phone); the owner can replace it from here */
+/* This room: the open project's room, from the bar's button (or the Projects sheet on a phone). Its link with Copy, who's
+   here, Leave; the owner's New link and Delete room exist only here, and only for the owner. Redrawn while open on every
+   change (people, status, a new link, an owner token the server refused); it closes itself once the project is in no
+   room, or another project is open */
 const inviteLink=b=>location.href.replace(/[#?].*$/,"")+"#join="+b.roomId+"."+b.token;
-function showInvite(pid,lead){const b=pid&&cset.rooms[pid];if(!b)return;
-  joinStep("invite","Invite link",lead||"Everyone with this link can edit the project with you.");
-  $("jInvite").value=inviteLink(b);$("jCopy").textContent="Copy";$("jInviteHint").textContent=b.owner?"You own this room.":"";$("jOwnerRow").hidden=!b.owner}
-$("jCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("jInvite").value);$("jCopy").textContent="Copied"}catch(e){$("jInvite").focus();$("jInvite").select()}};
-const resetRegen=twoTap($("jRegen"),"New link","Tap again to replace it",()=>regenerateLink());
-async function regenerateLink(){const pid=cur&&cur.id,b=pid&&cset.rooms[pid];if(!b||!b.owner)return;
-  const m=await loadCollab();if(!m||!m.api){$("jMsg").textContent="Can't reach the sync server.";return}
-  const r=await m.api.regenerateInvite(b.roomId,b.owner);
-  if(!r.ok){if(r.error==="not_owner"){delete b.owner;saveCset();renderCollabBtns()}$("jMsg").textContent=r.message;return}
-  /* the server closed every connection, this one included: reconnect with the new link */
-  b.token=r.token;await saveCset();if(csess&&csessPid===pid){csess.stop();csess=null;csessPid=null}collabFor(cur);
-  if($("dlgJoin").open&&$("dlgJoin").dataset.step==="invite"){$("jInvite").value=inviteLink(b);$("jCopy").textContent="Copy";$("jMsg").textContent=""}
-  toast("New link ready. The old one no longer works")}
+let roomPid=null,roomBusy=false;
+function openRoom(lead){const pid=cur&&cur.id;if(!pid||!cset.rooms[pid])return;
+  roomPid=pid;$("rmLead").textContent=lead||"";$("rmMsg").textContent="";$("rmCopy").textContent="Copy";resetRoomArms();
+  renderRoomPanel();const d=$("dlgRoom");if(!d.open)d.showModal();setTimeout(()=>{if(d.open)$("rmCopy").focus()},30)}
+function renderRoomPanel(){const d=$("dlgRoom"),b=cur&&cur.id===roomPid?cset.rooms[roomPid]:null;
+  if(!b){if(d.open)d.close();return}
+  $("rmName").textContent=cur.title||"Untitled project";
+  const link=inviteLink(b);if($("rmLink").value!==link){$("rmLink").value=link;$("rmCopy").textContent="Copy"}
+  /* a member gets no owner controls at all, just the line saying who has them */
+  const own=!!b.owner;$("rmOwnerRow").hidden=$("rmDanger").hidden=!own;$("rmNotOwner").hidden=own;
+  const me=b.name||cset.name||"You",l=csess&&csessPid===roomPid?peers:[];
+  $("rmPeople").innerHTML=[`<li><span class="pchip self" aria-hidden="true">${esc(initialsOf(me))}</span><span class="nm">${esc(me)} <i>(you)</i></span></li>`,
+    ...l.map(p=>`<li><span class="pchip" aria-hidden="true">${esc(p.initials)}</span><span class="nm">${esc(p.name)}</span></li>`)].join("");
+  /* not connected: why, under the list (which then shows only you) */
+  const st=roomSt&&roomSt!=="synced"&&roomSt!=="syncing"&&CST[roomSt];$("rmState").textContent=st?st[1]+". "+st[2]:"";
+  $("rmRegen").disabled=$("rmDel").disabled=roomBusy}
+$("rmClose").onclick=()=>$("dlgRoom").close();
+$("dlgRoom").addEventListener("close",()=>{resetRoomArms();roomPid=null;focusCollab()});
+$("rmCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("rmLink").value);$("rmCopy").textContent="Copied"}catch(e){$("rmLink").focus();$("rmLink").select()}};
+const resetRmLeave=twoTap($("rmLeave"),"Leave room","Tap again to leave",()=>{const pid=roomPid;$("dlgRoom").close();leaveRoom(pid)});
+const resetRegen=twoTap($("rmRegen"),"New link","Tap again to replace it",()=>regenerateLink());
+const resetDelroom=twoTap($("rmDel"),"Delete room","Tap again to delete",()=>deleteRoomFlow());
+function resetRoomArms(){resetRmLeave();resetRegen();resetDelroom()}
+/* an owner action's answer, said in the panel (a toast if it closed meanwhile). not_owner: the server doesn't know
+   this browser's owner token, so it's dropped and the owner controls go away */
+function roomFail(b,r){if(r.error==="not_owner"){delete b.owner;saveCset();renderCollabBtns()}
+  if($("dlgRoom").open)$("rmMsg").textContent=r.message;else toast(r.message,3000)}
+async function regenerateLink(){const pid=roomPid,b=pid&&cset.rooms[pid];if(!b||!b.owner||roomBusy)return;
+  roomBusy=true;$("rmMsg").textContent="";renderRoomPanel();
+  try{const m=await loadCollab();if(!m||!m.api){roomFail(b,{message:"Can't reach the sync server. Try again."});return}
+    const r=await m.api.regenerateInvite(b.roomId,b.owner);
+    if(!r.ok){roomFail(b,r);return}
+    /* the server closed every connection, this one included: reconnect with the new link */
+    b.token=r.token;await saveCset();if(csess&&csessPid===pid){csess.stop();csess=null;csessPid=null}if(cur&&cur.id===pid)collabFor(cur);
+    toast("New link ready. The old one no longer works")}
+  finally{roomBusy=false;if($("dlgRoom").open)renderRoomPanel()}}
 /* the owner wipes the room on the server; members see "This room was deleted" and keep their copies, as does the owner */
-async function deleteRoomFlow(){const pid=cur&&cur.id,b=pid&&cset.rooms[pid];if(!b||!b.owner)return;
-  const m=await loadCollab();if(!m||!m.api){toast("Can't reach the sync server");return}
-  const r=await m.api.deleteRoom(b.roomId,b.owner);
-  if(!r.ok&&r.error!=="unknown_room"){if(r.error==="not_owner"){delete b.owner;saveCset();renderCollabBtns()}toast(r.message,3000);return}
-  leaveRoom(pid,true);toast("Room deleted. This project stays here as a local copy",3000)}
-const resetDelroom=twoTap($("delroom"),"Delete room","Tap again to delete",()=>{closeMore(true);deleteRoomFlow()});
+async function deleteRoomFlow(){const pid=roomPid,b=pid&&cset.rooms[pid];if(!b||!b.owner||roomBusy)return;
+  roomBusy=true;$("rmMsg").textContent="";renderRoomPanel();
+  try{const m=await loadCollab();if(!m||!m.api){roomFail(b,{message:"Can't reach the sync server. Try again."});return}
+    const r=await m.api.deleteRoom(b.roomId,b.owner);
+    if(!r.ok&&r.error!=="unknown_room"){roomFail(b,r);return}
+    $("dlgRoom").close();leaveRoom(pid,true);toast("Room deleted. This project stays here as a local copy",3000)}
+  finally{roomBusy=false;if($("dlgRoom").open)renderRoomPanel()}}
 async function joinFlow(inv){
   if(inv&&inv.bad){toast("That invite link is incomplete. Ask for a new one");return}
   if(!SYNC_URL){toast("Collaboration isn't set up on this copy of Cue Board");return}
@@ -2898,8 +2947,7 @@ function renderProjSheet(){
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
   ["mRename","mExport","mCopy","mDelp"].forEach(id=>$(id).disabled=!cur);$("mSong").textContent=has?"Replace song":"Load song";$("mDelsong").hidden=!has;
   const inRoom=!!(SYNC_URL&&cur&&cset.rooms[cur.id]);$("mRoom").hidden=!SYNC_URL;
-  ["mPeople","mState","mFiles","mRoomN","mInvite"].forEach(id=>$(id).hidden=!inRoom);$("mJoin").hidden=inRoom;$("mLeave").hidden=!inRoom;$("mDelRoom").hidden=!(inRoom&&cset.rooms[cur.id].owner);$("mLeave").parentNode.hidden=!inRoom;
-  if(inRoom)$("mInviteV").textContent=cset.rooms[cur.id].owner?"You own this room":"";
+  ["mPeople","mState","mFiles","mRoomN","mRoomb"].forEach(id=>$(id).hidden=!inRoom);$("mJoin").hidden=inRoom;
   if(inRoom){const b=cset.rooms[cur.id],me=b.name||cset.name||"You",l=csess&&csessPid===cur.id?peers:[];
     $("mRoomN").textContent=(l.length+1)+(l.length?" people here":" person here");
     const on=p=>{const i=p.sel?S().findIndex(s=>s.id===p.sel):-1;return i>=0?`on <span class="tc">${pad(i+1)}</span>`:""};
@@ -2918,9 +2966,8 @@ $("mExport").onclick=()=>{mProj.close();$("exportb").click()};
 $("mSong").onclick=()=>{mProj.close();$("song").click()};
 twoTap($("mDelsong"),"Remove song","Tap again to remove",()=>{removeSong();renderProjSheet()});
 $("mJoin").onclick=()=>{mProj.close();collabFlow()};
-$("mInvite").onclick=()=>{mProj.close();showInvite(cur&&cur.id)};
-twoTap($("mLeave"),"Leave collaboration","Tap again to leave",()=>{leaveRoom();renderProjSheet()});
-twoTap($("mDelRoom"),"Delete room","Tap again to delete",()=>{mProj.close();deleteRoomFlow()});
+/* the room's link, Leave and the owner's actions: the same This room panel as the bar's, here a sheet */
+$("mRoomb").onclick=()=>{mProj.close();openRoom()};
 $("mFiles").onclick=()=>{mProj.close();openFiles(false)};
 $("mSettings").onclick=()=>{mProj.close();openSettings()};
 $("mCopy").onclick=()=>{if(cur)$("copylist").onclick()};

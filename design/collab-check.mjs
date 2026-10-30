@@ -88,7 +88,7 @@ async function nameStep(page, name) {
   await page.fill('#jName', name); await page.click('#jGo');
 }
 // Join and Leave are top-level buttons in the bar; Leave confirms with a second tap
-const menu = async (page, act) => { if (act === 'join') { await page.click('#joinb'); await page.click('#jJoinLink'); } else { await page.click('#leaveb'); await page.click('#leaveb'); } };
+const menu = async (page, act) => { if (act === 'join') { await page.click('#joinb'); await page.click('#jJoinLink'); } else { await page.click('#roomb'); await page.click('#rmLeave'); await page.click('#rmLeave'); } };
 // everyone else in the presence row (your own bubble, .self, comes first and is left out here)
 const presence = page => page.evaluate(() => { const p = document.getElementById('presence'); return p.hidden ? '' : [...p.children].filter(c => !c.classList.contains('self')).map(c => c.textContent).join(','); });
 // the whole row as [initials, tooltip] pairs, and what a bubble's tooltip shows on hover / keyboard focus
@@ -136,7 +136,7 @@ try {
   check('no room bound: collab.js is not loaded, no socket opened', !(await A.page.evaluate(() => performance.getEntriesByType('resource').some(e => /collab\.js|:3360/.test(e.name)))));
   const exampleBefore = await A.page.evaluate(() => document.querySelectorAll('.card').length);
   // a take from before collaboration (no `dev`) in the project A is about to share, written once A has nothing left to save
-  check('not in a room: Join collaboration in the bar, no Leave, no bubbles', await A.page.isVisible('#joinb') && !(await A.page.isVisible('#leaveb')) && !(await A.page.isVisible('#presence'))
+  check('not in a room: Join collaboration in the bar, no This room, no bubbles', await A.page.isVisible('#joinb') && !(await A.page.isVisible('#roomb')) && !(await A.page.isVisible('#presence'))
     && await A.page.evaluate(() => !document.querySelector('#projmenu [data-act="join"], #projmenu [data-act="leave"]')));
   await until(() => A.page.evaluate(() => document.getElementById('status').textContent === 'Saved')); await sleep(1000);
   // (a save still pending when the page goes is flushed on pagehide, over this write: reload, then check it held)
@@ -164,7 +164,7 @@ try {
   await A.page.click('#jShare');
   check('A: chip says Synced after sharing', (await until(async () => (await chip(A.page)) === 'Synced')) , await chip(A.page));
   const aAlone = await until(async () => { const b = await bubbles(A.page); return b.length ? b : null; });
-  check('A, alone in the room: its own bubble, Leave instead of Join, saved state "Saved" (synced)', JSON.stringify(aAlone) === JSON.stringify([['AT', 'Ana Torres (you)', true]]) && await A.page.isVisible('#leaveb') && !(await A.page.isVisible('#joinb'))
+  check('A, alone in the room: its own bubble, This room instead of Collaborate, saved state "Saved" (synced)', JSON.stringify(aAlone) === JSON.stringify([['AT', 'Ana Torres (you)', true]]) && await A.page.isVisible('#roomb') && !(await A.page.isVisible('#joinb'))
     && await A.page.evaluate(() => document.getElementById('status').textContent === 'Saved' && /synced with the room/.test(document.getElementById('status').title)), JSON.stringify(aAlone));
 
   /* ---- B: a new device, joins from the link, gets the shared project ---- */
@@ -414,10 +414,10 @@ try {
 
   /* ---- B leaves: keeps a local copy, stops syncing ---- */
   const bKeep = await cards(B.page);
-  await B.page.click('#leaveb'); await sleep(100);
-  check('Leave asks for a second tap first (still in the room)', await B.page.evaluate(() => document.getElementById('leaveb').textContent === 'Tap again to leave') && (await chip(B.page)) !== '');
-  await B.page.click('#leaveb'); await sleep(200);
-  check('after leaving: Join is back in the bar and has the focus, no bubbles', await B.page.evaluate(() => document.activeElement?.id === 'joinb' && document.getElementById('leaveb').hidden && document.getElementById('presence').hidden));
+  await B.page.click('#roomb'); await B.page.click('#rmLeave'); await sleep(100);
+  check('Leave room (in This room) asks for a second tap first (still in the room)', await B.page.evaluate(() => document.getElementById('rmLeave').textContent === 'Tap again to leave') && (await chip(B.page)) !== '');
+  await B.page.click('#rmLeave'); await sleep(200);
+  check('after leaving: Collaborate is back in the bar and has the focus, no bubbles', await B.page.evaluate(() => document.activeElement?.id === 'joinb' && document.getElementById('roomb').hidden && document.getElementById('presence').hidden));
   await A.page.locator('.card').nth(0).click(); await A.page.click('#f-title'); await A.page.keyboard.press('End'); await A.page.keyboard.type(' after B left'); await A.page.evaluate(() => document.activeElement.blur());
   await sleep(800); await B.page.reload(); await B.page.waitForSelector('.card'); await sleep(600);
   check('leave: B keeps its copy, no chip, and no longer receives edits', JSON.stringify(await cards(B.page)) === JSON.stringify(bKeep) && (await chip(B.page)) === '' && !(await B.page.evaluate(() => performance.getEntriesByType('resource').some(e => /collab\.js/.test(e.name)))), (await cards(B.page))[0]);
