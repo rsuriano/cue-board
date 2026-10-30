@@ -101,7 +101,7 @@ try {
   await page.keyboard.press('Escape');
   await page.click('#moreb'); await sleep(150); await page.mouse.move(700, 600);
   const more = await page.evaluate(() => [...document.querySelectorAll('#moremenu .mi')].filter(e => e.getClientRects().length).map(e => e.textContent));
-  check('More at 1440: Replace song, Remove song, Delete project (Import/Export are in the bar)', more.join('|') === 'Replace song…|Remove song|Delete project', more.join(' | '));
+  check('More at 1440: Replace song, Remove song, Report a problem, Delete project (Import/Export are in the bar)', more.join('|') === 'Replace song…|Remove song|Report a problem…|Delete project', more.join(' | '));
   await bar('05-more-menu-1440', 140); await page.keyboard.press('Escape');
 
   // ---------- in a room: you and others ----------
@@ -243,14 +243,15 @@ try {
   await page.reload(); await page.waitForFunction(() => document.getElementById('projname').textContent === 'No projects', null, { timeout: 15000 }); await sleep(300);
   const moreAt = async w => { await page.setViewportSize({ width: w, height: 900 }); await sleep(150); return page.isVisible('#moreb'); };
   const vis = { 1920: await moreAt(1920), 1440: await moreAt(1440), 1280: await moreAt(1280), 900: await moreAt(900) };
-  check('no project: More is hidden at 1440 and 1920 (only a disabled Delete project), back below 1440 (Import, Export)', !vis[1920] && !vis[1440] && vis[1280] && vis[900], JSON.stringify(vis));
+  // Report a problem works without a project (that's when something may be broken), so More stays at every width
+  check('no project: More stays at every width (Report a problem; below 1440 also Import, Export)', vis[1920] && vis[1440] && vis[1280] && vis[900], JSON.stringify(vis));
   await page.setViewportSize({ width: 1280, height: 900 }); await sleep(150);
   await page.focus('#moreb'); await page.keyboard.press('ArrowDown'); await sleep(150);
   check('no project, narrow bar: opening More by keyboard focuses its first enabled entry', await page.evaluate(() => document.activeElement?.closest('#moremenu') && !document.activeElement.disabled && document.activeElement.textContent) === 'Import…');
   await page.keyboard.press('Escape'); await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150);
   const ord = []; await page.focus('#proj');
   for (let i = 0; i < 8; i++) { await page.keyboard.press('Tab'); const id = await page.evaluate(() => document.activeElement?.closest('.top') ? document.activeElement.id : null); if (!id) break; ord.push(id); }
-  check('no project, wide bar: Tab skips straight from the project zone past the missing More', !ord.includes('moreb') && ord.includes('newp'), ord.join(' → '));
+  check('no project, wide bar: Tab goes from the project zone to More, then on', ord.indexOf('moreb') > ord.indexOf('newp') && ord.includes('newp'), ord.join(' → '));
   await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await bar('16-no-project-1440');
 } catch (e) { check('run completed', false, e.stack.split('\n').slice(0, 3).join(' ')); }
 check('no console errors', errs.length === 0, errs.slice(0, 3).join(' | '));

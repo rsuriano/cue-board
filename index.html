@@ -9,6 +9,63 @@
 <!-- Media between collaborators (docs/media-p2p.md): ICE servers for WebRTC, e.g. "stun:stun.example.dev:3478 turn:user:secret@turn.example.dev:3478".
      Empty = none: peers on the same network connect directly, everyone else through the sync server's encrypted relay. -->
 <meta name="cue-ice-urls" content="">
+<!-- The build this copy is (the deploy sets the short git sha); shown in problem reports. Empty = "dev". -->
+<meta name="cue-build" content="">
+<!-- Problem reports (docs/reports.md): the last 20 uncaught errors and rejections, kept from the first moment, and the
+     report's allow-list. Every string is scrubbed when it's kept (URL queries and fragments, #join=, tokens, keys,
+     e-mail addresses) and again when the report is built. Nothing here touches the network; the report dialog sends
+     only what build() returns, and only when asked. packages/sync-server/src/reports.mjs is the same allow-list. -->
+<script id="cue-report">(function(w){
+const scrub=(v,max,lines)=>typeof v!=="string"?"":v.slice(0,max*4)
+  .replace(lines?/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/g:/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g," ")
+  .replace(/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/[^\s?#'"`<>()]*)[^\s'"`<>()]*/gi,"$1")
+  .replace(/#join=[^\s'"`<>()]*/gi,"#join=[removed]")
+  .replace(/([?&;]|\b)(token|access_token|key|code|auth|password|secret|room)=[^\s&'"`<>()]*/gi,"$1$2=[removed]")
+  .replace(/\bBearer\s+[^\s'"`]+/gi,"Bearer [redacted]")
+  .replace(/\bsk-[A-Za-z0-9_-]{6,}/g,"[redacted]")
+  .replace(/(?<![^\s@'"`<>()])[^\s@'"`<>()]+@[^\s@'"`<>()]+\.[a-z]{2,}/gi,"[email]")
+  .replace(/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{16,}/g,x=>/\d|[_-]/.test(x)||(x.match(/[A-Z]/g)||[]).length*4>=x.length?"[redacted]":x)
+  .slice(0,max);
+const errs=[],MAX=20;
+/* file:line only: the script's file name without its query or fragment ("page" for the page itself) */
+const where=(f,l,c)=>{f=String(f||"").replace(/[?#].*$/,"");if(!f)return"";f=f.slice(f.lastIndexOf("/")+1)||"page";return scrub(f+(l?":"+l+(c?":"+c:""):""),120)};
+function keep(msg,at){msg=scrub(String(msg||""),300);if(!msg)return;const l=errs[errs.length-1];
+  if(l&&l.msg===msg&&(l.at||"")===at){l.n=(l.n||1)+1;return}
+  const e={msg};if(at)e.at=at;errs.push(e);if(errs.length>MAX)errs.shift()}
+w.addEventListener("error",e=>{if(typeof ErrorEvent!=="undefined"&&!(e instanceof ErrorEvent))return;try{keep(e.message||(e.error&&String(e.error))||"Script error",where(e.filename,e.lineno,e.colno))}catch(x){}});
+w.addEventListener("unhandledrejection",e=>{try{const r=e.reason;let m,at="";
+  if(r&&typeof r==="object"){m=(r.name?r.name+": ":"")+(r.message!=null?r.message:"");const s=/([a-z][a-z0-9+.-]*:\/\/[^\s)]+?):(\d+):(\d+)/i.exec(String(r.stack||""));if(s)at=where(s[1],s[2],s[3])}
+  else m=String(r);keep("Unhandled rejection: "+m,at)}catch(x){keep("Unhandled rejection","")}});
+const COLLAB=["off","none","synced","syncing","offline","unreachable","rejected","deleted","full"],MEDIA=["here","queued","downloading","skipped","failed"];
+const mb=b=>typeof b==="number"&&isFinite(b)?Math.round(b/1048576*10)/10:null,SHOTS=500,BYTES=15000;
+/* the report, field by field from what the app gathered (c) and the dialog's choices (o). The project is read for
+   counts and lengths only: never a title, note, prompt, lyric, file name or media */
+function build(c,o){const r={v:1,build:scrub(c.build,40)||"dev",at:new Date(c.now||Date.now()).toISOString()};
+  const t=scrub(o.text,2000,true).trim();if(t)r.text=t;
+  if(o.details){
+    r.viewport={w:Math.round(+c.w||0),h:Math.round(+c.h||0),dpr:Math.round((+c.dpr||1)*100)/100};
+    r.phone=!!c.phone;r.side=c.side==="b"?"b":"a";const ua=scrub(c.ua,400);if(ua)r.ua=ua;
+    if(/^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,4}$/.test(c.lang||""))r.lang=c.lang;
+    r.online=!!c.online;
+    if(c.storage)r.storage={persisted:typeof c.storage.persisted==="boolean"?c.storage.persisted:null,usedMB:mb(c.storage.usage),quotaMB:mb(c.storage.quota)};
+    const s=scrub(c.save,80);if(s)r.save=s;
+    r.collab=COLLAB.includes(c.collab)?c.collab:"none";
+    if(Array.isArray(c.files)){const m={};MEDIA.forEach(k=>m[k]=0);c.files.forEach(f=>{if(f&&MEDIA.includes(f.state))m[f.state]++});r.media=m}
+    /* an error can quote the project (a failed import naming a file, an API echoing a prompt): any of the project's
+       own strings in a message is taken out */
+    if(errs.length){const own=[];(function walk(v,d){if(own.length>=2000||d>6)return;if(typeof v==="string"){if(v.trim().length>=4)own.push(v.trim())}else if(v&&typeof v==="object")for(const k in v)walk(v[k],d+1)})(c.project,0);
+      own.sort((a,b)=>b.length-a.length);
+      r.errors=errs.map(e=>{let m=e.msg;for(const s of own)if(m.includes(s))m=m.split(s).join("[project text]");return Object.assign({},e,{msg:m})})}
+  }
+  if(o.shape&&c.project&&Array.isArray(c.project.sections)){const s=c.project.sections,d=+c.duration||0,st=x=>Math.max(0,+(x&&x.start)||0);
+    r.shape={shots:s.length,lengths:s.slice(0,SHOTS).map((x,i)=>Math.round(Math.max(0,(i+1<s.length?st(s[i+1]):d)-st(x))*10)/10),
+      takes:s.slice(0,SHOTS).map(x=>Array.isArray(x&&x.takes)?x.takes.length:0)}}
+  /* under the server's 16 KiB with room to spare: the oldest errors go first */
+  const size=()=>new TextEncoder().encode(JSON.stringify(r)).length;
+  while(r.errors&&size()>BYTES){r.errors.shift();if(!r.errors.length)delete r.errors}
+  return r}
+w.cueReport={build,scrub,errors:()=>errs.map(e=>Object.assign({},e))};
+})(window)</script>
 <title>Cue Board</title>
 <!-- installable (docs/mobile/PLAN.md): home screen web apps keep their storage on iOS. The manifest is linked only over
      http(s); from a file it would only log an error -->
@@ -550,6 +607,19 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .ownerrow{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--sp-3);margin-top:var(--sp-2)}
 #jRegen[data-armed]{color:var(--error)}
 .jmsg:empty{display:none}
+/* Report a problem: the two choices, the line under the first one aligned with its words, and the report as sent */
+.ropts{display:grid;gap:var(--sp-1)}
+.ropts .hint{padding-left:calc(var(--icon-lg) + var(--sp-2));margin-top:calc(var(--sp-1) * -1)}
+.ropts .chk{align-items:flex-start;padding-top:calc((var(--hit) - var(--lh-md)) / 2);line-height:var(--lh-md)}
+.ropts .chk input{margin-top:calc((var(--lh-md) - var(--icon-lg)) / 2);flex:none}
+.rsee{margin-top:var(--sp-2)}
+#rJson{margin:var(--sp-2) 0 0;max-height:220px;overflow:auto;padding:var(--sp-2) var(--sp-3);background:var(--inset);border:var(--hairline) solid var(--border-subtle);border-radius:var(--r-sm);font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere}
+#rTextF[hidden],#rOpts[hidden]{display:none}
+.rfb{display:flex;gap:var(--gap-related)}
+.rfb:not(:has(.btn:not([hidden]))){display:none}
+@media not all and (min-width:820px){.rrow .rfb{flex:1 0 100%}.rrow .rfb .btn{flex:1}}
+/* with no server, Download is the dialog's confirm: last on the right, like Send */
+@media (min-width:820px){#dlgReport[data-mode="offline"] .rrow .grow{order:-1}#dlgReport[data-mode="offline"] .rfb{order:1}}
 
 /* ---------- motion (opt-in) ---------- */
 @media (prefers-reduced-motion:no-preference){
@@ -827,6 +897,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
             <button type="button" class="mi narrowest" role="menuitem" tabindex="-1" data-for="song" id="mLoad"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>Load song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" data-for="song" id="mReplace" hidden><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span>Replace song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delsong" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Remove song</span></button>
+            <button type="button" class="mi" role="menuitem" tabindex="-1" id="reportb"><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg><span>Report a problem…</span></button>
             <hr role="separator">
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="inviteb" hidden><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span>Invite link…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delroom" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete room</span></button>
@@ -1057,6 +1128,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   </section>
   <button type="button" class="m-row" id="mSettings"><span>Settings</span><span class="muted">OpenRouter key</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
   <button type="button" class="m-row" id="mCopy"><span>Copy shot list</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+  <button type="button" class="m-row" id="mReport"><span>Report a problem</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
   <p class="hint" id="mInstall" hidden>Add Cue Board to your Home Screen (Share, then Add to Home Screen) to keep your projects on this phone. In a browser tab, iOS may clear them after a week without a visit.</p>
   <button type="button" class="btn ghost m-del" id="mDelp"><span>Delete project</span></button>
 </div></dialog>
@@ -1097,6 +1169,19 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <div class="ownerrow" id="jOwnerRow" hidden><button type="button" class="btn small ghost" id="jRegen"><span>New link</span></button><p class="hint">Replaces this link. Everyone who joined with it, in the room now or later, needs the new one.</p></div></div>
   <p class="jmsg" id="jMsg" role="alert"></p>
   <div class="row"><span class="grow"></span><button type="button" id="jCancel" class="btn ghost">Cancel</button><button type="submit" id="jGo" class="btn primary">Join</button></div>
+</form></dialog>
+<dialog id="dlgReport" aria-labelledby="rTitle"><form class="dlg" id="repForm">
+  <h3 id="rTitle">Report a problem</h3>
+  <p class="muted" id="rLead"></p>
+  <div class="field" id="rTextF"><label for="rText">What went wrong? (optional)</label><textarea id="rText" rows="4" maxlength="2000" placeholder="What you did, what you expected, what happened instead"></textarea></div>
+  <div class="ropts" id="rOpts">
+    <div><label class="chk"><input type="checkbox" id="rTech" checked> Include technical details</label>
+      <p class="hint">App version, screen size, browser, save and sync state, file counts and the last errors on this page. Never your project's names, notes, prompts or files.</p></div>
+    <label class="chk"><input type="checkbox" id="rShape"> Include the shape of my project (number of shots, their lengths)</label>
+    <details class="prompts rsee" id="rSee"><summary>See what will be sent</summary><pre id="rJson" tabindex="0" aria-label="The report, as it will be sent"></pre></details>
+  </div>
+  <p class="jmsg" id="rMsg" role="alert"></p>
+  <div class="row rrow"><span class="rfb"><button type="button" id="rCopy" class="btn" hidden>Copy report</button><button type="button" id="rDown" class="btn" hidden>Download report</button></span><span class="grow"></span><button type="button" id="rCancel" class="btn ghost">Cancel</button><button type="submit" id="rSend" class="btn primary">Send</button></div>
 </form></dialog>
 <audio id="audio" preload="auto"></audio>
 <div class="toast" id="toast" hidden></div>
@@ -1539,7 +1624,7 @@ $("projmenu").onclick=e=>{
    stands in for its bar button (data-for); the two destructive ones confirm with a second tap and keep the menu open */
 $("moremenu").onclick=e=>{
   const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong"||b.id==="delroom")return;
-  closeMore(true);if(b.id==="inviteb"){showInvite(cur&&cur.id);return}$(b.dataset.for).click();
+  closeMore(true);if(b.id==="inviteb"){showInvite(cur&&cur.id);return}if(b.id==="reportb"){openReport();return}$(b.dataset.for).click();
 };
 /* Space and Enter on a button in the bar press it (side A's Space-to-play is for the rest of the page) */
 document.querySelector(".top").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&e.target.closest("button"))e.stopPropagation()});
@@ -1737,7 +1822,8 @@ document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.file
 
 /* ---------- keyboard ---------- */
 document.addEventListener("keydown",e=>{
-  if(side!=="a")return;
+  /* a dialog or sheet is open: its buttons and summaries keep Space, and nothing edits the project behind it */
+  if(side!=="a"||document.querySelector("dialog[open]"))return;
   const tg=e.target;if(tg&&(/INPUT|TEXTAREA|SELECT/.test(tg.tagName)||tg.isContentEditable)){if(e.key==="Escape")tg.blur();return}
   if(e.metaKey||e.ctrlKey||e.altKey)return;const k=e.key.toLowerCase();
   if(e.code==="Space"){e.preventDefault();toggle()}
@@ -2852,6 +2938,59 @@ window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"
 
 /* ---------- toast / boot ---------- */
 let tt=null;function toast(t,ms=1800){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,ms)}
+/* ---------- Report a problem (docs/reports.md): More → Report a problem…, or the phone's Projects sheet ----------
+   What goes out is exactly the JSON under "See what will be sent": cueReport.build() (the allow-list in <head>) over
+   the state gathered here, rebuilt when the dialog changes and once more right before sending. It goes to the sync
+   server's POST /reports; with no sync server, or when sending fails, Copy report and Download report hand over the
+   same JSON to send by hand. The typed text stays until a report is sent */
+const BUILD=((document.querySelector('meta[name="cue-build"]')||{}).content||"").trim()||"dev";
+const rDlg=$("dlgReport");let repFrom=null,repJson="",repObj=null,repState=null,repOpen=0;
+async function reportState(){let storage=null;
+  try{const s=navigator.storage;if(s&&s.estimate){const late=new Promise(r=>setTimeout(()=>r([null,null]),800));
+    const [p,e]=await Promise.race([Promise.all([s.persisted?s.persisted().catch(()=>null):null,s.estimate().catch(()=>null)]),late]);
+    storage={persisted:p,usage:e&&e.usage,quota:e&&e.quota}}}catch(e){}
+  const m=cmedia(),b=cur&&cset.rooms[cur.id];let files=null;try{files=m?m.files():null}catch(e){}
+  return{build:BUILD,now:Date.now(),w:innerWidth,h:innerHeight,dpr:devicePixelRatio,phone:phone(),side,ua:navigator.userAgent,lang:navigator.language,
+    online:navigator.onLine,storage,save:$("status").querySelector(".lbl").textContent,collab:!SYNC_URL?"off":!b?"none":roomSt||"syncing",files,project:cur,duration:cur?dur():0}}
+function renderReport(){if(!repState)return repJson;
+  const r=window.cueReport.build(repState,{details:$("rTech").checked,shape:$("rShape").checked,text:$("rText").value});
+  repObj=r;repJson=JSON.stringify(r,null,2);$("rJson").textContent=repJson;
+  if(rDlg.dataset.mode!=="sending")$("rSend").disabled=!r.text&&!$("rTech").checked&&!$("rShape").checked;return repJson}
+const freshReport=async()=>{repState=await reportState();return renderReport()};
+/* edit: write and send · offline: no sync server here, copy or download · failed: sending didn't work, try again or
+   copy or download · sending · done: "Thanks, sent" and the report's id */
+function reportMode(mode,msg){rDlg.dataset.mode=mode;const done=mode==="done",off=mode==="offline",fb=off||mode==="failed";
+  $("rLead").textContent=done?`Thanks, sent. Report ${msg}.`:off?"This copy of Cue Board has nowhere to send reports. Copy or download the report and send it by hand.":"";
+  $("rMsg").textContent=mode==="failed"?(msg?msg+" ":"")+"You can copy or download the report and send it by hand.":"";
+  $("rTextF").hidden=$("rOpts").hidden=done;$("rCopy").hidden=!fb;$("rDown").hidden=!fb;$("rDown").classList.toggle("primary",off);
+  $("rCopy").textContent="Copy report";$("rDown").textContent="Download report";
+  $("rSend").hidden=done||off;$("rSend").textContent=mode==="sending"?"Sending…":mode==="failed"?"Try again":"Send";$("rSend").disabled=mode==="sending";
+  $("rCancel").textContent=done?"Close":"Cancel";if(mode!=="sending"&&!done)renderReport()}
+async function openReport(){if(rDlg.open)return;repFrom=document.activeElement;repOpen++;
+  $("rSee").open=false;reportMode(SYNC_URL?"edit":"offline");rDlg.showModal();
+  if(phone())$("rTitle").focus();else $("rText").focus();
+  await freshReport()}
+$("rTitle").tabIndex=-1;
+["rText","rTech","rShape"].forEach(id=>$(id).addEventListener("input",renderReport));
+$("rCancel").onclick=()=>rDlg.close();
+rDlg.addEventListener("close",()=>{repOpen++;if(rDlg.dataset.mode==="done")$("rText").value="";
+  const f=repFrom&&repFrom.isConnected&&repFrom.getClientRects().length?repFrom:phone()?null:$("moreb");if(f)f.focus()});
+$("repForm").onsubmit=async e=>{e.preventDefault();const mode=rDlg.dataset.mode;if(!SYNC_URL||mode==="sending"||mode==="done"||$("rSend").disabled)return;
+  /* the JSON shown, without the indentation */
+  const k=repOpen;await freshReport();const body=JSON.stringify(repObj);reportMode("sending");let r;
+  try{const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),15000);
+    const res=await fetch(SYNC_URL.replace(/\/+$/,"").replace(/^ws(s?):\/\//i,"http$1://")+"/reports",{method:"POST",headers:{"content-type":"application/json"},body,signal:ctl.signal,cache:"no-store",credentials:"omit"});
+    clearTimeout(t);let j=null;try{j=await res.json()}catch(x){}
+    r=res.ok&&j&&typeof j.id==="string"&&/^[a-z0-9]{10}$/.test(j.id)?{id:j.id}:{msg:res.status===429&&j&&typeof j.message==="string"?j.message.slice(0,120):"Couldn't send it."}}
+  catch(x){r={msg:"Couldn't reach the server."}}
+  if(k!==repOpen||!rDlg.open)return;
+  if(r.id){reportMode("done",r.id);$("rCancel").focus()}else{reportMode("failed",r.msg);$("rSend").focus()}};
+$("rCopy").onclick=async()=>{const t=renderReport();try{await navigator.clipboard.writeText(t);$("rCopy").textContent="Copied"}
+  catch(e){$("rSee").open=true;const s=getSelection(),g=document.createRange();g.selectNodeContents($("rJson"));s.removeAllRanges();s.addRange(g);$("rJson").focus()}};
+$("rDown").onclick=()=>{const t=renderReport(),a=document.createElement("a"),u=URL.createObjectURL(new Blob([t],{type:"application/json"}));
+  a.href=u;a.download="cue-board-report-"+new Date().toISOString().slice(0,19).replace(/[-:]/g,"")+".json";document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),2000);$("rDown").textContent="Downloaded"};
+$("mReport").onclick=()=>{mProj.close();openReport()};
 let rz=0;try{new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(renderTimeline)}).observe(scroller)}catch(e){window.addEventListener("resize",renderTimeline)}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>renderTimeline());
 renderAll();

@@ -20,6 +20,9 @@
     "list-codes": "node bin/list-codes.mjs",
     "revoke-code": "node bin/revoke-code.mjs",
     "attach-owner": "node bin/attach-owner.mjs",
+    "list-reports": "node bin/list-reports.mjs",
+    "show-report": "node bin/show-report.mjs",
+    "clear-reports": "node bin/clear-reports.mjs",
     "build:demo": "esbuild demo/client.mjs --bundle --format=esm --outfile=demo/dist/client.js --log-level=warning",
     "demo": "npm run build:demo && SERVE_DEMO=1 node src/main.mjs",
     "test": "node --test test/*.test.mjs"
