@@ -70,7 +70,7 @@ const measure = () => page.evaluate(() => {
   for (const id of ['newp', 'importb', 'exportb', 'moreb']) add(id.replace(/b$|p$/, ''), document.getElementById(id));
   add('song', document.getElementById('songlbl'));
   add('sides', document.querySelector('.sides'));
-  add('join', document.getElementById('joinb')); add('leave', document.getElementById('leaveb'));
+  add('join', document.getElementById('joinb')); add('room', document.getElementById('roomb'));
   document.querySelectorAll('#presence .pchip').forEach((c, i) => add(c.classList.contains('self') ? 'you' : 'p' + i, c));
   add('sync', document.getElementById('mstat'));
   add('saved', document.getElementById('status'));
@@ -80,7 +80,7 @@ const measure = () => page.evaluate(() => {
   gaps.push({ a: items[items.length - 1].name, b: '|', v: t.right - items[items.length - 1].r });
   // where the words sit vertically: each text's own box against the bar's middle
   const mid = t.top + (t.height - 1) / 2, words = {};
-  for (const [n, sel] of [['logo', '.brand .lbl'], ['picker', '#projname'], ['side', '.sidetab'], ['join', '#joinb .lbl'], ['leave', '#leaveb .lbl'], ['saved', '#status .lbl'], ['settings', '#settingsb .lbl']]) {
+  for (const [n, sel] of [['logo', '.brand .lbl'], ['picker', '#projname'], ['side', '.sidetab'], ['join', '#joinb .lbl'], ['room', '#roomb .lbl'], ['saved', '#status .lbl'], ['settings', '#settingsb .lbl']]) {
     const e = document.querySelector(sel); if (!vis(e) || e.getBoundingClientRect().width < 2) continue;
     const g = document.createRange(); g.selectNodeContents(e.firstChild?.nodeType === 3 ? e.firstChild : e); const r = g.getBoundingClientRect(); words[n] = Math.round((r.top + r.height / 2 - mid) * 10) / 10; }
   const s = document.querySelector('.sides').getBoundingClientRect();
@@ -140,19 +140,13 @@ try {
     await at(w); const base = xs(await measure());
     for (const [k, t] of [['busy', 'Saving…'], ['busy', 'Syncing…'], ['local', 'Saved locally'], ['err', "Couldn't save"], ['err', 'Out of storage space'], ['ok', 'Saved']]) {
       await page.evaluate(([k, t]) => { const s = document.getElementById('status'); s.dataset.k = k; s.querySelector('.lbl').textContent = t; }, [k, t]); await sleep(60);
-      const m = await measure(); shifts.push(...moved(base, xs(m), ['logo', 'sides', 'leave', 'you', 'p0', 'sync', 'saved', 'settings']).map(x => `${w} saved "${t}": ${x}`));
+      const m = await measure(); shifts.push(...moved(base, xs(m), ['logo', 'sides', 'room', 'you', 'p0', 'sync', 'saved', 'settings']).map(x => `${w} saved "${t}": ${x}`));
       if (w === 1440 && t === "Couldn't save") await bar('room-saved-error-1440');
     }
-    await page.click('#leaveb'); await sleep(120); await page.mouse.move(700, 600);
-    const ma = await measure(); shifts.push(...moved(base, xs(ma), ['logo', 'sides', 'you', 'p0', 'sync', 'saved', 'settings']).map(x => `${w} armed Leave: ${x}`));
-    const x = wrong(ma, w); if (x.length) shifts.push(`${w} armed Leave: ${x.join(', ')}`);
-    const said = await page.evaluate(() => { const l = document.querySelector('#leaveb .lbl'), r = l.getBoundingClientRect(), t = document.querySelector('.top').getBoundingClientRect();
-      return { t: l.textContent, inBar: r.bottom <= t.bottom, under: r.top >= t.bottom - 8, w: r.width }; });
-    if (said.t !== 'Tap again to leave' || said.w < 40 || (w >= 1440 ? !said.inBar : !said.under)) shifts.push(`${w} armed Leave's words: ${JSON.stringify(said)}`);
-    if (w === 1440 || w === 1920 || w === 1280) await bar(`room-leave-armed-${w}`, 40);
+    if (w === 1440 || w === 1920 || w === 1280) await bar(`room-this-room-${w}`, 40);
     await inRoom(1);
   }
-  check('the saved state\'s words (Saving…, Saved locally, errors) and an armed Leave move nothing else, 1920 to 820; an armed Leave says so in the bar (1440+) or right under its icon', !shifts.length, shifts.slice(0, 6).join(' | '));
+  check('the saved state\'s words (Saving…, Saved locally, errors) move nothing else, 1920 to 820', !shifts.length, shifts.slice(0, 6).join(' | '));
 
   // ---------- a long name, many collaborators ----------
   await setPeers(7);

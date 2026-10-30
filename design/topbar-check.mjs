@@ -67,7 +67,7 @@ try {
   await page.evaluate(() => document.fonts.ready); await sleep(800); await page.mouse.move(700, 600);
 
   // ---------- a local project ----------
-  check('local project: Join collaboration in the bar, no Leave, no bubbles, no sync indicator', await page.isVisible('#joinb') && !(await page.isVisible('#leaveb')) && !(await page.isVisible('#presence')) && !(await page.isVisible('#mstat')));
+  check('local project: Join collaboration in the bar, no This room, no bubbles, no sync indicator', await page.isVisible('#joinb') && !(await page.isVisible('#roomb')) && !(await page.isVisible('#presence')) && !(await page.isVisible('#mstat')));
   await bar('01-bar-local');
   for (const w of [1440, 1920]) {
     await page.setViewportSize({ width: w, height: 900 }); await sleep(150); const g = await geo();
@@ -112,7 +112,7 @@ try {
   await page.evaluate(p => { window.__STUB.peers = p; window.__STUB.ping(); }, peers(1)); await sleep(300); await page.mouse.move(700, 600);
   const row = () => page.evaluate(() => [...document.querySelectorAll('#presence .pchip')].map(c => [c.textContent, c.dataset.tip, c.getAttribute('aria-label'), c.className]));
   const r1 = await row();
-  check('in a room: Leave instead of Join; own bubble first ("Rami (you)"), then the collaborator', !(await page.isVisible('#joinb')) && await page.isVisible('#leaveb')
+  check('in a room: This room instead of Collaborate, no Leave in the bar; own bubble first ("Rami (you)"), then the collaborator', !(await page.isVisible('#joinb')) && await page.isVisible('#roomb') && !(await page.$('#leaveb'))
     && JSON.stringify(r1.map(x => [x[0], x[1], x[2] === x[1]])) === '[["RA","Rami (you)",true],["NP","Nacho Pérez",true]]' && /self/.test(r1[0][3]), JSON.stringify(r1));
   const tip = sel => page.evaluate(sel => { const a = getComputedStyle(document.querySelector(sel), '::after'); return a.display !== 'none' && a.visibility === 'visible' ? a.content.replace(/^"|"$/g, '') : ''; }, sel);
   await page.hover('#presence .pchip.self'); await sleep(150);
@@ -144,6 +144,17 @@ try {
   await page.evaluate(() => { window.__STUB.status = 'synced'; window.__STUB.ping(); }); await sleep(150);
   check('room synced: saved state "Saved", tooltip says synced with the room', (await status()).t === 'Saved' && /synced with the room/.test((await status()).tip));
   await bar('09-room-many');
+  // This room with you + 7: everyone listed, you first; the room drops while it's open: it says so, only you listed
+  await page.click('#roomb'); await page.waitForSelector('#dlgRoom[open]');
+  const ppl = await page.$$eval('#rmPeople .nm', l => l.map(n => n.textContent));
+  check('This room lists you first, then all 7 (no +N here)', ppl.length === 8 && ppl[0] === 'Rami (you)' && ppl[7] === 'Gus Hale', ppl.join(', '));
+  await page.evaluate(() => { window.__STUB.status = 'offline'; window.__STUB.peers = []; window.__STUB.ping(); }); await sleep(200);
+  check('the room goes offline with the panel open: it says so, only you listed, panel stays', /Offline/.test(await page.textContent('#rmState')) && (await page.$$eval('#rmPeople li', l => l.length)) === 1 && await page.isVisible('#dlgRoom'), await page.textContent('#rmState'));
+  await page.evaluate(p => { window.__STUB.status = 'synced'; window.__STUB.peers = p; window.__STUB.ping(); }, peers(7)); await sleep(200);
+  check('back online: the state line goes, the people come back', (await page.textContent('#rmState')) === '' && (await page.$$eval('#rmPeople li', l => l.length)) === 8);
+  await page.keyboard.press('Escape'); await sleep(150);
+  check('Escape closes This room, focus back on its button', await page.evaluate(() => !document.getElementById('dlgRoom').open && document.activeElement?.id === 'roomb'));
+  await page.evaluate(() => document.activeElement.blur());
 
   // ---------- keyboard order: left to right ----------
   await page.mouse.click(700, 600); await page.focus('#proj');
@@ -164,7 +175,7 @@ try {
       if (!m.includes('Import…') || !m.includes('Export…')) bad.push(`${w}: More lacks Import/Export: ${m}`);
       await bar(`11-more-${w}`, 160); await page.keyboard.press('Escape'); await page.evaluate(() => document.activeElement.blur()); }
   }
-  check('one row, no overlap with the centre, no page overflow, 1920 to 820 (long name, you + 7 others, Leave)', !bad.length, bad.join(' | '));
+  check('one row, no overlap with the centre, no page overflow, 1920 to 820 (long name, you + 7 others, This room)', !bad.length, bad.join(' | '));
   await page.setViewportSize({ width: 1280, height: 900 }); await sleep(150); await page.click('#moreb'); await page.click('#moremenu [data-for="exportb"]'); await sleep(250);
   check('Export from More (narrow bar) opens the export dialog', await page.isVisible('#dlgExport')); await page.click('#expCancel');
   await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150);
@@ -178,12 +189,13 @@ try {
   const list = await page.locator('#projmenu [role="menuitemradio"]').allTextContents(); await page.keyboard.press('Escape');
   check('a switch during a rename ends it, saving into the project it was started on', /^The Mountain King/.test(names[0]) && names[1] && names[2] === 'Rename project' && list.includes('Scratch renamed'), `${names} / ${list.join(' | ')}`);
 
-  // ---------- Leave: two taps, then Join (focus follows) ----------
-  await page.click('#leaveb'); await sleep(100); await page.mouse.move(700, 600);
-  check('Leave asks for a second tap ("Tap again to leave"), still in the room', await page.textContent('#leaveb') === 'Tap again to leave' && await page.isVisible('#presence'));
-  await bar('12-leave-armed');
-  await page.focus('#leaveb'); await page.keyboard.press('Enter'); await sleep(300);
-  check('after Leave: Join in the bar with the focus, no bubbles, no indicator', await page.evaluate(() => document.activeElement?.id === 'joinb' && document.getElementById('presence').hidden && document.getElementById('mstatw').hidden));
+  // ---------- Leave, from This room: two taps, then Collaborate (focus follows) ----------
+  await page.focus('#roomb'); await page.keyboard.press('Enter'); await page.waitForSelector('#dlgRoom[open]');
+  check('This room from the keyboard: the panel opens with focus inside, named by the room', await page.evaluate(() => document.getElementById('dlgRoom').contains(document.activeElement)) && /The Mountain King/.test(await page.textContent('#rmName')));
+  await page.click('#rmLeave'); await sleep(100);
+  check('Leave room asks for a second tap ("Tap again to leave"), still in the room', await page.textContent('#rmLeave') === 'Tap again to leave' && await page.isVisible('#presence'));
+  await page.focus('#rmLeave'); await page.keyboard.press('Enter'); await sleep(300);
+  check('after Leave: panel closed, Collaborate in the bar with the focus, no bubbles, no indicator', await page.evaluate(() => document.activeElement?.id === 'joinb' && document.getElementById('presence').hidden && document.getElementById('mstatw').hidden));
   await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await bar('13-join');
   await page.click('#joinb'); await sleep(250);
   check('Collaborate opens the panel (Share this project / Join with a link)', await page.isVisible('#dlgJoin') && await page.evaluate(() => document.getElementById('dlgJoin').dataset.step) === 'collab');
@@ -219,23 +231,25 @@ try {
   check('the gear opens Settings', await page.isVisible('#dlgSettings')); await page.keyboard.press('Escape'); await sleep(150);
   await page.setViewportSize({ width: 1440, height: 900 }); await sleep(150);
 
-  // ---------- an armed Leave does not follow you into another room ----------
+  // ---------- an armed Leave does not outlive its panel or follow you into another room ----------
   await db(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
     const ids = await new Promise(r => { const q = d.transaction('projects').objectStore('projects').getAllKeys(); q.onsuccess = () => r(q.result); });
     const rooms = Object.fromEntries(ids.map((id, i) => [id, { roomId: String(i).repeat(22), token: 't'.repeat(22), name: 'Rami' }]));
     await new Promise(r => { const q = d.transaction('settings', 'readwrite').objectStore('settings').put({ name: 'Rami', rooms }, 'collab'); q.onsuccess = r; }); });
   await page.reload(); await page.waitForSelector('.card'); await page.waitForFunction(() => window.__STUB && window.__STUB.pid); await sleep(300);
-  await page.click('#leaveb'); await sleep(100);
+  await page.click('#roomb'); await page.waitForSelector('#dlgRoom[open]'); await page.click('#rmLeave'); await sleep(100);
   const armedIn = await page.textContent('#projname');
   await page.evaluate(() => window.__STUB.ping()); await sleep(100);
-  check('an armed Leave survives a re-render of the same room', await page.textContent('#leaveb') === 'Tap again to leave');
+  check('an armed Leave survives a re-render of the same room', await page.textContent('#rmLeave') === 'Tap again to leave');
+  await page.keyboard.press('Escape'); await sleep(150);
   await page.click('#proj'); await sleep(150); await page.locator('#projmenu [role="menuitemradio"][aria-checked="false"]').first().click(); await sleep(400);
-  const other = await page.evaluate(() => [document.getElementById('projname').textContent, document.getElementById('leaveb').hidden, document.getElementById('leaveb').textContent, document.getElementById('leaveb').hasAttribute('data-armed')]);
-  check('switching to another room project disarms Leave', other[0] !== armedIn && !other[1] && other[2] === 'Leave collaboration' && !other[3], `${armedIn} → ${JSON.stringify(other)}`);
+  await page.click('#roomb'); await page.waitForSelector('#dlgRoom[open]');
+  const other = await page.evaluate(() => [document.getElementById('projname').textContent, document.getElementById('rmName').textContent, document.getElementById('rmLeave').textContent, document.getElementById('rmLeave').hasAttribute('data-armed')]);
+  check('closing the panel disarms Leave; another room project\'s panel shows that room, unarmed', other[0] !== armedIn && other[1] === other[0] && other[2] === 'Leave room' && !other[3], `${armedIn} → ${JSON.stringify(other)}`);
   const pidBefore = await page.evaluate(() => window.__STUB.pid);
-  await page.click('#leaveb'); await sleep(100);
-  check('so one tap there only arms it (still in that room)', await page.textContent('#leaveb') === 'Tap again to leave' && await page.evaluate(() => window.__STUB.pid) === pidBefore && await page.isVisible('#presence'));
-  await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await sleep(2800);
+  await page.click('#rmLeave'); await sleep(100);
+  check('so one tap there only arms it (still in that room)', await page.textContent('#rmLeave') === 'Tap again to leave' && await page.evaluate(() => window.__STUB.pid) === pidBefore && await page.isVisible('#presence'));
+  await page.keyboard.press('Escape'); await page.mouse.move(700, 600); await page.evaluate(() => document.activeElement.blur()); await sleep(300);
 
   // ---------- no project: More holds nothing usable on a wide bar, so it isn't there ----------
   await db(async () => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
