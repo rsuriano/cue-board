@@ -191,6 +191,55 @@ try {
   await drag(0, 3, .05); o1 = await ids();
   const half = await page.evaluate(id => { const s = __S(), i = s.findIndex(x => x.id === id); return [s[i].start, s[i + 1].start]; }, o0[0]);
   check('a card dropped on an edge slides in and gets half of that slot', o1.indexOf(o0[0]) === 2 && Math.abs(half[1] - half[0] - (slot[1] - slot[0]) / 2) < .05, JSON.stringify({ o0: o0.slice(0, 4), o1: o1.slice(0, 4), slot, half }));
+  // Delete / Backspace: the Delete shot button's two taps (one arms, the button and a hint say so; the second deletes)
+  {
+  const selId = () => page.evaluate(() => document.querySelector('.card.sel')?.dataset.id);
+  const delBtn = () => page.evaluate(() => ({ armed: document.getElementById('f-del').hasAttribute('data-armed'), label: document.getElementById('f-del').textContent, toast: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent }));
+  await page.locator('.card').nth(2).click(); await sleep(200); await blurAll();
+  let s0 = await selId(), n0 = (await ids()).length;
+  await page.keyboard.press('Delete'); await sleep(150);
+  let d = await delBtn(), n1 = (await ids()).length;
+  check('one Delete arms Delete shot and deletes nothing', d.armed && /again/i.test(d.label) && /again/i.test(d.toast) && n1 === n0, JSON.stringify({ ...d, n0, n1 }));
+  await page.screenshot({ path: join(out, 'delete-armed.png') });
+  await page.keyboard.press('Delete'); await sleep(200);
+  let after = await ids(); d = await delBtn();
+  check('a second Delete deletes exactly the selected shot', after.length === n0 - 1 && !after.includes(s0) && !d.armed && !d.toast, JSON.stringify({ n0, n: after.length, gone: !after.includes(s0), ...d }));
+  s0 = await selId(); n0 = after.length;
+  await page.keyboard.press('Backspace'); await sleep(100); await page.keyboard.press('Backspace'); await sleep(200);
+  after = await ids();
+  check('Backspace twice deletes the selected shot too', after.length === n0 - 1 && !after.includes(s0), `${n0} → ${after.length}`);
+  // armed, then another shot is selected: disarmed, the next press only arms again
+  n0 = (await ids()).length; await page.keyboard.press('Delete'); await sleep(100);
+  await page.keyboard.press(']'); await sleep(200); d = await delBtn();
+  await page.keyboard.press('Delete'); await sleep(200);
+  check('arming then changing the selection disarms (no delete)', (await ids()).length === n0 && !(await delBtn()).toast.includes('deleted') && (await delBtn()).armed, JSON.stringify({ afterMove: d, n0, n: (await ids()).length }));
+  await page.keyboard.press('Escape'); await sleep(100);
+  check('any other key disarms', !(await delBtn()).armed);
+  // typing in a field never deletes a shot
+  n0 = (await ids()).length; await page.click('#f-notes'); await page.keyboard.type('ab');
+  for (let i = 0; i < 4; i++) await page.keyboard.press('Backspace');
+  await page.keyboard.press('Delete'); await page.keyboard.press('Delete'); await sleep(200);
+  check('Backspace and Delete in the notes field never delete a shot', (await ids()).length === n0 && !(await delBtn()).armed);
+  await blurAll();
+  // a dialog open: nothing
+  await page.evaluate(() => document.getElementById('dlgSettings').showModal()); await sleep(100);
+  await page.keyboard.press('Delete'); await page.keyboard.press('Delete'); await sleep(200);
+  check('nothing happens with a dialog open', (await ids()).length === n0 && !(await delBtn()).armed);
+  await page.evaluate(() => document.getElementById('dlgSettings').close()); await blurAll();
+  // armed, then a dialog opens: disarmed
+  await page.keyboard.press('Delete'); await sleep(100);
+  await page.evaluate(() => { document.getElementById('dlgSettings').showModal(); }); await sleep(100);
+  check('arming then opening a dialog disarms', !(await delBtn()).armed);
+  await page.evaluate(() => document.getElementById('dlgSettings').close()); await blurAll();
+  // Side B: nothing (and switching sides disarms)
+  await page.keyboard.press('Delete'); await sleep(100);
+  await page.click('.sidetab[data-side="b"]'); await sleep(300); await blurAll();
+  const armedAfterSide = (await delBtn()).armed;
+  await page.keyboard.press('Delete'); await page.keyboard.press('Delete'); await sleep(200);
+  check('switching to Side B disarms, and Delete does nothing there', !armedAfterSide && (await ids()).length === n0);
+  await page.click('.sidetab[data-side="a"]'); await sleep(300);
+  check('the panel lists Delete under Cuts and shots', await page.evaluate(() => [...document.querySelectorAll('#kCuts + .klist dt')].some(x => /delete the selected shot/i.test(x.textContent))));
+  }
   console.log('NOTE not verified here: the strip wheel (strip-wheel-check.mjs covers it), dropping files');
 } catch (e) { check('ran without throwing', false, e.stack); }
 

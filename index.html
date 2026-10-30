@@ -1111,6 +1111,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <section aria-labelledby="kCuts"><p class="kh" role="heading" aria-level="4" id="kCuts">Cuts and shots</p><dl class="klist">
       <div><dt>Cut at the playhead</dt><dd><kbd>M</kbd></dd></div>
       <div><dt>Previous / next shot</dt><dd><kbd>[</kbd><kbd>]</kbd></dd></div>
+      <div><dt>Delete the selected shot<small>press twice</small></dt><dd><kbd>Delete</kbd></dd></div>
       <div><dt>Move a cut</dt><dd>drag its triangle</dd></div>
       <div><dt>Swap two shots</dt><dd>drag a card onto another</dd></div>
       <div><dt>Slide a shot in between<small>it gets half of that slot</small></dt><dd>drag its card onto an edge or gap</dd></div>
@@ -1679,8 +1680,8 @@ $("renamep").onclick=()=>renaming?endRename(true):startRename($("renamep"));
 function newProject(from){if(dirty)flush();const p=makeProject();selectProject(p);projects.unshift(clone(p));renderProjSelect();flush();startRename(from)}
 $("newp").onclick=()=>newProject($("newp"));
 /* two taps: the first arms (the label asks to confirm, data-armed shows it at any width), the second acts */
-function twoTap(btn,label,confirmLabel,fn){let armed=false,tm=null;const l=btn.querySelector("span")||btn;
-  const set=on=>{armed=on;l.textContent=on?confirmLabel:label;btn.toggleAttribute("data-armed",on)};
+function twoTap(btn,label,confirmLabel,fn,onSet){let armed=false,tm=null;const l=btn.querySelector("span")||btn;
+  const set=on=>{armed=on;l.textContent=on?confirmLabel:label;btn.toggleAttribute("data-armed",on);if(onSet)onSet(on)};
   btn.onclick=()=>{if(!armed){set(true);tm=setTimeout(()=>set(false),2600);return}clearTimeout(tm);set(false);fn()};return()=>{clearTimeout(tm);set(false)}}
 const deleteProject=async()=>{
   closeMore(true);if(!cur||!store)return;const id=cur.id,imgs=projectMediaIds(cur);
@@ -1707,7 +1708,9 @@ const deleteShot=()=>{
   else{const[rm]=s.splice(i,1);if(i===0)s[0].start=0;sectionMediaIds(rm).forEach(releaseMedia);selId=s[Math.max(0,i-1)].id}
   scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);
 };
-const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",deleteShot);
+/* Delete or Backspace on Cut press this button (see the keyboard); its hint goes away when it disarms */
+let delByKey=false;const DEL_HINT="Press Delete again to delete this shot";
+const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",deleteShot,on=>{if(on||!delByKey)return;delByKey=false;if($("toast").textContent===DEL_HINT)$("toast").hidden=true});
 [["f-title","title"],["f-shot","shot"],["f-notes","notes"],["f-imgp","imgPrompt"],["f-vidp","vidPrompt"]].forEach(([id,f])=>{
   $(id).addEventListener("input",e=>{const s=selSec();if(!s)return;s[f]=e.target.value;scheduleSave(true);
     if(f==="title"||f==="shot"){const c=$("strip").querySelector(`.card[data-id="${CSS.escape(s.id)}"]`);if(c){const i=S().indexOf(s);c.querySelector(".ct").innerHTML=s.title?esc(s.title):"<em>Untitled</em>";c.querySelector(".cs").textContent=s.shot||clipHint(secEnd(i)-s.start)}}
@@ -1846,6 +1849,9 @@ document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.file
   if(f.type.startsWith("audio/")||/\.(mp3|wav|m4a|ogg|flac|aac)$/i.test(f.name))loadSongFile(f);else if(f.type.startsWith("image/")||f.type.startsWith("video/")||/\.(mp4|webm|mov|m4v|gif)$/i.test(f.name))uploadMedia(f)});
 
 /* ---------- keyboard ---------- */
+/* Delete shot armed by the key: any other key, or focus going into a dialog or panel, disarms (selection, side and project changes re-render the editor, which disarms too) */
+document.addEventListener("keydown",e=>{if(delByKey&&e.key!=="Delete"&&e.key!=="Backspace")resetDel()},true);
+document.addEventListener("focusin",e=>{if(delByKey&&e.target.closest&&e.target.closest("dialog,[role=dialog]"))resetDel()});
 document.addEventListener("keydown",e=>{
   /* a dialog or sheet is open: its buttons and summaries keep Space, and nothing edits the project behind it */
   if(side!=="a"||document.querySelector("dialog[open]"))return;
@@ -1856,6 +1862,12 @@ document.addEventListener("keydown",e=>{
   else if(k==="l"){setLoop(!loop)}
   else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();seek(now()+(e.key==="ArrowLeft"?-1:1)*(e.shiftKey?5:1))}
   else if((e.key==="["||e.key==="]")&&cur){const i=secAt(now())+(e.key==="]"?1:-1);const s=S()[Math.max(0,Math.min(S().length-1,i))];select(s.id,true)}
+  else if(e.key==="Delete"||e.key==="Backspace"){
+    /* the same two taps as Delete shot, through its button: only while it shows (desktop, a shot selected) and no panel or menu is open */
+    const b=$("f-del");if(!selSec()||!b.getClientRects().length||!$("mpanel").hidden||document.querySelector("[aria-expanded=true]"))return;
+    e.preventDefault();const armed=b.hasAttribute("data-armed");b.click();
+    if(!armed&&b.hasAttribute("data-armed")){delByKey=true;toast(DEL_HINT,2600)}
+  }
 });
 
 /* shortcuts panel: ? (not while typing) or the footer button; Escape, a click outside or Close shut it, focus goes back */
@@ -1967,7 +1979,7 @@ function ratePerSec(m,res,audio,i2v){
 function setSide(v){
   side=v;ls("cueboard-side",v);$("sideA").hidden=v!=="a";$("sideB").hidden=v!=="b";
   document.querySelectorAll(".sidetab,#mTabs [role=tab]").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.side===v)));
-  if(v!=="a")closeDetails();resetMtDel();
+  if(v!=="a")closeDetails();resetMtDel();resetDel();
   if(v==="a"){lastKey="";renderAll()}else{stop();renderB()}
 }
 document.querySelectorAll(".sidetab").forEach(b=>b.onclick=()=>setSide(b.dataset.side));
