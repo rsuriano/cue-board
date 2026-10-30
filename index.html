@@ -1441,15 +1441,19 @@ const editing=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.close
 
 /* ---------- undo (docs/collaboration.md, "Undo") ----------
    This tab's own edits, 100 steps, in memory only; cleared when the project changes. A step is the field-level diff
-   of the project around one action (hRec), the drag of a cut from pointer down to up (hBegin/hEnd), or one text field
-   from its first keystroke to the moment it loses focus (hText, merged). Undo and redo apply the other value as a new
-   change that saves and syncs like any edit; a step the project no longer matches (someone else changed that shot or
-   field since) is skipped with a notice and dropped. */
+   of the project around one synchronous action (hRec), the start of a dragged cut from pointer down to up (hCut), or
+   one text field from its first keystroke to the moment it loses focus (hText, merged). Undo and redo apply the other
+   value as a new change that saves and syncs like any edit; a step the project no longer matches (someone else changed
+   that shot or field since) is skipped with a notice and dropped. */
 const H=window.cueHistory,hist=H.create({onChange:()=>renderMTool(),onDrop:unpark});
 const shotNo=s=>pad(S().indexOf(s)+1);
-const hBegin=label=>cur?{label,before:clone(cur),pid:cur.id}:null;
-function hEnd(t,opt){if(!t||!cur||cur.id!==t.pid)return null;return hist.push(t.label,H.diff(t.before,cur),{pid:cur.id,...opt})}
-function hRec(label,fn,opt){const t=hBegin(label);try{return fn()}finally{hEnd(t,opt)}}
+/* fn must not await: nothing else (a collaborator's edit, a take finishing) can land between the snapshot and the diff */
+function hRec(label,fn,opt){const before=cur?clone(cur):null,pid=cur&&cur.id;
+  try{return fn()}finally{if(before&&cur&&cur.id===pid)hist.push(label,H.diff(before,cur),{pid,...opt})}}
+/* a drag spans many events, so it records only what it owns: the dragged cut's start, before and after */
+const hCut=s=>cur&&s?{pid:cur.id,id:s.id,b:s.start}:null;
+function hCutEnd(t){if(!t||!cur||cur.id!==t.pid)return;const s=S().find(x=>x.id===t.id);
+  if(s)hist.push("move cut",[{k:"sf",id:t.id,f:"start",b:t.b,a:s.start}],{pid:t.pid})}
 /* a text field edit: one change, scoped to that field, merged with the previous keystrokes until the field blurs */
 function hText(label,s,f,v){const b=s[f];if(H.same(b,v))return;s[f]=v;hist.push(label,[{k:"sf",id:s.id,f,b:H.clone(b),a:H.clone(v)}],{pid:cur.id,merge:"text:"+s.id+":"+f})}
 const FIELD_LABEL={title:"title",shot:"shot type",notes:"notes",imgPrompt:"frame prompt",vidPrompt:"motion prompt",endPrompt:"end frame prompt",endChange:"end frame change"};
@@ -1722,15 +1726,15 @@ function scrubTo(e){
 }
 cv.addEventListener("pointerdown",e=>{if(!cur||e.button>0||phone())return;const x=cx(e),hit=boundaryAt(x);
   cv.setPointerCapture(e.pointerId);
-  if(hit>0){drag=hit;dragH=hBegin("move cut");return}
+  if(hit>0){drag=hit;dragH=hCut(S()[hit]);return}
   scrub=true;cv.style.cursor="grabbing";scrubTo(e)});
 let dragH=null;
 cv.addEventListener("pointermove",e=>{if(!cur||phone())return;
-  if(drag){const s=S(),lo=s[drag-1].start+.2,hi=(drag<s.length-1?s[drag+1].start:dur())-.2;
-    s[drag].start=Math.round(Math.min(hi,Math.max(lo,cx(e)/P))*100)/100;renderTimeline();renderStrip();renderEdHead();renderMonitor()}
+  if(drag){const s=S(),i=dragH?s.findIndex(x=>x.id===dragH.id):drag;if(i<1)return;drag=i;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
+    s[i].start=Math.round(Math.min(hi,Math.max(lo,cx(e)/P))*100)/100;renderTimeline();renderStrip();renderEdHead();renderMonitor()}
   else if(scrub)scrubTo(e);
   else cv.style.cursor=boundaryAt(cx(e))>0?"ew-resize":"pointer"});
-const endDrag=()=>{if(drag){drag=null;hEnd(dragH);dragH=null;scheduleSave();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
+const endDrag=()=>{if(drag){drag=null;hCutEnd(dragH);dragH=null;scheduleSave();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
 cv.addEventListener("pointerup",endDrag);cv.addEventListener("pointercancel",endDrag);
 /* wheel over the song: scroll sideways; Ctrl/⌘ + wheel zooms around the pointer */
 scroller.addEventListener("wheel",e=>{
@@ -2720,7 +2724,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,doUndo,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,doUndo,pollTake,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -3046,11 +3050,11 @@ function mLiftEnd(apply){const L=mLift;mLift=null;L.ghost.remove();L.chip.remove
 const mGrips=$("mGrips");
 mGrips.addEventListener("pointerdown",e=>{const b=e.target.closest(".grip");if(!b||!cur)return;const i=+b.dataset.i,s=S();if(!s[i])return;
   try{b.setPointerCapture(e.pointerId)}catch(_){}mGrip={id:s[i].id,i,x0:e.clientX,s0:s[i].start,moved:false}});
-mGrips.addEventListener("pointermove",e=>{if(!mGrip)return;const dx=e.clientX-mGrip.x0;if(!mGrip.moved&&Math.abs(dx)<6)return;if(!mGrip.moved)mGrip.h=hBegin("move cut");mGrip.moved=true;
+mGrips.addEventListener("pointermove",e=>{if(!mGrip)return;const dx=e.clientX-mGrip.x0;if(!mGrip.moved&&Math.abs(dx)<6)return;if(!mGrip.moved)mGrip.h=hCut(S().find(x=>x.id===mGrip.id));mGrip.moved=true;
   const s=S(),i=s.findIndex(x=>x.id===mGrip.id);if(i<1)return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
   s[i].start=r2(Math.min(hi,Math.max(lo,mGrip.s0+dx/P)));mCutId=mGrip.id;mDraw();renderEdHead();renderMTool();renderMonitor()});
 const mGripEnd=()=>{const g=mGrip;mGrip=null;if(!g)return;
-  if(g.moved){hEnd(g.h);scheduleSave();renderStrip();renderPeek();renderMonitor(true)}else{mCutId=mCutId===g.id?"":g.id;mMode=""}renderMTool();mDraw()};
+  if(g.moved){hCutEnd(g.h);scheduleSave();renderStrip();renderPeek();renderMonitor(true)}else{mCutId=mCutId===g.id?"":g.id;mMode=""}renderMTool();mDraw()};
 mGrips.addEventListener("pointerup",mGripEnd);mGrips.addEventListener("pointercancel",mGripEnd);
 mGrips.addEventListener("keydown",e=>{const b=e.target.closest(".grip");if(!b||(e.key!=="ArrowLeft"&&e.key!=="ArrowRight"))return;e.preventDefault();e.stopPropagation();const c=S()[+b.dataset.i];if(!c)return;mCutId=c.id;mNudge(e.key==="ArrowLeft"?-.1:.1)});
 function mNudge(dt){const s=S(),i=mCutI();if(i<1||!s[i])return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;

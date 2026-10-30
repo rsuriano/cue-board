@@ -127,6 +127,23 @@ try {
   check('one Ctrl+Z puts the cut back where it was', Math.abs(a.starts[1] - s0.starts[1]) < .001 && a.toast === 'Undone: move cut', JSON.stringify([a.starts[1], s0.starts[1]]));
   clearHist(page);
 
+  // a take on another shot finishes (the app's own poll, OpenRouter answered here) in the middle of a drag: the step is
+  // the cut's start only, so the undo puts the cut back and the take stays completed with its file
+  await page.route('https://openrouter.ai/api/v1/videos/job-drag', r => r.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ status: 'completed', unsigned_urls: ['data:video/mp4;base64,AAAAIGZ0eXBpc29t'] }) }));
+  const tSid = await page.evaluate(() => { const a = __A(), s = a.S()[3]; s.takes = [...(s.takes || []), { id: 't-drag', jobId: 'job-drag', model: 'x', dur: 4, status: 'pending', media: '', note: '', error: '', created: Date.now() }]; a.scheduleSave(); a.hist().clear(); return s.id; });
+  const take = () => page.evaluate(sid => { const t = __A().S().find(x => x.id === sid).takes.find(t => t.id === 't-drag'); return { status: t.status, media: t.media }; }, tSid);
+  s0 = await state(page);
+  await page.mouse.move(grab, free.y); await page.mouse.down(); for (let i = 1; i <= 4; i++) { await page.mouse.move(grab + i * 6, free.y); await sleep(20); }
+  await page.evaluate(async sid => { const a = __A(), s = a.S().find(x => x.id === sid); await a.pollTake(s, s.takes.find(t => t.id === 't-drag'), a.cur().id); }, tSid);
+  for (let i = 5; i <= 8; i++) { await page.mouse.move(grab + i * 6, free.y); await sleep(20); } await page.mouse.up(); await sleep(250); s1 = await state(page);
+  const tk1 = await take();
+  check('a take finishing during a drag completes, and the drag is one "move cut" step', tk1.status === 'completed' && !!tk1.media && s1.size === 1 && s1.top === 'move cut' && s1.starts[1] > s0.starts[1] + .1, JSON.stringify({ tk1, size: s1.size, top: s1.top }));
+  await page.keyboard.press('Control+z'); await sleep(250); a = await state(page); await flush(page); await sleep(400);
+  const tk2 = await take();
+  check('undo puts the cut back; the take stays completed with its file', Math.abs(a.starts[1] - s0.starts[1]) < .001 && tk2.status === 'completed' && tk2.media === tk1.media && await hasBlob(page, tk1.media), JSON.stringify({ tk2, start: a.starts[1], was: s0.starts[1] }));
+  await page.unroute('https://openrouter.ai/api/v1/videos/job-drag');
+  clearHist(page);
+
   // holding Ctrl+Z: repeats, capped (each step is a cut, so count by shots undone)
   for (let i = 0; i < 6; i++) { await page.keyboard.press('ArrowRight'); await page.keyboard.press('m'); await sleep(60); }
   s0 = await state(page);
