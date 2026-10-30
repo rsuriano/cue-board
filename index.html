@@ -66,6 +66,91 @@ function build(c,o){const r={v:1,build:scrub(c.build,40)||"dev",at:new Date(c.no
   return r}
 w.cueReport={build,scrub,errors:()=>errs.map(e=>Object.assign({},e))};
 })(window)</script>
+<!-- Undo (docs/collaboration.md, "Undo"): a history of this tab's own edits as field-level changes with the value before
+     and after, on the app's plain project object. Undo and redo put the other value back only where the project still
+     holds the value the step expects, so a collaborator's later change to the same thing is never overwritten (the step
+     is skipped). Pure: no DOM, no storage; packages/collab-client/test/history.test.mjs runs it on its own. -->
+<script id="cue-history">(function(w){
+const stable=v=>v===undefined?"u":v===null||typeof v!=="object"?JSON.stringify(v):Array.isArray(v)?"["+v.map(stable).join(",")+"]":"{"+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+stable(v[k])).join(",")+"}";
+const same=(a,b)=>stable(a)===stable(b),clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
+const SKIP=new Set(["id","updated","sections"]),MEDIA=new Set(["img","key","endKey"]),GONE=Symbol("gone");
+/* the changes that turn project `a` into project `b`: meta fields (title, song, refs…), whole shots added or removed
+   (with their takes), shot fields, whole takes added or removed, take fields. Order is never stored: shots sort by start */
+function diff(a,b){const out=[];
+  for(const k of new Set([...Object.keys(a),...Object.keys(b)]))if(!SKIP.has(k)&&!same(a[k],b[k]))out.push({k:"meta",f:k,b:clone(a[k]),a:clone(b[k])});
+  const as=new Map((a.sections||[]).map(s=>[s.id,s])),bs=new Map((b.sections||[]).map(s=>[s.id,s]));
+  for(const [id,s] of as)if(!bs.has(id))out.push({k:"shot",id,b:clone(s),a:null});
+  for(const s of b.sections||[]){const o=as.get(s.id);if(!o){out.push({k:"shot",id:s.id,b:null,a:clone(s)});continue}
+    for(const f of new Set([...Object.keys(o),...Object.keys(s)]))if(f!=="id"&&f!=="takes"&&!same(o[f],s[f]))out.push({k:"sf",id:s.id,f,b:clone(o[f]),a:clone(s[f])});
+    const ot=o.takes||[],nt=s.takes||[],by=new Map(ot.map(t=>[t.id,t]));
+    ot.forEach((t,i)=>{if(!nt.some(x=>x.id===t.id))out.push({k:"take",sid:s.id,id:t.id,b:clone(t),a:null,pos:i})});
+    nt.forEach((t,j)=>{const p=by.get(t.id);if(!p){out.push({k:"take",sid:s.id,id:t.id,b:null,a:clone(t),pos:j});return}
+      for(const f of new Set([...Object.keys(p),...Object.keys(t)]))if(f!=="id"&&!same(p[f],t[f]))out.push({k:"tf",sid:s.id,id:t.id,f,b:clone(p[f]),a:clone(t[f])})})}
+  return out}
+const loc=c=>c.k==="meta"?"m:"+c.f:c.k==="shot"?"s:"+c.id:c.k==="sf"?"s:"+c.id+":"+c.f:c.k==="take"?"t:"+c.sid+":"+c.id:"t:"+c.sid+":"+c.id+":"+c.f;
+/* what the project holds now where the change applies: null for an absent shot or take, GONE when its container is gone */
+function current(p,c){
+  if(c.k==="meta")return p[c.f];
+  const s=(p.sections||[]).find(x=>x.id===(c.k==="shot"||c.k==="sf"?c.id:c.sid));
+  if(c.k==="shot")return s||null;if(!s)return GONE;if(c.k==="sf")return s[c.f];
+  const t=(s.takes||[]).find(x=>x.id===c.id);if(c.k==="take")return t||null;return t?t[c.f]:GONE}
+function applyChange(p,c,v){v=clone(v);
+  if(c.k==="meta"){if(v===undefined)delete p[c.f];else p[c.f]=v;return}
+  p.sections=p.sections||[];
+  if(c.k==="shot"){const i=p.sections.findIndex(x=>x.id===c.id);if(v===null){if(i>=0)p.sections.splice(i,1)}else if(i<0)p.sections.push(v);return}
+  const s=p.sections.find(x=>x.id===(c.k==="sf"?c.id:c.sid));if(!s)return;
+  if(c.k==="sf"){if(v===undefined)delete s[c.f];else s[c.f]=v;return}
+  s.takes=s.takes||[];
+  if(c.k==="take"){const i=s.takes.findIndex(x=>x.id===c.id);if(v===null){if(i>=0)s.takes.splice(i,1)}else if(i<0)s.takes.splice(Math.min(c.pos||0,s.takes.length),0,v);return}
+  const t=s.takes.find(x=>x.id===c.id);if(!t)return;if(v===undefined)delete t[c.f];else t[c.f]=v}
+/* where a conflict is, for the notice: "shot 03", "a deleted shot", "a take", "the project" */
+function where(p,c){if(c.k==="meta")return c.f==="song"?"the song":c.f==="refs"?"the references":c.f==="title"?"the project name":"the project";
+  const id=c.k==="shot"||c.k==="sf"?c.id:c.sid,i=(p.sections||[]).findIndex(x=>x.id===id);
+  if(i<0)return c.k==="shot"?"the shot":"a deleted shot";return (c.k==="take"||c.k==="tf"?"a take of ":"")+"shot "+String(i+1).padStart(2,"0")}
+/* every media id a step's values point at (both sides), so their files can be kept while the step exists */
+function mediaOf(step){const ids=new Set(),add=v=>{if(typeof v==="string"&&v)ids.add(v)},obj=o=>{if(!o)return;add(o.img);add(o.key);add(o.endKey);add(o.media);(o.takes||[]).forEach(t=>add(t.media))};
+  for(const c of step.changes)for(const v of [c.b,c.a]){
+    if(c.k==="meta"){if(c.f==="refs"&&Array.isArray(v))v.forEach(add)}
+    else if(c.k==="shot"||c.k==="take")obj(v);
+    else if((c.k==="sf"&&MEDIA.has(c.f))||(c.k==="tf"&&c.f==="media"))add(v)}
+  return [...ids]}
+/* merge: the newer step's changes land on the older one's locations (the first `b` stays, `a` moves on); a change
+   whose two sides read the same is dropped */
+function mergeInto(old,add){const by=new Map(old.map(c=>[loc(c),c]));
+  for(const c of add){const o=by.get(loc(c));if(o)o.a=c.a;else{old.push(c);by.set(loc(c),c)}}
+  return old.filter(c=>!same(c.b,c.a))}
+/** @param {{max?:number,onChange?:()=>void,onDrop?:(steps:any[])=>void}} o  onDrop: steps that left the history (undone
+    for good, past the cap, cleared, or skipped), so what they were holding on to can go */
+function create(o={}){const max=o.max||100,onChange=o.onChange||(()=>{}),onDrop=o.onDrop||(()=>{});let undo=[],redo=[],seq=0;
+  const drop=l=>{if(l.length)onDrop(l)};
+  function step(p,from,to,dir){const s=from.pop();if(!s)return{ok:false,empty:true};
+    if(s.pid!==p.id){drop([s]);onChange();return{ok:false,step:s,where:"the project"}}
+    for(const c of s.changes){const v=current(p,c);if(v===GONE||!same(v,dir==="undo"?c.a:c.b)){drop([s]);onChange();return{ok:false,step:s,where:where(p,c)}}}
+    for(const c of dir==="undo"?[...s.changes].reverse():s.changes)applyChange(p,c,dir==="undo"?c.b:c.a);
+    (p.sections||[]).sort((x,y)=>x.start-y.start||(x.id<y.id?-1:1));
+    to.push(s);onChange();return{ok:true,step:s}}
+  const api={
+    /** a step from `changes` (diff()); merge: a key that lets rapid repeats of the same action grow one step (within ms) */
+    push(label,changes,opt={}){changes=changes.filter(c=>!same(c.b,c.a));if(!changes.length)return null;
+      const t=opt.now??Date.now(),top=undo[undo.length-1];
+      if(opt.merge&&top&&top.merge===opt.merge&&top.pid===opt.pid&&(opt.within==null||t-top.t<=opt.within)){
+        top.changes=mergeInto(top.changes,changes);top.t=t;top.label=label;const gone=redo;redo=[];
+        if(!top.changes.length){undo.pop();gone.push(top)}drop(gone);onChange();return top.changes.length?top:null}
+      const s={id:++seq,label,changes,merge:opt.merge||"",t,pid:opt.pid,extra:opt.extra};
+      undo.push(s);const gone=redo;redo=[];if(undo.length>max)gone.push(undo.shift());drop(gone);onChange();return s},
+    /** the next push starts a new step even with the same merge key (a field lost focus, a remote edit landed on it) */
+    breakMerge(){const top=undo[undo.length-1];if(top)top.merge=""},
+    /** the locations the open (mergeable) step touches, as [shotId, field] pairs */
+    openLocs(){const top=undo[undo.length-1];return top&&top.merge?top.changes.filter(c=>c.k==="sf").map(c=>[c.id,c.f]):[]},
+    undo(p){return step(p,undo,redo,"undo")},redo(p){return step(p,redo,undo,"redo")},
+    canUndo:()=>undo.length>0,canRedo:()=>redo.length>0,size:()=>undo.length+redo.length,
+    peek:()=>undo[undo.length-1]||null,
+    clear(){const gone=[...undo,...redo];undo=[];redo=[];if(gone.length){drop(gone);onChange()}},
+    /** some step still points at this media id */
+    holds(id){return [...undo,...redo].some(s=>mediaOf(s).includes(id))}};
+  return api}
+w.cueHistory={create,diff,same,clone,mediaOf,current,GONE};
+})(window)</script>
 <title>Cue Board</title>
 <!-- installable (docs/mobile/PLAN.md): home screen web apps keep their storage on iOS. The manifest is linked only over
      http(s); from a file it would only log an error -->
@@ -889,6 +974,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-film" viewBox="0 0 16 16"><path d="M2.5 3h11v10h-11zM5.5 3v10M10.5 3v10M2.5 6h3M2.5 10h3M10.5 6h3M10.5 10h3"/></symbol>
   <symbol id="i-flag" viewBox="0 0 16 16"><path d="M3.5 14V2.5M3.5 3h8.5l-2 3.25 2 3.25H3.5"/></symbol>
   <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3 6.5h7.25a3 3 0 0 1 0 6H8M5.5 4L3 6.5 5.5 9"/></symbol>
 </defs></svg>
 <div class="app">
   <header class="top">
@@ -1127,6 +1213,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       <div><dt>Media for the selected shot</dt><dd>drop an image, GIF or clip</dd></div>
       <div><dt>Import a project</dt><dd>drop a .cueboard.json</dd></div>
     </dl></section>
+    <section aria-labelledby="kEdit"><p class="kh" role="heading" aria-level="4" id="kEdit">Editing</p><dl class="klist">
+      <div><dt>Undo<small>your own changes, while this tab is open</small></dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd></dd></div>
+      <div><dt>Redo<small>or Ctrl+Y</small></dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></dd></div>
+    </dl></section>
   </div>
 </div></dialog>
 <!-- phone: the project, the song and the room in one sheet (the app bar's title opens it) -->
@@ -1296,8 +1386,14 @@ function mediaInUse(id,skip,ps=[...projects,cur]){return ps.some(q=>q&&q.id!==sk
    pointing at it has been saved: until then the saved copy (and a room still sending the old value) may need it */
 const toRelease=new Map();
 function releaseMedia(id){if(id&&cur)toRelease.set(id,cur.id)}
+/* a file the undo history still points at (a deleted shot's image, a replaced frame) is parked instead: it goes once the
+   steps holding it are gone (hist.onDrop) and nothing uses it by then, so an undo brings the reference back with its file */
+const parked=new Map();
 function releaseSaved(p){for(const [id,pid] of toRelease)if(pid===p.id){toRelease.delete(id);
-  if(!mediaInUse(id,null,[p,...projects,cur]))assets.delete(id).catch(()=>{})}}
+  if(mediaInUse(id,null,[p,...projects,cur]))continue;
+  if(hist.holds(id))parked.set(id,pid);else assets.delete(id).catch(()=>{})}}
+function unpark(steps){const ids=new Set();steps.forEach(s=>window.cueHistory.mediaOf(s).forEach(id=>ids.add(id)));
+  ids.forEach(id=>{if(!parked.has(id)||hist.holds(id))return;parked.delete(id);if(!mediaInUse(id,null,[...projects,cur]))assets.delete(id).catch(()=>{})})}
 
 /* now=true for typing in a shared text field: it goes to the room at once, so remote edits merge around the caret */
 function scheduleSave(now){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);if(csess)csess.changed(!!now)}
@@ -1343,9 +1439,55 @@ const now=()=>hasAudio?audio.currentTime:vt;
 function clipHint(d){const o=[4,6,8,10].find(v=>v>=d-.05);return o?"generate "+o+"s":"10s+: split or extend"}
 const editing=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.closest("#editor")&&/INPUT|TEXTAREA/.test(a.tagName))};
 
+/* ---------- undo (docs/collaboration.md, "Undo") ----------
+   This tab's own edits, 100 steps, in memory only; cleared when the project changes. A step is the field-level diff
+   of the project around one action (hRec), the drag of a cut from pointer down to up (hBegin/hEnd), or one text field
+   from its first keystroke to the moment it loses focus (hText, merged). Undo and redo apply the other value as a new
+   change that saves and syncs like any edit; a step the project no longer matches (someone else changed that shot or
+   field since) is skipped with a notice and dropped. */
+const H=window.cueHistory,hist=H.create({onChange:()=>renderMTool(),onDrop:unpark});
+const shotNo=s=>pad(S().indexOf(s)+1);
+const hBegin=label=>cur?{label,before:clone(cur),pid:cur.id}:null;
+function hEnd(t,opt){if(!t||!cur||cur.id!==t.pid)return null;return hist.push(t.label,H.diff(t.before,cur),{pid:cur.id,...opt})}
+function hRec(label,fn,opt){const t=hBegin(label);try{return fn()}finally{hEnd(t,opt)}}
+/* a text field edit: one change, scoped to that field, merged with the previous keystrokes until the field blurs */
+function hText(label,s,f,v){const b=s[f];if(H.same(b,v))return;s[f]=v;hist.push(label,[{k:"sf",id:s.id,f,b:H.clone(b),a:H.clone(v)}],{pid:cur.id,merge:"text:"+s.id+":"+f})}
+const FIELD_LABEL={title:"title",shot:"shot type",notes:"notes",imgPrompt:"frame prompt",vidPrompt:"motion prompt",endPrompt:"end frame prompt",endChange:"end frame change"};
+const fieldLabel=(f,s)=>(FIELD_LABEL[f]||f)+" of shot "+shotNo(s);
+document.addEventListener("focusout",e=>{if(e.target&&/INPUT|TEXTAREA/.test(e.target.tagName))hist.breakMerge()});
+let undoAt=0;
+function doUndo(dir){if(!cur)return;hist.breakMerge();
+  const had=projectMediaIds(cur),r=dir==="undo"?hist.undo(cur):hist.redo(cur);
+  if(r.empty){toast(dir==="undo"?"Nothing to undo":"Nothing to redo");return}
+  if(!r.ok){toast(`Can't ${dir} ${r.step.label}: ${r.where} changed since`,3000);return}
+  const s=r.step;if(!S().length)S().push(newSec(0));
+  /* a shot that came back is the selected one; a selection that went away moves to the first shot */
+  const back=s.changes.find(c=>c.k==="shot"&&(dir==="undo"?c.b&&!c.a:c.a&&!c.b));if(back)selId=back.id;
+  if(!S().some(x=>x.id===selId))selId=S()[0].id;
+  if(s.extra&&s.extra.song)restoreSong(dir==="undo"?s.extra.song.before:s.extra.song.after);
+  /* files this step stopped pointing at: freed after the save, unless the step (now on the other stack) holds them */
+  const has=new Set(projectMediaIds(cur));had.forEach(id=>{if(!has.has(id))releaseMedia(id)});
+  scheduleSave();if(csess)csess.select(selId);
+  const draw=()=>{lastKey="";renderAll();if(side==="b")renderB()};draw();
+  loadProjectMedia(cur).then(n=>{if(n&&cur&&cur.id===s.pid)draw()});
+  toast((dir==="undo"?"Undone: ":"Redone: ")+s.label)}
+/* the song file that goes with an undone or redone song change: put back in storage and played, or taken out */
+function restoreSong(rec){if(!cur)return;stop();
+  if(rec&&rec.blob){idbDo("readwrite",st=>st.put({blob:rec.blob,name:rec.name},cur.id));songStale=false;if(audioUrl)URL.revokeObjectURL(audioUrl);attachAudio(rec.blob,rec.name)}
+  else{idbDo("readwrite",st=>st.delete(cur.id));detachAudio();vt=0}}
+/* Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo (⌘ on a Mac), on both sides. Not in a field (the field's own undo works
+   there), not over a dialog. A held key repeats, at most every 150 ms */
+document.addEventListener("keydown",e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();
+  const u=k==="z"&&!e.shiftKey,r=(k==="z"&&e.shiftKey)||(k==="y"&&!e.shiftKey);if(!u&&!r)return;
+  if(document.querySelector("dialog[open]"))return;
+  const tg=e.target;if(tg&&(/INPUT|TEXTAREA|SELECT/.test(tg.tagName)||tg.isContentEditable))return;
+  e.preventDefault();if(e.repeat&&performance.now()-undoAt<150)return;undoAt=performance.now();
+  doUndo(u?"undo":"redo")});
+
 /* ---------- projects ---------- */
 function selectProject(p){
-  if(renaming)endRename(true);stop();cur=clone(p);selId=cur.sections[0]&&cur.sections[0].id;ls(KEY_LAST,cur.id);vt=0;pps=null;lastKey="";
+  if(renaming)endRename(true);stop();hist.clear();cur=clone(p);selId=cur.sections[0]&&cur.sections[0].id;ls(KEY_LAST,cur.id);vt=0;pps=null;lastKey="";
   loadAudio();renderAll();
   const pid=cur.id;loadProjectMedia(cur).then(()=>{if(!cur||cur.id!==pid)return;lastKey="";renderAll();renderB();ensurePolling();refreshCredits()});
   collabFor(cur);
@@ -1371,18 +1513,26 @@ const base=n=>n.replace(/\.[^.]+$/,"");
 async function loadSongFile(file){
   if(!file)return;
   if(!cur){selectProject(makeProject(base(file.name)));}
-  else if(!cur.title||cur.title==="Untitled project"||cur.title==="Proyecto sin título"){cur.title=base(file.name)}
+  const pid=cur.id,had=cur.song,oldTitle=cur.title;
+  /* the file it replaces goes with the step, so an undo plays it again */
+  const old=had?await idbDo("readonly",st=>st.get(pid)):null;if(!cur||cur.id!==pid)return;
+  if(!cur.title||cur.title==="Untitled project"||cur.title==="Proyecto sin título"){cur.title=base(file.name)}
   stop();if(audioUrl)URL.revokeObjectURL(audioUrl);
   songStale=false;attachAudio(file,file.name);
   idbDo("readwrite",st=>st.put({blob:file,name:file.name},cur.id));
   toast("Analyzing the song…");
+  let song;
   try{
     const buf=await file.arrayBuffer();
     const ac=new OfflineAudioContext(1,1,44100);
     const ab=await ac.decodeAudioData(buf);
-    cur.song={name:file.name,duration:ab.duration,peaks:peaks(ab,1000)};
+    song={name:file.name,duration:ab.duration,peaks:peaks(ab,1000)};
     toast("Ready. Hit play and mark cuts with M");
-  }catch(e){cur.song={name:file.name,duration:isFinite(audio.duration)?audio.duration:0,peaks:[]};toast("Couldn't draw the waveform, but the song still plays")}
+  }catch(e){song={name:file.name,duration:isFinite(audio.duration)?audio.duration:0,peaks:[]};toast("Couldn't draw the waveform, but the song still plays")}
+  if(!cur||cur.id!==pid)return;
+  cur.song=song;
+  const ch=[{k:"meta",f:"song",b:H.clone(had),a:H.clone(song)}];if(cur.title!==oldTitle)ch.push({k:"meta",f:"title",b:oldTitle,a:cur.title});
+  hist.push(had?"replace song":"load song",ch,{pid,extra:{song:{before:old&&old.blob?{blob:old.blob,name:old.name||""}:null,after:{blob:file,name:file.name}}}});
   scheduleSave();renderAll();
 }
 function peaks(ab,n){
@@ -1556,7 +1706,7 @@ function select(id,doSeek){selId=id;const s=selSec();if(doSeek&&s)seek(s.start);
 function addMarker(){
   if(!cur)return;const t=now(),s=S(),i=secAt(t),a=s[i].start,b=secEnd(i);
   if(t-a<.25||b-t<.25){toast("Too close to another cut");return}
-  const ns=newSec(Math.round(t*100)/100);s.splice(i+1,0,ns);if(!editing())selId=ns.id;
+  const ns=newSec(Math.round(t*100)/100);hRec("cut at "+fmt(t),()=>s.splice(i+1,0,ns));if(!editing())selId=ns.id;
   scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);toast("Cut at "+fmt(t));
 }
 
@@ -1572,14 +1722,15 @@ function scrubTo(e){
 }
 cv.addEventListener("pointerdown",e=>{if(!cur||e.button>0||phone())return;const x=cx(e),hit=boundaryAt(x);
   cv.setPointerCapture(e.pointerId);
-  if(hit>0){drag=hit;return}
+  if(hit>0){drag=hit;dragH=hBegin("move cut");return}
   scrub=true;cv.style.cursor="grabbing";scrubTo(e)});
+let dragH=null;
 cv.addEventListener("pointermove",e=>{if(!cur||phone())return;
   if(drag){const s=S(),lo=s[drag-1].start+.2,hi=(drag<s.length-1?s[drag+1].start:dur())-.2;
     s[drag].start=Math.round(Math.min(hi,Math.max(lo,cx(e)/P))*100)/100;renderTimeline();renderStrip();renderEdHead();renderMonitor()}
   else if(scrub)scrubTo(e);
   else cv.style.cursor=boundaryAt(cx(e))>0?"ew-resize":"pointer"});
-const endDrag=()=>{if(drag){drag=null;scheduleSave();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
+const endDrag=()=>{if(drag){drag=null;hEnd(dragH);dragH=null;scheduleSave();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
 cv.addEventListener("pointerup",endDrag);cv.addEventListener("pointercancel",endDrag);
 /* wheel over the song: scroll sideways; Ctrl/⌘ + wheel zooms around the pointer */
 scroller.addEventListener("wheel",e=>{
@@ -1668,7 +1819,7 @@ function startRename(from){
 function endRename(save){
   if(!renaming)return;renaming=false;const t=$("ptitle"),had=document.activeElement===t;
   /* only into the project it was started on: a switch underneath it (an invite, a remote change) ends it first */
-  if(save&&cur&&cur.id===renamePid){const v=t.value.trim()||"Untitled project";if(v!==cur.title){cur.title=v;dirty=true;clearTimeout(timer);timer=null;flush();if(csess)csess.changed(true)}}
+  if(save&&cur&&cur.id===renamePid){const v=t.value.trim()||"Untitled project";if(v!==cur.title){hRec("project name",()=>{cur.title=v});dirty=true;clearTimeout(timer);timer=null;flush();if(csess)csess.changed(true)}}
   t.hidden=true;$("proj").parentNode.classList.remove("renaming");renderRenameBtn();renderProjSelect();
   if(had){const f=renameFrom&&renameFrom.isConnected&&!renameFrom.disabled&&renameFrom.getClientRects().length?renameFrom:$("proj");f.focus()}
 }
@@ -1689,30 +1840,33 @@ const deleteProject=async()=>{
   try{await store.del(id)}catch(e){toast("Couldn't delete");return}
   idbDo("readwrite",st=>st.delete(id));if(assets)imgs.forEach(x=>{if(!mediaInUse(x,id))assets.delete(x).catch(()=>{})});
   if(cset.rooms[id])leaveRoom(id,true);
-  projects=projects.filter(p=>p.id!==id);cur=null;selId=null;hasAudio=false;lastKey="";
+  projects=projects.filter(p=>p.id!==id);cur=null;selId=null;hasAudio=false;lastKey="";hist.clear();
   if(projects.length)selectProject(projects[0]);else renderAll();toast("Project deleted");
   /* the last one: More has nothing left to offer and hides, so the focus goes to New */
   if(document.activeElement===$("moreb")&&!$("moreb").getClientRects().length||document.activeElement===document.body)$("newp").focus();
 };
 const resetDelp=twoTap($("delp"),"Delete project","Tap again to delete",deleteProject);
 const removeSong=()=>{
-  closeMore(true);if(!cur)return;stop();idbDo("readwrite",st=>st.delete(cur.id));
+  closeMore(true);if(!cur)return;stop();
+  /* the file goes with the step, so an undo plays it again (it's read before it's deleted) */
+  const extra={song:{before:null,after:null}},pid=cur.id;
+  idbDo("readonly",st=>st.get(pid)).then(rec=>{if(rec&&rec.blob)extra.song.before={blob:rec.blob,name:rec.name||""};idbDo("readwrite",st=>st.delete(pid))});
   if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}audio.removeAttribute("src");try{audio.load()}catch(e){}
-  hasAudio=false;cur.song=null;vt=0;scheduleSave();renderAll();toast("Song removed. Your cuts and shots are kept.");
+  hasAudio=false;hRec("remove song",()=>{cur.song=null},{extra});vt=0;scheduleSave();renderAll();toast("Song removed. Your cuts and shots are kept.");
 };
 const resetDelsong=twoTap($("delsong"),"Remove song","Tap again to remove",removeSong);
 function disarmMore(){resetDelp();resetDelsong();resetDelroom()}
 const deleteShot=()=>{
   const s=S(),i=s.findIndex(x=>x.id===selId);if(i<0)return;
-  if(s.length===1){Object.assign(s[0],{title:"",shot:"",notes:"",imgPrompt:"",vidPrompt:""});}
-  else{const[rm]=s.splice(i,1);if(i===0)s[0].start=0;sectionMediaIds(rm).forEach(releaseMedia);selId=s[Math.max(0,i-1)].id}
+  if(s.length===1)hRec("clear shot 01",()=>Object.assign(s[0],{title:"",shot:"",notes:"",imgPrompt:"",vidPrompt:""}));
+  else{hRec("delete shot "+pad(i+1),()=>{const[rm]=s.splice(i,1);if(i===0)s[0].start=0;sectionMediaIds(rm).forEach(releaseMedia)});selId=s[Math.max(0,i-1)].id}
   scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);
 };
 /* Delete or Backspace on Cut press this button (see the keyboard); its hint goes away when it disarms */
 let delByKey=false;const DEL_HINT="Press Delete again to delete this shot";
 const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",deleteShot,on=>{if(on||!delByKey)return;delByKey=false;if($("toast").textContent===DEL_HINT)$("toast").hidden=true});
 [["f-title","title"],["f-shot","shot"],["f-notes","notes"],["f-imgp","imgPrompt"],["f-vidp","vidPrompt"]].forEach(([id,f])=>{
-  $(id).addEventListener("input",e=>{const s=selSec();if(!s)return;s[f]=e.target.value;scheduleSave(true);
+  $(id).addEventListener("input",e=>{const s=selSec();if(!s)return;hText(fieldLabel(f,s),s,f,e.target.value);scheduleSave(true);
     if(f==="title"||f==="shot"){const c=$("strip").querySelector(`.card[data-id="${CSS.escape(s.id)}"]`);if(c){const i=S().indexOf(s);c.querySelector(".ct").innerHTML=s.title?esc(s.title):"<em>Untitled</em>";c.querySelector(".cs").textContent=s.shot||clipHint(secEnd(i)-s.start)}}
     if(f==="title")renderTimeline();if(f!=="imgPrompt"&&f!=="vidPrompt")renderMonitor();if(f!=="imgPrompt"&&f!=="vidPrompt")renderPeek()})});
 /* ---------- reorder shots by dragging cards ----------
@@ -1777,13 +1931,13 @@ function moveShot(id,z){
   const s=S(),from=s.findIndex(x=>x.id===id);if(from<0)return;
   if(z.kind==="swap"){
     const to=s.findIndex(x=>x.id===z.to);if(to<0||to===from)return;
-    const a=s[from].start;s[from].start=s[to].start;s[to].start=a;s.sort((x,y)=>x.start-y.start);
+    hRec(`swap shots ${pad(from+1)} and ${pad(to+1)}`,()=>{const a=s[from].start;s[from].start=s[to].start;s[to].start=a;s.sort((x,y)=>x.start-y.start)});
     toast(`Swapped shots ${pad(from+1)} and ${pad(to+1)} · cuts unchanged`);
   }else{
     const p=z.plan;if(!p||p.same)return;if(p.tight){toast("Not enough room to slide it in there");return}
-    const[m]=s.splice(from,1);if(from===0&&s.length)s[0].start=0;
-    if(p.first){s[0].start=p.firstTo;m.start=0;s.unshift(m)}else{m.start=p.start;s.splice(p.at,0,m)}
-    toast(`Slid in at ${fmt(m.start)} · new cut at ${fmt(p.first?p.firstTo:p.start)}`);
+    let at=0;hRec("slide shot "+pad(from+1),()=>{const[m]=s.splice(from,1);if(from===0&&s.length)s[0].start=0;
+      if(p.first){s[0].start=p.firstTo;m.start=0;s.unshift(m)}else{m.start=p.start;s.splice(p.at,0,m)}at=m.start});
+    toast(`Slid in at ${fmt(at)} · new cut at ${fmt(p.first?p.firstTo:p.start)}`);
   }
   selId=id;scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);scrollCard();
 }
@@ -1836,12 +1990,12 @@ async function uploadMedia(f){
     if(f.size>MAX){msg.textContent="The GIF is over 500 MB.";return}
     type="image/gif";msg.textContent="Uploading GIF…";
   }else{msg.textContent="Uploading…";blob=await shrink(f);type=blob.type||"image/jpeg"}
-  try{const r=await assets.upload(blob,{type});const old=s.img;s.img=r.id;s.kind=kind;s.clipDur=clipDur;scheduleSave();
+  try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img;hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur});scheduleSave();
     releaseMedia(old);msg.textContent="";renderStrip();renderEditor();renderMonitor(true)}
   catch(e){const c=e&&e.code;msg.textContent=c==="too_large"?"The file is too big (20 MB max).":c==="unsupported_type"?"That format can't be uploaded: use JPG, PNG, GIF, MP4 or WebM.":c==="quota_or_state"?"The board is out of storage.":c==="rate_limited"?"Too many uploads in a row, wait a moment.":"Couldn't upload the file."}
 }
 $("f-img").onchange=e=>{const f=e.target.files[0];e.target.value="";uploadMedia(f).then(()=>{const t=$("f-imgmsg").textContent;if(phone()&&t)toast(t)})};
-$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;s.img="";s.kind="";s.clipDur=0;scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
+$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;hRec(`remove ${s.kind==="video"?"clip":"image"} from shot ${shotNo(s)}`,()=>{s.img="";s.kind="";s.clipDur=0});scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
 document.addEventListener("dragover",e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes("Files"))e.preventDefault()});
 document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(!f)return;e.preventDefault();
   if(side!=="a"){if(/\.json$/i.test(f.name))importFile(f);return}
@@ -2089,13 +2243,13 @@ setInterval(()=>{if(side==="b")tickElapsed()},1000);
 
 /* ---------- B interactions ---------- */
 $("bList").addEventListener("click",e=>{const b=e.target.closest(".bitem");if(!b)return;selId=b.dataset.id;renderBList();renderBShot()});
-$("bPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;s.vidPrompt=e.target.value;scheduleSave(true);updateEst()});
+$("bPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;hText(fieldLabel("vidPrompt",s),s,"vidPrompt",e.target.value);scheduleSave(true);updateEst()});
 $("bChips").addEventListener("click",e=>{const c=e.target.closest("[data-add]");if(!c)return;const ta=$("bPrompt"),add=c.dataset.add;
   ta.value=ta.value.trim()?ta.value.replace(/\s*$/,"")+" "+add:add;ta.dispatchEvent(new Event("input"));ta.focus()});
 const saveGen=()=>putSetting("gen",{model:gen.model,res:gen.res,audio:gen.audio,count:gen.count});
 $("gModel").onchange=e=>{gen.model=e.target.value;saveGen();renderGen();renderFrames()};
 $("gRes").onchange=e=>{gen.res=e.target.value;saveGen();updateEst()};
-$("gDur").onchange=e=>{const s=selSec();if(s){s.bDur=+e.target.value;scheduleSave()}updateEst()};
+$("gDur").onchange=e=>{const s=selSec();if(s){hRec("clip length for shot "+shotNo(s),()=>{s.bDur=+e.target.value});scheduleSave()}updateEst()};
 $("gCount").onchange=e=>{gen.count=+e.target.value;saveGen();updateEst()};
 $("gAudio").onchange=e=>{gen.audio=e.target.checked;saveGen();updateEst()};
 $("gSeed").oninput=e=>{gen.seed=e.target.value.replace(/[^\d]/g,"");e.target.value=gen.seed};
@@ -2107,13 +2261,14 @@ async function shrinkTo(f,max){
 }
 async function setFrame(slot,f){
   const s=selSec();if(!s||!f)return;if(!/^image\//.test(f.type)){toast("Frames have to be images");return}
-  const b=await shrinkTo(f,1920);const r=await assets.upload(b,{type:b.type||"image/jpeg"});
-  const old=s[slot];s[slot]=r.id;if(slot==="key")s.keyOff=false;scheduleSave();releaseMedia(old);renderFrames();renderBList();updateEst();
+  const b=await shrinkTo(f,1920);const r=await assets.upload(b,{type:b.type||"image/jpeg"});if(!cur||!S().includes(s))return;
+  const old=s[slot];hRec(FRAME_LABEL[slot]+" of shot "+shotNo(s),()=>{s[slot]=r.id;if(slot==="key")s.keyOff=false});scheduleSave();releaseMedia(old);renderFrames();renderBList();updateEst();
 }
+const FRAME_LABEL={key:"start frame",endKey:"end frame"};
 $("fStartIn").onchange=e=>{const f=e.target.files[0];e.target.value="";setFrame("key",f)};
 $("fEndIn").onchange=e=>{const f=e.target.files[0];e.target.value="";setFrame("endKey",f)};
-$("fStartClr").onclick=()=>{const s=selSec();if(!s)return;if(s.key){const o=s.key;s.key="";s.keyOff=true;scheduleSave();releaseMedia(o)}else{s.keyOff=true;scheduleSave()}renderFrames();renderBList();updateEst()};
-$("fEndClr").onclick=()=>{const s=selSec();if(!s||!s.endKey)return;const o=s.endKey;s.endKey="";scheduleSave();releaseMedia(o);renderFrames()};
+$("fStartClr").onclick=()=>{const s=selSec();if(!s)return;const o=s.key;hRec("clear start frame of shot "+shotNo(s),()=>{s.key="";s.keyOff=true});scheduleSave();if(o)releaseMedia(o);renderFrames();renderBList();updateEst()};
+$("fEndClr").onclick=()=>{const s=selSec();if(!s||!s.endKey)return;const o=s.endKey;hRec("clear end frame of shot "+shotNo(s),()=>{s.endKey=""});scheduleSave();releaseMedia(o);renderFrames()};
 [["fStart","key"],["fEnd","endKey"]].forEach(([id,slot])=>{const el=$(id);
   el.addEventListener("dragover",e=>{e.preventDefault();e.stopPropagation();el.classList.add("over")});
   el.addEventListener("dragleave",()=>el.classList.remove("over"));
@@ -2199,14 +2354,15 @@ $("bTakes").addEventListener("click",async e=>{
   const b=e.target.closest("[data-act]");if(!b)return;const card=b.closest(".take"),s=selSec();if(!s||!card)return;
   const t=(s.takes||[]).find(x=>x.id===card.dataset.id);if(!t)return;const act=b.dataset.act;
   if(act==="use"){
-    if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff)s.key=s.img;   /* keep side A's keyframe as this shot's start frame */
-    const old=s.img;s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0;scheduleSave();releaseMedia(old);
+    const old=s.img;hRec("take in cut for shot "+shotNo(s),()=>{
+      if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff)s.key=s.img;   /* keep side A's keyframe as this shot's start frame */
+      s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0});scheduleSave();releaseMedia(old);
     renderBTakes();renderBList();renderFrames();toast(`Take is now in the cut for shot ${pad(S().indexOf(s)+1)}`);
   }else if(act==="play"){playInCut(s)}
   else if(act==="next"){
     const nx=S()[S().indexOf(s)+1];if(!nx)return;b.disabled=true;b.textContent="Grabbing…";
     const blob=await lastFrameBlob(t.media);if(!blob){toast("Couldn't grab the last frame");renderBTakes();return}
-    const r=await assets.upload(blob,{type:"image/jpeg"});const old=nx.key;nx.key=r.id;nx.keyOff=false;scheduleSave();releaseMedia(old);
+    const r=await assets.upload(blob,{type:"image/jpeg"});if(!cur||!S().includes(nx))return;const old=nx.key;hRec("start frame of shot "+shotNo(nx),()=>{nx.key=r.id;nx.keyOff=false});scheduleSave();releaseMedia(old);
     renderBList();toast(`Shot ${pad(S().indexOf(nx)+1)} now starts where this take ends`);b.disabled=false;b.innerHTML=NEXT_LABEL;
   }else if(act==="dl"){
     const bl=await mediaBlob(t.media);if(!bl){toast("This take's file is missing");return}
@@ -2216,8 +2372,8 @@ $("bTakes").addEventListener("click",async e=>{
     submitTake(s,{model:t.model,prompt:t.prompt,dur:t.dur,res:t.res,audio:t.audio,seed:t.seed,startId:startFrameId(s),endId:s.endKey,est:t.est});
   }else if(act==="del"){
     if(b.dataset.armed!=="1"){b.dataset.armed="1";const lbl=b.textContent;b.textContent="Tap again";setTimeout(()=>{if(b.isConnected){b.dataset.armed="";b.textContent=lbl}},2600);return}
-    s.takes=s.takes.filter(x=>x!==t);
-    if(t.media&&s.img===t.media){s.img="";s.kind="";s.clipDur=0}
+    hRec("delete take from shot "+shotNo(s),()=>{s.takes=s.takes.filter(x=>x!==t);
+      if(t.media&&s.img===t.media){s.img="";s.kind="";s.clipDur=0}});
     scheduleSave();releaseMedia(t.media);renderBTakes();renderBList();renderBHead();
   }
 });
@@ -2276,11 +2432,12 @@ function renderRefs(){
 $("refIn").onchange=async e=>{
   const fs=[...e.target.files].filter(f=>/^image\//.test(f.type));e.target.value="";if(!cur||!fs.length)return;
   cur.refs=cur.refs||[];const room=MAX_REFS-cur.refs.length;if(room<=0){toast("Up to 3 references");return}
-  for(const f of fs.slice(0,room)){const b=await shrinkTo(f,1600);const r=await assets.upload(b,{type:b.type||"image/jpeg"});cur.refs.push(r.id)}
+  const pid=cur.id,ids=[];for(const f of fs.slice(0,room)){const b=await shrinkTo(f,1600);const r=await assets.upload(b,{type:b.type||"image/jpeg"});ids.push(r.id)}
+  if(!cur||cur.id!==pid)return;hRec("references",()=>{cur.refs=[...(cur.refs||[]),...ids].slice(0,MAX_REFS)});
   if(fs.length>room)toast("Kept the first "+room+(room>1?" images":" image")+": up to 3 references");
   scheduleSave();renderRefs();
 };
-$("bRefs").addEventListener("click",e=>{const b=e.target.closest("[data-ref]");if(!b||!cur)return;const id=b.dataset.ref;cur.refs=(cur.refs||[]).filter(x=>x!==id);scheduleSave();releaseMedia(id);renderRefs()});
+$("bRefs").addEventListener("click",e=>{const b=e.target.closest("[data-ref]");if(!b||!cur)return;const id=b.dataset.ref;hRec("references",()=>{cur.refs=(cur.refs||[]).filter(x=>x!==id)});scheduleSave();releaseMedia(id);renderRefs()});
 
 async function genImage(prompt,refURLs){
   const m=imgModel(),body={model:m.id,prompt,n:1,aspect_ratio:"16:9"};
@@ -2321,9 +2478,9 @@ async function runPanel(){
   $(pre+"Go").onclick=runPanel;
   $(pre+"Cancel").onclick=closePanel;
   $(pre+"Prompt").addEventListener("input",e=>{const s=selSec();if(!s||!fpanel)return;
-    if(slot==="key"){s.imgPrompt=e.target.value}else if(fpanel.mode==="from"){s.endChange=e.target.value}else{s.endPrompt=e.target.value}scheduleSave(true)});
+    const f=slot==="key"?"imgPrompt":fpanel.mode==="from"?"endChange":"endPrompt";hText(fieldLabel(f,s),s,f,e.target.value);scheduleSave(true)});
   $(pre+"Vars").addEventListener("click",async e=>{const b=e.target.closest("[data-vi]");if(!b||!fpanel)return;const v=fpanel.vars[+b.dataset.vi];const s=selSec();if(!v||!v.blob||!s)return;
-    const r=await assets.upload(v.blob,{type:v.blob.type||"image/png"});const old=s[slot];s[slot]=r.id;if(slot==="key")s.keyOff=false;
+    const r=await assets.upload(v.blob,{type:v.blob.type||"image/png"});if(!cur||!S().includes(s))return;const old=s[slot];hRec(FRAME_LABEL[slot]+" of shot "+shotNo(s),()=>{s[slot]=r.id;if(slot==="key")s.keyOff=false});
     scheduleSave();releaseMedia(old);closePanel();renderFrames();renderBList();updateEst();toast(slot==="key"?"Start frame set":"End frame set")});
 });
 $("fEndFrom").onclick=()=>openPanel("endKey","from");
@@ -2407,6 +2564,9 @@ function applyRemote(pid,p){
   if(!cur||cur.id!==pid)return;
   const had=projectMediaIds(cur);
   const old=new Map(S().map(s=>[s.id,s])),swap=(o,n)=>{for(const k of Object.keys(o))if(!(k in n))delete o[k];return Object.assign(o,n)};
+  /* a remote edit to the field being typed in ends that undo step: the next keystroke starts a new one, with the
+     collaborator's text in its "before", so an undo never takes their words out */
+  if(hist.openLocs().some(([id,f])=>{const o=old.get(id),n=p.sections.find(x=>x.id===id);return!o||!n||!H.same(o[f],n[f])}))hist.breakMerge();
   for(const k of Object.keys(cur))if(!["id","updated","sections"].includes(k)&&!(k in p))delete cur[k];
   for(const [k,v] of Object.entries(p))if(!["id","updated","sections"].includes(k))cur[k]=v;
   cur.sections=p.sections.map(n=>{const o=old.get(n.id);if(!o)return n;const ot=new Map((o.takes||[]).map(t=>[t.id,t]));
@@ -2560,7 +2720,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:H=>mBand(H),cmedia,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,doUndo,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -2886,15 +3046,16 @@ function mLiftEnd(apply){const L=mLift;mLift=null;L.ghost.remove();L.chip.remove
 const mGrips=$("mGrips");
 mGrips.addEventListener("pointerdown",e=>{const b=e.target.closest(".grip");if(!b||!cur)return;const i=+b.dataset.i,s=S();if(!s[i])return;
   try{b.setPointerCapture(e.pointerId)}catch(_){}mGrip={id:s[i].id,i,x0:e.clientX,s0:s[i].start,moved:false}});
-mGrips.addEventListener("pointermove",e=>{if(!mGrip)return;const dx=e.clientX-mGrip.x0;if(!mGrip.moved&&Math.abs(dx)<6)return;mGrip.moved=true;
+mGrips.addEventListener("pointermove",e=>{if(!mGrip)return;const dx=e.clientX-mGrip.x0;if(!mGrip.moved&&Math.abs(dx)<6)return;if(!mGrip.moved)mGrip.h=hBegin("move cut");mGrip.moved=true;
   const s=S(),i=s.findIndex(x=>x.id===mGrip.id);if(i<1)return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
   s[i].start=r2(Math.min(hi,Math.max(lo,mGrip.s0+dx/P)));mCutId=mGrip.id;mDraw();renderEdHead();renderMTool();renderMonitor()});
 const mGripEnd=()=>{const g=mGrip;mGrip=null;if(!g)return;
-  if(g.moved){scheduleSave();renderStrip();renderPeek();renderMonitor(true)}else{mCutId=mCutId===g.id?"":g.id;mMode=""}renderMTool();mDraw()};
+  if(g.moved){hEnd(g.h);scheduleSave();renderStrip();renderPeek();renderMonitor(true)}else{mCutId=mCutId===g.id?"":g.id;mMode=""}renderMTool();mDraw()};
 mGrips.addEventListener("pointerup",mGripEnd);mGrips.addEventListener("pointercancel",mGripEnd);
 mGrips.addEventListener("keydown",e=>{const b=e.target.closest(".grip");if(!b||(e.key!=="ArrowLeft"&&e.key!=="ArrowRight"))return;e.preventDefault();e.stopPropagation();const c=S()[+b.dataset.i];if(!c)return;mCutId=c.id;mNudge(e.key==="ArrowLeft"?-.1:.1)});
 function mNudge(dt){const s=S(),i=mCutI();if(i<1||!s[i])return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
-  s[i].start=r2(Math.min(hi,Math.max(lo,s[i].start+dt)));scheduleSave();renderStrip();renderEdHead();renderPeek();renderMonitor(true);renderMTool();mDraw()}
+  /* taps on −/+ in a row are one step */
+  hRec("move cut",()=>{s[i].start=r2(Math.min(hi,Math.max(lo,s[i].start+dt)))},{merge:"nudge:"+s[i].id,within:1500});scheduleSave();renderStrip();renderEdHead();renderPeek();renderMonitor(true);renderMTool();mDraw()}
 /* Fit means the whole song; the zoom buttons sit on the timeline's corner */
 {const zf=$("zfit").onclick,zo=$("zout").onclick,zi=$("zin").onclick;
   $("zfit").onclick=()=>{mFit=true;zf()};$("zout").onclick=()=>{mFit=true;zo()};$("zin").onclick=()=>{mFit=false;zi()}}
@@ -2908,7 +3069,7 @@ function renderPeek(){if(!phone())return;const el=$("mPeek"),s=selSec();
   else el.innerHTML="";
 }
 $("mPeek").addEventListener("click",e=>{if(e.target.closest("[data-msong]"))$("song").click();else if(e.target.closest(".m-peekb"))openDetails(e.target.closest(".m-peekb"))});
-const MTOOL=[["mtCut","shot","split","Cut here"],["mtDet","shot","lines","Details"],["mtImg","shot","image","Photo"],["mtMove","shot","swap","Move"],["mtDel","shot","trash","Delete"],
+const MTOOL=[["mtCut","shot","split","Cut here"],["mtDet","shot","lines","Details"],["mtImg","shot","image","Photo"],["mtMove","shot","swap","Move"],["mtUndo","shot","undo","Undo","Undo (hold to redo)"],["mtDel","shot","trash","Delete"],
   ["mtDone","cut move","check","Done"],["mtRead","cut"],["mtMinus","cut","minus","0.1 s","Move the cut 0.1 s earlier"],["mtPlus","cut","plus","0.1 s","Move the cut 0.1 s later"],
   ["mtPrev","move","arrow-right","Earlier","Swap with the shot before"],["mtNext","move","arrow-right","Later","Swap with the shot after"],["mtHint","move"]];
 $("mTool").innerHTML=MTOOL.map(([id,m,ic,l,al])=>ic?`<button type="button" id="${id}" data-m="${m}"${id==="mtPrev"?' class="flip"':""}${al?` aria-label="${al}"`:""}>${ico(ic)}<span>${l}</span></button>`:`<div class="m-read" id="${id}" data-m="${m}" aria-live="polite"></div>`).join("");
@@ -2917,6 +3078,7 @@ function renderMTool(){if(!phone())return;const s=selSec(),i=s?S().indexOf(s):-1
   const mCut=mCutI();if(mCut<0)mCutId="";const mode=mCut>0?"cut":mMode==="move"&&s?"move":"shot";
   $("mTool").querySelectorAll("[data-m]").forEach(b=>b.hidden=!b.dataset.m.split(" ").includes(mode));
   ["mtCut","mtDet","mtImg","mtMove","mtDel"].forEach(id=>$(id).disabled=!cur||(!s&&id!=="mtCut"));$("mtMove").disabled=!s||S().length<2;
+  $("mtUndo").disabled=!cur||!(hist.canUndo()||hist.canRedo());
   $("mtPrev").disabled=i<1;$("mtNext").disabled=i<0||i>=S().length-1;
   if(mode==="cut"){const c=S()[mCut],a=S()[mCut-1];$("mtRead").innerHTML=`<b>${fmt(c.start)}</b><span>${pad(mCut)} is ${(c.start-a.start).toFixed(1)} s · ${pad(mCut+1)} is ${(secEnd(mCut)-c.start).toFixed(1)} s</span>`}}
 $("mtCut").onclick=addMarker;
@@ -2925,6 +3087,12 @@ $("mtImg").onclick=()=>$("f-img").click();
 $("mtMove").onclick=()=>{mMode="move";mCutId="";renderMTool();mDraw()};
 $("mtDone").onclick=()=>{mMode="";mCutId="";renderMTool();mDraw()};
 $("mtMinus").onclick=()=>mNudge(-.1);$("mtPlus").onclick=()=>mNudge(.1);
+/* Undo: a tap undoes, holding it (500 ms) redoes; the tap after a hold is not a second action */
+{const b=$("mtUndo");let lp=0,held=false;
+  b.addEventListener("pointerdown",()=>{if(b.disabled)return;held=false;clearTimeout(lp);lp=setTimeout(()=>{held=true;doUndo("redo")},500)});
+  ["pointerup","pointercancel","pointerleave"].forEach(n=>b.addEventListener(n,()=>clearTimeout(lp)));
+  b.addEventListener("contextmenu",e=>e.preventDefault());
+  b.onclick=()=>{if(held){held=false;return}if(!hist.canUndo()&&hist.canRedo()){toast("Nothing to undo. Hold Undo to redo");return}doUndo("undo")}}
 [["mtPrev",-1],["mtNext",1]].forEach(([id,k])=>$(id).onclick=()=>{const s=S(),i=s.findIndex(x=>x.id===selId),o=s[i+k];if(o)moveShot(selId,{kind:"swap",to:o.id})});
 /* disarmed whenever the selection changes (renderEditor: a scroll, playback crossing a cut, a tap), a sheet opens or
    closes, the tab or the project changes, so a second tap never deletes a shot that wasn't armed */
