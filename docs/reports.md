@@ -1,6 +1,6 @@
 # Problem reports
 
-**Report a problem** is in **More** on the desktop bar and in the phone's Projects sheet. It opens a dialog with an optional text box, two checkboxes and **See what will be sent**, which shows the exact JSON that goes out. Send posts it to the sync server; the user gets "Thanks, sent. Report `<id>`." With no sync server (`cue-sync-url` empty) or when sending fails, **Copy report** and **Download report** give the same JSON to send by hand.
+**Report a problem** is in **More** on the desktop bar and in the phone's Projects sheet. It opens a dialog with an optional text box, two checkboxes and **See what will be sent**, which shows the exact JSON that goes out (sent without the indentation; rebuilt at Send, so a room that dropped meanwhile shows up in it). Send posts it to the sync server; the user gets "Thanks, sent. Report `<id>`." With no sync server (`cue-sync-url` empty) or when sending fails, **Copy report** and **Download report** give the same JSON to send by hand.
 
 ## What a report holds
 
@@ -12,8 +12,8 @@ Built field by field from an allow-list, in the app (`<script id="cue-report">` 
 | `text` | if typed | the user's words, up to 2000 characters |
 | `viewport`, `phone`, `side`, `ua`, `lang`, `online` | technical details (on by default) | width, height and devicePixelRatio; phone layout or not; side `a` (Cut) or `b` (Takes); user agent; language; online |
 | `storage`, `save`, `collab`, `media` | technical details | persistent storage granted, MB used and available; the save status text; `off` (no sync server), `none` (not in a room) or the room state (`synced`, `syncing`, `offline`, `unreachable`, `rejected`, `deleted`, `full`); file counts `here`, `queued`, `downloading`, `skipped`, `failed` |
-| `errors` | technical details | the last 20 uncaught errors and unhandled rejections since the page loaded: message (300 characters) and `file:line:col`, repeats counted as `n` |
-| `shape` | second checkbox (off by default) | number of shots, each shot's length in seconds, takes per shot |
+| `errors` | technical details | the last 20 uncaught errors and unhandled rejections since the page loaded: message (300 characters) and `file:line:col`, repeats counted as `n`. Any of the project's own strings inside a message becomes `[project text]`; if the report would pass 15 KB the oldest errors are dropped |
+| `shape` | second checkbox (off by default) | number of shots, each shot's length in seconds and takes per shot (the first 500 shots) |
 
 Never in a report: project, shot or room names, notes, prompts, lyrics, file names, media, thumbnails, the OpenRouter key, the room id, invite links, tokens, owner tokens, verification codes or tokens, anything else from localStorage or IndexedDB. Every string (typed text, error messages, user agent) is scrubbed in the app and again on the server: URL query strings and fragments, `#join=…`, `token=`/`key=`/`code=`…, `Bearer …`, `sk-…` keys, e-mail addresses and anything that looks like a token (16+ characters with digits, `-`/`_`, or many capitals) are removed. The error buffer scrubs when it keeps an error, so nothing secret sits in memory either.
 

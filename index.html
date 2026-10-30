@@ -37,7 +37,7 @@ w.addEventListener("unhandledrejection",e=>{try{const r=e.reason;let m,at="";
   if(r&&typeof r==="object"){m=(r.name?r.name+": ":"")+(r.message!=null?r.message:"");const s=/([a-z][a-z0-9+.-]*:\/\/[^\s)]+?):(\d+):(\d+)/i.exec(String(r.stack||""));if(s)at=where(s[1],s[2],s[3])}
   else m=String(r);keep("Unhandled rejection: "+m,at)}catch(x){keep("Unhandled rejection","")}});
 const COLLAB=["off","none","synced","syncing","offline","unreachable","rejected","deleted","full"],MEDIA=["here","queued","downloading","skipped","failed"];
-const mb=b=>typeof b==="number"&&isFinite(b)?Math.round(b/1048576*10)/10:null;
+const mb=b=>typeof b==="number"&&isFinite(b)?Math.round(b/1048576*10)/10:null,SHOTS=500,BYTES=15000;
 /* the report, field by field from what the app gathered (c) and the dialog's choices (o). The project is read for
    counts and lengths only: never a title, note, prompt, lyric, file name or media */
 function build(c,o){const r={v:1,build:scrub(c.build,40)||"dev",at:new Date(c.now||Date.now()).toISOString()};
@@ -51,11 +51,18 @@ function build(c,o){const r={v:1,build:scrub(c.build,40)||"dev",at:new Date(c.no
     const s=scrub(c.save,80);if(s)r.save=s;
     r.collab=COLLAB.includes(c.collab)?c.collab:"none";
     if(Array.isArray(c.files)){const m={};MEDIA.forEach(k=>m[k]=0);c.files.forEach(f=>{if(f&&MEDIA.includes(f.state))m[f.state]++});r.media=m}
-    if(errs.length)r.errors=errs.map(e=>Object.assign({},e));
+    /* an error can quote the project (a failed import naming a file, an API echoing a prompt): any of the project's
+       own strings in a message is taken out */
+    if(errs.length){const own=[];(function walk(v,d){if(own.length>=2000||d>6)return;if(typeof v==="string"){if(v.trim().length>=4)own.push(v.trim())}else if(v&&typeof v==="object")for(const k in v)walk(v[k],d+1)})(c.project,0);
+      own.sort((a,b)=>b.length-a.length);
+      r.errors=errs.map(e=>{let m=e.msg;for(const s of own)if(m.includes(s))m=m.split(s).join("[project text]");return Object.assign({},e,{msg:m})})}
   }
   if(o.shape&&c.project&&Array.isArray(c.project.sections)){const s=c.project.sections,d=+c.duration||0,st=x=>Math.max(0,+(x&&x.start)||0);
-    r.shape={shots:s.length,lengths:s.slice(0,1000).map((x,i)=>Math.round(Math.max(0,(i+1<s.length?st(s[i+1]):d)-st(x))*10)/10),
-      takes:s.slice(0,1000).map(x=>Array.isArray(x&&x.takes)?x.takes.length:0)}}
+    r.shape={shots:s.length,lengths:s.slice(0,SHOTS).map((x,i)=>Math.round(Math.max(0,(i+1<s.length?st(s[i+1]):d)-st(x))*10)/10),
+      takes:s.slice(0,SHOTS).map(x=>Array.isArray(x&&x.takes)?x.takes.length:0)}}
+  /* under the server's 16 KiB with room to spare: the oldest errors go first */
+  const size=()=>new TextEncoder().encode(JSON.stringify(r)).length;
+  while(r.errors&&size()>BYTES){r.errors.shift();if(!r.errors.length)delete r.errors}
   return r}
 w.cueReport={build,scrub,errors:()=>errs.map(e=>Object.assign({},e))};
 })(window)</script>
@@ -1815,7 +1822,8 @@ document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.file
 
 /* ---------- keyboard ---------- */
 document.addEventListener("keydown",e=>{
-  if(side!=="a")return;
+  /* a dialog or sheet is open: its buttons and summaries keep Space, and nothing edits the project behind it */
+  if(side!=="a"||document.querySelector("dialog[open]"))return;
   const tg=e.target;if(tg&&(/INPUT|TEXTAREA|SELECT/.test(tg.tagName)||tg.isContentEditable)){if(e.key==="Escape")tg.blur();return}
   if(e.metaKey||e.ctrlKey||e.altKey)return;const k=e.key.toLowerCase();
   if(e.code==="Space"){e.preventDefault();toggle()}
@@ -2936,7 +2944,7 @@ let tt=null;function toast(t,ms=1800){const el=$("toast");el.textContent=t;el.hi
    server's POST /reports; with no sync server, or when sending fails, Copy report and Download report hand over the
    same JSON to send by hand. The typed text stays until a report is sent */
 const BUILD=((document.querySelector('meta[name="cue-build"]')||{}).content||"").trim()||"dev";
-const rDlg=$("dlgReport");let repFrom=null,repJson="",repState=null,repOpen=0;
+const rDlg=$("dlgReport");let repFrom=null,repJson="",repObj=null,repState=null,repOpen=0;
 async function reportState(){let storage=null;
   try{const s=navigator.storage;if(s&&s.estimate){const late=new Promise(r=>setTimeout(()=>r([null,null]),800));
     const [p,e]=await Promise.race([Promise.all([s.persisted?s.persisted().catch(()=>null):null,s.estimate().catch(()=>null)]),late]);
@@ -2946,7 +2954,7 @@ async function reportState(){let storage=null;
     online:navigator.onLine,storage,save:$("status").querySelector(".lbl").textContent,collab:!SYNC_URL?"off":!b?"none":roomSt||"syncing",files,project:cur,duration:cur?dur():0}}
 function renderReport(){if(!repState)return repJson;
   const r=window.cueReport.build(repState,{details:$("rTech").checked,shape:$("rShape").checked,text:$("rText").value});
-  repJson=JSON.stringify(r,null,2);$("rJson").textContent=repJson;
+  repObj=r;repJson=JSON.stringify(r,null,2);$("rJson").textContent=repJson;
   if(rDlg.dataset.mode!=="sending")$("rSend").disabled=!r.text&&!$("rTech").checked&&!$("rShape").checked;return repJson}
 const freshReport=async()=>{repState=await reportState();return renderReport()};
 /* edit: write and send · offline: no sync server here, copy or download · failed: sending didn't work, try again or
@@ -2968,7 +2976,8 @@ $("rCancel").onclick=()=>rDlg.close();
 rDlg.addEventListener("close",()=>{repOpen++;if(rDlg.dataset.mode==="done")$("rText").value="";
   const f=repFrom&&repFrom.isConnected&&repFrom.getClientRects().length?repFrom:phone()?null:$("moreb");if(f)f.focus()});
 $("repForm").onsubmit=async e=>{e.preventDefault();const mode=rDlg.dataset.mode;if(!SYNC_URL||mode==="sending"||mode==="done"||$("rSend").disabled)return;
-  const k=repOpen,body=await freshReport();reportMode("sending");let r;
+  /* the JSON shown, without the indentation */
+  const k=repOpen;await freshReport();const body=JSON.stringify(repObj);reportMode("sending");let r;
   try{const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),15000);
     const res=await fetch(SYNC_URL.replace(/\/+$/,"").replace(/^ws(s?):\/\//i,"http$1://")+"/reports",{method:"POST",headers:{"content-type":"application/json"},body,signal:ctl.signal,cache:"no-store",credentials:"omit"});
     clearTimeout(t);let j=null;try{j=await res.json()}catch(x){}

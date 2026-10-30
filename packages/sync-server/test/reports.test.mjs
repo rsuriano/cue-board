@@ -85,6 +85,26 @@ test('(r2) details off: only the text (and build and time); shape off: no shots;
   assert.equal(r.collab, 'none'); assert.equal(r.lang, undefined); assert.equal(r.build, 'dev'); assert.equal(r.text, undefined); assert.equal(r.shape, undefined);
 });
 
+test('(r2b) an error that quotes the project loses those words; a report stays under 15 KB (oldest errors dropped); at most 500 shots listed', () => {
+  const p = page();
+  p.reject(new Error(`OpenRouter refused: ${SECRETS[3]} is not allowed`));
+  p.error({ message: `Couldn't import ${SECRETS[5]} into ${SECRETS[0]}`, filename: 'https://h/index.html', lineno: 3 });
+  let r = p.r.build(state(), { details: true, shape: false, text: '' });
+  assert.deepEqual(leaked(JSON.stringify(r)), []);
+  assert.equal(r.errors[0].msg, 'Unhandled rejection: Error: OpenRouter refused: [project text] is not allowed');
+  assert.equal(r.errors[1].msg, "Couldn't import [project text] into [project text]");
+  // 20 errors of 300 three-byte characters and 2000 more in the text: about 24 KB before trimming
+  const q = page(), wide = '日'.repeat(400);
+  for (let i = 0; i < 20; i++) q.error({ message: i + ' ' + wide, filename: 'https://h/index.html', lineno: i });
+  const sections = Array.from({ length: 800 }, (_, i) => ({ id: 's' + i, start: i, takes: [] }));
+  r = q.r.build(state({ project: { sections }, duration: 800 }), { details: true, shape: true, text: '日'.repeat(3000) });
+  const bytes = Buffer.byteLength(JSON.stringify(r));
+  assert.ok(bytes <= 15000, `${bytes} bytes`); assert.ok(r.errors.length > 0 && r.errors.length < 20);
+  assert.ok(r.errors.at(-1).msg.startsWith('19 '), 'the newest errors stay');
+  assert.equal(r.shape.shots, 800); assert.equal(r.shape.lengths.length, 500); assert.equal(r.shape.takes.length, 500);
+  assert.deepEqual(cleanReport(JSON.parse(JSON.stringify(r))), r, 'the server keeps it as is');
+});
+
 test('(r3) the error buffer keeps the last 20, counts repeats, clips each to 300 characters, ignores resource load errors and never throws on odd rejections', () => {
   const p = page();
   for (let i = 0; i < 30; i++) p.error({ message: 'err ' + i, filename: 'https://h/index.html', lineno: i });
@@ -219,7 +239,7 @@ test('(r10) the CLIs: list-reports newest first on one line each (no terminal es
   const b = st.add(cleanReport({ text: 'Timeline\nblank\u001b[2J after loading a song, and then some more words to pass eighty characters for sure', build: 'bbb2222', phone: true, errors: [{ msg: 'x' }, { msg: 'y' }] }));
   // a file written by hand with escapes in it: the list still prints one clean line
   fs.writeFileSync(path.join(dir, 'reports', '20260101T000000000Z-handwritten.json'), '{}');
-  fs.writeFileSync(path.join(dir, 'reports', '20260102T000000000Z-zzzzzzzzzz.json'), JSON.stringify({ id: 'zzzzzzzzzz', received: '2026-01-02T00:00:00.000Z', text: 'evil\u001b]0;pwned\u0007\u001b[31m' }));
+  fs.writeFileSync(path.join(dir, 'reports', '20260102T000000000Z-zzzzzzzzzz.json'), JSON.stringify({ id: 'zzzzzzzzzz', received: '2026-01-02T00:00:00.000Z', text: 'evil\u001b]0;pwned\u0007\u001b[31m\u009b2J' }));
   let r = cli('list-reports', [], dir);
   assert.equal(r.status, 0);
   const out = r.stdout.trim().split('\n');
@@ -228,7 +248,8 @@ test('(r10) the CLIs: list-reports newest first on one line each (no terminal es
   assert.match(out[1], /desktop/);
   assert.ok(!/[\u0000-\u0008\u000b-\u001f\u007f]/.test(r.stdout), 'no control characters printed');
   r = cli('show-report', [b], dir); assert.equal(r.status, 0); assert.equal(JSON.parse(r.stdout).build, 'bbb2222');
-  r = cli('show-report', ['zzzzzzzzzz'], dir); assert.ok(!/\u001b/.test(r.stdout), 'escapes stay escaped in JSON');
+  r = cli('show-report', ['zzzzzzzzzz'], dir); assert.ok(!/[\u001b\u0007\u009b]/.test(r.stdout), 'escapes stay escaped in JSON, C1 included');
+  assert.match(r.stdout, /\\u009b2J/);
   for (const bad of ['../../etc/passwd', '..%2f', '/etc/passwd', 'handwritten', b + '/..', '']) { r = cli('show-report', [bad], dir); assert.equal(r.status, 64, bad); }
   r = cli('show-report', ['abcdefghij'], dir); assert.equal(r.status, 1); assert.match(r.stderr, /no report/);
   r = cli('clear-reports', ['--older-than', 'soon'], dir); assert.equal(r.status, 64);

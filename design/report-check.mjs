@@ -95,6 +95,12 @@ try {
   check('desktop: Escape closes it and focus goes back to More', !(await mode(A.page)) && await A.page.evaluate(() => document.activeElement.id === 'moreb'));
 
   await A.page.click('#moreb'); await A.page.click('#reportb'); await sleep(300);
+  // side A's shortcuts stay out of an open dialog: Space opens the summary, M and L change nothing behind it
+  const cuts = () => A.page.evaluate(() => document.querySelectorAll('button.card[data-id]').length);
+  const before = await cuts(); await A.page.focus('#rSee summary');
+  await A.page.keyboard.press('Space'); await A.page.keyboard.press('m'); await A.page.keyboard.press('l'); await sleep(200);
+  check('dialog open: Space opens "See what will be sent", M adds no cut', await A.page.evaluate(() => document.getElementById('rSee').open) && before === 3 && (await cuts()) === before && (await mode(A.page)) === 'edit', `${before} → ${await cuts()} cards`);
+  await A.page.keyboard.press('Space'); await A.page.focus('#rText');
   await A.page.fill('#rText', 'The timeline went blank. My link was https://cue.example/#join=' + ERR_JOIN + '.' + ERR_TOKEN);
   await A.page.check('#rShape'); await A.page.click('#rSee summary'); await sleep(300);
   let j = await shown(A.page);

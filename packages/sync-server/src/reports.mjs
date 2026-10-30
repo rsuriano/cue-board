@@ -17,7 +17,7 @@ export const REPORT_ID = /^[a-z0-9]{10}$/;
 const FILE = /^(\d{8}T\d{9}Z)-([a-z0-9]{10})\.json$/;
 const COLLAB = ['off', 'none', 'synced', 'syncing', 'offline', 'unreachable', 'rejected', 'deleted', 'full'];
 const MEDIA = ['here', 'queued', 'downloading', 'skipped', 'failed'];
-const MAX_ERRORS = 20, MAX_SHOTS = 1000;
+const MAX_ERRORS = 20, MAX_SHOTS = 500;
 
 /** Free text made safe to store and to print: no control characters (terminal escapes), no URL queries or fragments,
     no invite fragments, no token-looking strings, no e-mail addresses; clipped to `max`. The app runs the same rules
