@@ -1863,6 +1863,8 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();seek(now()+(e.key==="ArrowLeft"?-1:1)*(e.shiftKey?5:1))}
   else if((e.key==="["||e.key==="]")&&cur){const i=secAt(now())+(e.key==="]"?1:-1);const s=S()[Math.max(0,Math.min(S().length-1,i))];select(s.id,true)}
   else if(e.key==="Delete"||e.key==="Backspace"){
+    /* a held key auto-repeats every ~30 ms: never let a repeat count as the second press (it would delete shot after shot, with no undo) */
+    if(e.repeat){e.preventDefault();return}
     /* the same two taps as Delete shot, through its button: only while it shows (desktop, a shot selected) and no panel or menu is open */
     const b=$("f-del");if(!selSec()||!b.getClientRects().length||!$("mpanel").hidden||document.querySelector("[aria-expanded=true]"))return;
     e.preventDefault();const armed=b.hasAttribute("data-armed");b.click();

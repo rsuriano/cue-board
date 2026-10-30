@@ -215,6 +215,16 @@ try {
   check('arming then changing the selection disarms (no delete)', (await ids()).length === n0 && !(await delBtn()).toast.includes('deleted') && (await delBtn()).armed, JSON.stringify({ afterMove: d, n0, n: (await ids()).length }));
   await page.keyboard.press('Escape'); await sleep(100);
   check('any other key disarms', !(await delBtn()).armed);
+  // holding Delete: the keyboard auto-repeats, and no repeat may confirm (review of PR #17: it deleted shot after shot)
+  n0 = (await ids()).length; s0 = await selId();
+  await page.keyboard.down('Delete'); for (let i = 0; i < 12; i++) { await page.keyboard.down('Delete'); await sleep(30); } await page.keyboard.up('Delete'); await sleep(200);
+  check('holding Delete (auto-repeat) deletes nothing and only arms', (await ids()).length === n0 && (await selId()) === s0 && (await delBtn()).armed, JSON.stringify({ n0, n: (await ids()).length }));
+  await page.keyboard.press('Escape'); await sleep(100);
+  // armed by the key, then a click on another card: disarmed
+  n0 = (await ids()).length; await page.keyboard.press('Delete'); await sleep(100);
+  await page.evaluate(() => { const c = [...document.querySelectorAll('.card')].find(x => !x.classList.contains('sel')); c && c.click(); }); await sleep(200);
+  check('armed, then a click on another card disarms', !(await delBtn()).armed && (await ids()).length === n0);
+  await page.keyboard.press('Delete'); await sleep(100); await page.keyboard.press('Escape'); await sleep(100);
   // typing in a field never deletes a shot
   n0 = (await ids()).length; await page.click('#f-notes'); await page.keyboard.type('ab');
   for (let i = 0; i < 4; i++) await page.keyboard.press('Backspace');
