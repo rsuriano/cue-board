@@ -1407,18 +1407,22 @@ function unpark(steps){const ids=new Set();steps.forEach(s=>window.cueHistory.me
 /* a tab that closes or reloads can't free what it parked, so the list is also in localStorage under this tab's id, and
    the tab holds a lock while it's open: a later boot frees what a closed tab parked (sweepMedia) */
 const TAB=uid("t"),PARK_KEY="cueboard-parked:",TAB_LOCK="cueboard-tab:";
-function saveParked(){try{if(parked.size)localStorage.setItem(PARK_KEY+TAB,JSON.stringify([...parked.keys()]));else localStorage.removeItem(PARK_KEY+TAB)}catch(e){}}
+function saveParked(){try{if(parked.size)localStorage.setItem(PARK_KEY+TAB,JSON.stringify({at:Date.now(),ids:[...parked.keys()]}));else localStorage.removeItem(PARK_KEY+TAB)}catch(e){}}
+const parkedList=v=>{try{const o=JSON.parse(v);return Array.isArray(o)?{at:0,ids:o}:{at:+o.at||0,ids:Array.isArray(o.ids)?o.ids:[]}}catch(e){return{at:0,ids:[]}}};
 try{navigator.locks.request(TAB_LOCK+TAB,()=>new Promise(()=>{})).catch(()=>{})}catch(e){}
 async function openTabs(){try{const q=await navigator.locks.query();return new Set((q.held||[]).map(l=>l.name).filter(n=>n.startsWith(TAB_LOCK)).map(n=>n.slice(TAB_LOCK.length)))}catch(e){return null}}
 /* a few seconds after boot: what a closed tab parked for its undo goes, if no saved project uses it. Only those files:
    any other unused file stays (it may be mid-import, or belong to a tab running an older version). Without the locks API
-   a closed tab can't be told from an open one, so nothing is swept. Files this tab has shown or made (mediaCache) and
-   the open project's files are never touched */
+   a closed tab can't be told from an open one, so nothing is swept: only lists older than a week go (the list, never
+   its files), so they don't pile up. Files this tab has shown or made (mediaCache) and the open project's files are never touched */
+const PARK_TTL=7*864e5;
 async function sweepMedia(){
-  const tabs=await openTabs(),closed=new Set();if(!tabs)return;
+  const tabs=await openTabs(),closed=new Set();
   try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(!k||!k.startsWith(PARK_KEY))continue;const t=k.slice(PARK_KEY.length);
-    if(t===TAB||tabs.has(t))continue;
-    try{(JSON.parse(localStorage.getItem(k))||[]).forEach(id=>closed.add(id))}catch(e){}localStorage.removeItem(k)}}catch(e){}
+    if(t===TAB||tabs&&tabs.has(t))continue;
+    const l=parkedList(localStorage.getItem(k));
+    if(!tabs){if(Date.now()-l.at>PARK_TTL)localStorage.removeItem(k);continue}
+    l.ids.forEach(id=>closed.add(id));localStorage.removeItem(k)}}catch(e){}
   if(!closed.size)return;
   const ps=await idbS("projects","readonly",st=>st.getAll());
   if(!Array.isArray(ps))return;

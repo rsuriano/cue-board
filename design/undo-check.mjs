@@ -300,8 +300,12 @@ try {
     const held = await p1.evaluate(() => __A().S().find(s => s.id === document.querySelector('.card.sel').dataset.id).img);
     await p1.keyboard.press('Delete'); await sleep(120); await p1.keyboard.press('Delete'); await sleep(200); await flush(p1); await sleep(400);
     const parkedOk = await p1.evaluate(id => !navigator.locks && __A().parked().has(id), held);
+    // a week-old list (a tab closed long ago) and one from the old array format: the lists go, the file they name stays
+    await p1.evaluate(id => { localStorage.setItem('cueboard-parked:t_stale', JSON.stringify({ at: Date.now() - 8 * 864e5, ids: [id] })); localStorage.setItem('cueboard-parked:t_oldfmt', JSON.stringify([id])); localStorage.setItem('cueboard-parked:t_recent', JSON.stringify({ at: Date.now() - 864e5, ids: [id] })); }, held);
     const p2 = await ctx.newPage(); await p2.goto(origin + '/index.html'); await p2.waitForSelector('.card'); await sleep(3800);
     check('without the locks API, a second tab opening leaves the first tab\'s parked file alone', parkedOk && await hasBlob(p1, held), JSON.stringify({ parkedOk, blob: await hasBlob(p1, held) }));
+    const keys = await p1.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('cueboard-parked:')).sort());
+    check('without the locks API, parked lists older than a week are pruned (keys only), recent ones and the open tab\'s stay', !keys.includes('cueboard-parked:t_stale') && !keys.includes('cueboard-parked:t_oldfmt') && keys.includes('cueboard-parked:t_recent') && keys.length === 2 && await hasBlob(p1, held), JSON.stringify(keys));
     await ctx.close();
   }
 
