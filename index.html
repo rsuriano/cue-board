@@ -1391,9 +1391,28 @@ function releaseMedia(id){if(id&&cur)toRelease.set(id,cur.id)}
 const parked=new Map();
 function releaseSaved(p){for(const [id,pid] of toRelease)if(pid===p.id){toRelease.delete(id);
   if(mediaInUse(id,null,[p,...projects,cur]))continue;
-  if(hist.holds(id))parked.set(id,pid);else assets.delete(id).catch(()=>{})}}
+  if(hist.holds(id)){parked.set(id,pid);saveParked()}else assets.delete(id).catch(()=>{})}}
 function unpark(steps){const ids=new Set();steps.forEach(s=>window.cueHistory.mediaOf(s).forEach(id=>ids.add(id)));
-  ids.forEach(id=>{if(!parked.has(id)||hist.holds(id))return;parked.delete(id);if(!mediaInUse(id,null,[...projects,cur]))assets.delete(id).catch(()=>{})})}
+  ids.forEach(id=>{if(!parked.has(id)||hist.holds(id))return;parked.delete(id);if(!mediaInUse(id,null,[...projects,cur]))assets.delete(id).catch(()=>{})});saveParked()}
+/* a tab that closes or reloads can't free what it parked, so the list is also in localStorage under this tab's id, and
+   the tab holds a lock while it's open: a later boot frees what a closed tab parked (sweepMedia) */
+const TAB=uid("t"),PARK_KEY="cueboard-parked:",TAB_LOCK="cueboard-tab:";
+function saveParked(){try{if(parked.size)localStorage.setItem(PARK_KEY+TAB,JSON.stringify([...parked.keys()]));else localStorage.removeItem(PARK_KEY+TAB)}catch(e){}}
+try{navigator.locks.request(TAB_LOCK+TAB,()=>new Promise(()=>{})).catch(()=>{})}catch(e){}
+async function openTabs(){try{const q=await navigator.locks.query();return new Set((q.held||[]).map(l=>l.name).filter(n=>n.startsWith(TAB_LOCK)).map(n=>n.slice(TAB_LOCK.length)))}catch(e){return null}}
+/* a few seconds after boot: media files no saved project uses go. What a closed tab parked, always (without the locks
+   API every other tab counts as closed). Any other unused file (a crash before a save, an upload whose project was never
+   saved) only when no other tab is open: another tab may be holding it for its undo or about to save the project that
+   uses it. Files this tab has shown or made (mediaCache) and the open project's files are never touched */
+async function sweepMedia(){
+  const tabs=await openTabs(),alone=!!tabs&&![...tabs].some(t=>t!==TAB),closed=new Set();
+  try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(!k||!k.startsWith(PARK_KEY))continue;const t=k.slice(PARK_KEY.length);
+    if(t===TAB||(tabs&&tabs.has(t)))continue;
+    try{(JSON.parse(localStorage.getItem(k))||[]).forEach(id=>closed.add(id))}catch(e){}localStorage.removeItem(k)}}catch(e){}
+  const [keys,ps]=await Promise.all([idbS("media","readonly",st=>st.getAllKeys()),idbS("projects","readonly",st=>st.getAll())]);
+  if(!Array.isArray(keys)||!Array.isArray(ps))return;
+  const used=new Set([...ps,cur,...projects].flatMap(projectMediaIds));
+  for(const id of keys)if(typeof id==="string"&&!used.has(id)&&!mediaCache.has(id)&&!parked.has(id)&&!toRelease.has(id)&&(alone||closed.has(id)))assets.delete(id).catch(()=>{})}
 
 /* now=true for typing in a shared text field: it goes to the room at once, so remote edits merge around the caret */
 function scheduleSave(now){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);if(csess)csess.changed(!!now)}
@@ -3248,6 +3267,8 @@ renderAll();
   await detectProxy();
   side=ls("cueboard-side")==="b"?"b":"a";setSide(side);
   store.subscribe(onProjects);
+  /* late enough that a reloaded tab's last save has landed and its lock is gone */
+  setTimeout(()=>sweepMedia().catch(()=>{}),3000);
   refreshCatalog().then(()=>{if(side==="b"&&cur)renderGen()});
 })();
 })();

@@ -178,6 +178,25 @@ try {
   await page.click('#proj'); await page.locator('#projmenu .mi[data-pid="p-example"]').click(); await sleep(500);
   a = await state(page);
   check('back in the example: its history is empty too, and the deleted shot stays deleted', !a.undo && a.n === 12, JSON.stringify([a.n, a.undo]));
+
+  // parked files don't outlive the tab: delete a shot with an image, save, reload: the file goes (a boot sweep). While
+  // another tab is open, a booting tab leaves what the other one parked (its undo may still need it)
+  await page.locator('.card').nth(1).click(); await sleep(200);
+  await page.setInputFiles('#f-img', { name: 'shot2.png', mimeType: 'image/png', buffer: PNG }); await sleep(600);
+  clearHist(page); await blurAll(page);
+  const leak = await page.evaluate(() => __A().S().find(s => s.id === document.querySelector('.card.sel').dataset.id).img);
+  await page.keyboard.press('Delete'); await sleep(120); await page.keyboard.press('Delete'); await sleep(200); await flush(page); await sleep(400);
+  const parkedLs = () => page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('cueboard-parked:')).map(k => localStorage.getItem(k)).join('|'));
+  check('a deleted shot\'s image is parked, and the parked list is in localStorage', !!leak && await hasBlob(page, leak) && (await parkedLs()).includes(leak), JSON.stringify({ leak, ls: await parkedLs() }));
+  const tab2 = await page.context().newPage(); await tab2.goto(origin + '/index.html'); await tab2.waitForSelector('.card'); await sleep(3800);
+  check('another tab booting while this one is open leaves its parked file alone', await hasBlob(page, leak));
+  await tab2.close(); await sleep(300);
+  await page.reload(); await page.waitForSelector('.card', { timeout: 15000 }); await sleep(3800);
+  check('after a reload (no other tab open) the parked file is gone from browser storage, and so is the list', !(await hasBlob(page, leak)) && !(await parkedLs()).includes(leak), JSON.stringify({ blob: await hasBlob(page, leak), ls: await parkedLs() }));
+  a = await state(page);
+  const kept = await page.evaluate(() => [...new Set([...(__A().cur().refs || []), ...__A().S().flatMap(s => [s.img, s.key, s.endKey, ...(s.takes || []).map(t => t.media)])].filter(Boolean))]);
+  const missing = []; for (const id of kept) if (!(await hasBlob(page, id))) missing.push(id);
+  check('the project itself is as saved: the shot stays deleted, every file it uses is still here', a.n === 11 && !a.undo && kept.length > 0 && !missing.length, JSON.stringify({ n: a.n, files: kept.length, missing }));
   await page.context().close();
 
   // ======== phone ========
