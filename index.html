@@ -88,7 +88,12 @@ function diff(a,b){const out=[];
     ot.forEach((t,i)=>{if(!nt.some(x=>x.id===t.id))out.push({k:"take",sid:s.id,id:t.id,b:clone(t),a:null,pos:i})});
     nt.forEach((t,j)=>{const p=by.get(t.id);if(!p){out.push({k:"take",sid:s.id,id:t.id,b:null,a:clone(t),pos:j});return}
       for(const f of new Set([...Object.keys(p),...Object.keys(t)]))if(f!=="id"&&!same(p[f],t[f]))out.push({k:"tf",sid:s.id,id:t.id,f,b:clone(p[f]),a:clone(t[f])})})}
+  for(const c of out)if(c.k==="sf"&&c.f==="start")c.near=between(b,c);
   return out}
+/* the other cuts between a start change's two sides, or within MIN_GAP of them (sorted ids). Kept on the change as `near`
+   when it's made; an undo or redo finding a different set skips (step) */
+function between(p,c){const x=+c.a,y=+c.b,lo=Math.min(x,y)-MIN_GAP,hi=Math.max(x,y)+MIN_GAP;
+  return (p.sections||[]).filter(o=>o.id!==c.id&&o.start>lo&&o.start<hi).map(o=>o.id).sort()}
 const loc=c=>c.k==="meta"?"m:"+c.f:c.k==="shot"?"s:"+c.id:c.k==="sf"?"s:"+c.id+":"+c.f:c.k==="take"?"t:"+c.sid+":"+c.id:"t:"+c.sid+":"+c.id+":"+c.f;
 /* what the project holds now where the change applies: null for an absent shot or take, GONE when its container is gone */
 function current(p,c){
@@ -128,11 +133,10 @@ function create(o={}){const max=o.max||100,onChange=o.onChange||(()=>{}),onDrop=
   function step(p,from,to,dir){const s=from.pop();if(!s)return{ok:false,empty:true};
     if(s.pid!==p.id){drop([s]);onChange();return{ok:false,step:s,where:"the project"}}
     for(const c of s.changes){const v=current(p,c);if(v===GONE||!same(v,dir==="undo"?c.a:c.b)){drop([s]);onChange();return{ok:false,step:s,where:where(p,c)}}}
-    /* a cut moving back over (or right next to) a cut this step doesn't own, one a collaborator added or moved since:
-       the shots would change order or one would shrink to nothing, so that's a change too */
-    const own=new Set(s.changes.filter(c=>c.k==="shot"||(c.k==="sf"&&c.f==="start")).map(c=>c.id));
-    for(const c of s.changes)if(c.k==="sf"&&c.f==="start"){const x=+(dir==="undo"?c.a:c.b),y=+(dir==="undo"?c.b:c.a),lo=Math.min(x,y)-MIN_GAP,hi=Math.max(x,y)+MIN_GAP;
-      if((p.sections||[]).some(o=>!own.has(o.id)&&o.start>lo&&o.start<hi)){drop([s]);onChange();return{ok:false,step:s,where:where(p,c)}}}
+    /* a cut moving back over (or right next to) a cut that wasn't there when the step was made, one a collaborator added
+       or moved since: the shots would change order or one would shrink to nothing, so that's a change too */
+    const own=new Set(s.changes.filter(c=>c.k==="shot"||(c.k==="sf"&&c.f==="start")).map(c=>c.id)),theirs=l=>l.filter(id=>!own.has(id)).join();
+    for(const c of s.changes)if(c.k==="sf"&&c.f==="start"&&theirs(between(p,c))!==theirs(c.near||[])){drop([s]);onChange();return{ok:false,step:s,where:where(p,c)}}
     for(const c of dir==="undo"?[...s.changes].reverse():s.changes)applyChange(p,c,dir==="undo"?c.b:c.a);
     (p.sections||[]).sort((x,y)=>x.start-y.start||(x.id<y.id?-1:1));
     to.push(s);onChange();return{ok:true,step:s}}
@@ -159,7 +163,7 @@ function create(o={}){const max=o.max||100,onChange=o.onChange||(()=>{}),onDrop=
         f's old value now holds the new one, so the next undo or redo doesn't take it for a change */
     amendMeta(f,from,to){for(const s of [...undo,...redo])for(const c of s.changes)if(c.k==="meta"&&c.f===f){if(same(c.a,from))c.a=clone(to);if(same(c.b,from))c.b=clone(to)}}};
   return api}
-w.cueHistory={create,diff,same,clone,mediaOf,current,GONE};
+w.cueHistory={create,diff,between,same,clone,mediaOf,current,GONE};
 })(window)</script>
 <title>Cue Board</title>
 <!-- installable (docs/mobile/PLAN.md): home screen web apps keep their storage on iOS. The manifest is linked only over
@@ -1489,7 +1493,7 @@ function hRec(label,fn,opt){const before=cur?clone(cur):null,pid=cur&&cur.id;
 /* a drag spans many events, so it records only what it owns: the dragged cut's start, before and after */
 const hCut=s=>cur&&s?{pid:cur.id,id:s.id,b:s.start}:null;
 function hCutEnd(t){if(!t||!cur||cur.id!==t.pid)return;const s=S().find(x=>x.id===t.id);
-  if(s)hist.push("move cut",[{k:"sf",id:t.id,f:"start",b:t.b,a:s.start}],{pid:t.pid})}
+  if(s){const c={k:"sf",id:t.id,f:"start",b:t.b,a:s.start};c.near=H.between(cur,c);hist.push("move cut",[c],{pid:t.pid})}}
 /* a text field edit: one change, scoped to that field, merged with the previous keystrokes until the field blurs */
 function hText(label,s,f,v){const b=s[f];if(H.same(b,v))return;s[f]=v;hist.push(label,[{k:"sf",id:s.id,f,b:H.clone(b),a:H.clone(v)}],{pid:cur.id,merge:"text:"+s.id+":"+f})}
 const FIELD_LABEL={title:"title",shot:"shot type",notes:"notes",imgPrompt:"frame prompt",vidPrompt:"motion prompt",endPrompt:"end frame prompt",endChange:"end frame change"};
