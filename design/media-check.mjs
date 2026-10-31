@@ -196,6 +196,17 @@ try {
   check('song: meanwhile B shows the new song as arriving (Files list, song bar) and doesn\'t play the old one under the new name',
     !!seen.stale && !seen.stale.playing && seen.stale.file?.hex === h2 && seen.stale.file.state !== 'here' && /Song · second-song\.wav/.test(seen.stale.file.label) && /replaced with second-song\.wav/.test(seen.stale.bar) && !seen.playedOld,
     JSON.stringify({ ...seen.stale, playedOld: seen.playedOld }).slice(0, 300));
+  // A undoes the replace: the room announces the first file again and B, whose copy of it is gone, gets it back from A;
+  // A redoes it: B gets the second one again
+  const aTop = await A.page.evaluate(() => window.__CUE_MEDIA_TEST.app.hist().peek()?.label || '');
+  await A.page.evaluate(() => window.__CUE_MEDIA_TEST.app.doUndo('undo'));
+  const bUndo = await hasSong(B, h1, 'first-song.wav'), aUndo = await songOf(A);
+  check('song: A undoes "replace song"; the room announces the first file and B gets it back, verified, and plays it', aTop === 'replace song' && !!bUndo && aUndo.hex === h1 && aUndo.file?.hex === h1 && aUndo.playing,
+    JSON.stringify({ aTop, b: bUndo ? 'ok' : await songOf(B), a: { ...aUndo, bar: undefined } }).slice(0, 400));
+  await A.page.evaluate(() => window.__CUE_MEDIA_TEST.app.doUndo('redo'));
+  const bRedo = await hasSong(B, h2, 'second-song.wav'), aRedo = await songOf(A);
+  check('song: A redoes it; the room announces the second file again and B plays it', !!bRedo && aRedo.hex === h2 && aRedo.file?.hex === h2 && aRedo.playing,
+    JSON.stringify({ b: bRedo ? 'ok' : await songOf(B), a: { ...aRedo, bar: undefined } }).slice(0, 400));
   await loadSong(B, 'third-song.wav', song3);
   const aGot3 = await hasSong(A, h3, 'third-song.wav');
   await sleep(2000);

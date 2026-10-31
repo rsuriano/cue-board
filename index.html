@@ -1450,7 +1450,9 @@ let firstList=false;
 async function autoExample(){try{if(await getSetting("exampleOpened"))return;await putSetting("exampleOpened",true)}catch(e){return}openExample(true)}
 
 /* ---------- model helpers ---------- */
-const newSec=start=>({id:uid("s"),start,title:"",shot:"",notes:"",img:"",imgPrompt:"",vidPrompt:"",key:"",endKey:"",takes:[]});
+/* every field a room's copy fills in (collab-client sanitizeShot), so the shot reads the same after a round trip and an
+   undo of its cut doesn't take that for a collaborator's change */
+const newSec=start=>({id:uid("s"),start,title:"",shot:"",notes:"",img:"",imgPrompt:"",vidPrompt:"",key:"",endKey:"",kind:"",clipDur:0,takes:[]});
 const makeProject=title=>({id:uid("p"),title:title||"Untitled project",created:Date.now(),updated:Date.now(),song:null,sections:[newSec(0)]});
 const S=()=>cur?cur.sections:[];
 function dur(){if(!cur)return 30;const s=S(),last=s.length?s[s.length-1].start:0;
