@@ -1215,7 +1215,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     </dl></section>
     <section aria-labelledby="kEdit"><p class="kh" role="heading" aria-level="4" id="kEdit">Editing</p><dl class="klist">
       <div><dt>Undo<small>your own changes, while this tab is open</small></dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd></dd></div>
-      <div><dt>Redo<small>or Ctrl+Y</small></dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></dd></div>
+      <div><dt>Redo<small>or Ctrl+Y (not ⌘+Y)</small></dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></dd></div>
     </dl></section>
   </div>
 </div></dialog>
@@ -1498,11 +1498,12 @@ function doUndo(dir){if(!cur)return;hist.breakMerge();
 function restoreSong(rec){if(!cur)return;stop();
   if(rec&&rec.blob){idbDo("readwrite",st=>st.put({blob:rec.blob,name:rec.name},cur.id));songStale=false;if(audioUrl)URL.revokeObjectURL(audioUrl);attachAudio(rec.blob,rec.name)}
   else{idbDo("readwrite",st=>st.delete(cur.id));detachAudio();vt=0}}
-/* Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo (⌘ on a Mac), on both sides. Not in a field (the field's own undo works
-   there), not over a dialog. A held key repeats, at most every 150 ms */
+/* Ctrl+Z undo, Ctrl+Shift+Z redo (⌘ on a Mac), on both sides; Ctrl+Y redo too, with Ctrl only (⌘Y is the browser's
+   History on a Mac). Not in a field (the field's own undo works there), not over a dialog. A held key repeats, at most
+   every 150 ms */
 document.addEventListener("keydown",e=>{
   if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();
-  const u=k==="z"&&!e.shiftKey,r=(k==="z"&&e.shiftKey)||(k==="y"&&!e.shiftKey);if(!u&&!r)return;
+  const u=k==="z"&&!e.shiftKey,r=(k==="z"&&e.shiftKey)||(k==="y"&&e.ctrlKey&&!e.metaKey&&!e.shiftKey);if(!u&&!r)return;
   if(document.querySelector("dialog[open]"))return;
   const tg=e.target;if(tg&&(/INPUT|TEXTAREA|SELECT/.test(tg.tagName)||tg.isContentEditable))return;
   e.preventDefault();if(e.repeat&&performance.now()-undoAt<150)return;undoAt=performance.now();

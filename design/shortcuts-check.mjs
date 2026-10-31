@@ -113,7 +113,7 @@ try {
   check('the panel lists every shortcut from the old footer', !missing.length, missing.join(' | '));
   const heads = await page.evaluate(() => [...document.querySelectorAll('#dlgKeys [role=heading]')].map(e => e.textContent));
   check('sections: Playback, Cuts and shots, Timeline, Files, Editing', heads.join('|') === 'Playback|Cuts and shots|Timeline|Files|Editing', heads.join('|'));
-  check('the panel lists Undo and Redo under Editing', ['UndoCtrl/⌘+Z', 'RedoCtrl/⌘+Shift+Z'].every(t => panel.replace(/your own changes, while this tab is open|or Ctrl\+Y/g, '').includes(t)), panel.slice(panel.indexOf('Editing')));
+  check('the panel lists Undo and Redo under Editing (Ctrl+Y, not ⌘+Y)', ['UndoCtrl/⌘+Z', 'RedoCtrl/⌘+Shift+Z'].every(t => panel.replace(/your own changes, while this tab is open|or Ctrl\+Y \(not ⌘\+Y\)/g, '').includes(t)) && panel.includes('or Ctrl+Y (not ⌘+Y)'), panel.slice(panel.indexOf('Editing')));
 
   // ---- each key does what the panel says; time is read from the timecode, 0.1 s precision
   await blurAll(); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('Shift+ArrowRight'); await sleep(100);

@@ -68,6 +68,13 @@ try {
   check('Ctrl+Y redoes', a.n === s1.n && a.toast.startsWith('Redone'), a.toast);
   await page.keyboard.press('Meta+z'); await sleep(150); await page.keyboard.press('Meta+Shift+z'); await sleep(200); a = await state(page);
   check('⌘⇧Z redoes', a.n === s1.n && a.toast.startsWith('Redone'), a.toast);
+  // ⌘Y is the browser's History on a Mac: not redo, and not blocked
+  await page.evaluate(() => window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'y') window.__yBlocked = e.defaultPrevented; }));
+  await page.keyboard.press('Meta+z'); await sleep(150); await page.keyboard.press('Meta+y'); await sleep(200); a = await state(page);
+  const yBlocked = await page.evaluate(() => window.__yBlocked);
+  check('⌘Y is not redo and is left to the browser', a.n === s0.n && a.redo && yBlocked === false, JSON.stringify({ n: a.n, redo: a.redo, yBlocked }));
+  await page.keyboard.press('Control+y'); await sleep(200); a = await state(page);
+  check('Ctrl+Y still redoes', a.n === s1.n && a.toast.startsWith('Redone') && await page.evaluate(() => window.__yBlocked) === true, a.toast);
   await page.screenshot({ path: join(out, 'desktop-redone.png') });
 
   // a new edit after an undo clears the redo stack
