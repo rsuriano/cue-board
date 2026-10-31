@@ -112,7 +112,8 @@ try {
   const missing = ['Play / pauseSpace', 'Loop the selected shotL', 'Back / forward 1 s←→', 'Back / forward 5 sShift+←→', 'Cut at the playheadM', 'Previous / next shot[]', 'Move a cutdrag its triangle', 'Swap two shotsdrag a card onto another', 'Slide a shot in betweenit gets half of that slotdrag its card onto an edge or gap', 'Scrubdrag on the waveform', 'Move sidewaysscroll over the waveform', 'ZoomCtrl/⌘+scroll', 'Move along the shotsa mouse wheel works tooscroll over the shot cards', 'Load the songdrop an mp3', 'Media for the selected shotdrop an image, GIF or clip', 'Import a projectdrop a .cueboard.json'].filter(t => !panel.includes(t));
   check('the panel lists every shortcut from the old footer', !missing.length, missing.join(' | '));
   const heads = await page.evaluate(() => [...document.querySelectorAll('#dlgKeys [role=heading]')].map(e => e.textContent));
-  check('sections: Playback, Cuts and shots, Timeline, Files', heads.join('|') === 'Playback|Cuts and shots|Timeline|Files', heads.join('|'));
+  check('sections: Playback, Cuts and shots, Timeline, Files, Editing', heads.join('|') === 'Playback|Cuts and shots|Timeline|Files|Editing', heads.join('|'));
+  check('the panel lists Undo and Redo under Editing (Ctrl+Y, not ⌘+Y)', ['UndoCtrl/⌘+Z', 'RedoCtrl/⌘+Shift+Z'].every(t => panel.replace(/your own changes, while this tab is open|or Ctrl\+Y \(not ⌘\+Y\)/g, '').includes(t)) && panel.includes('or Ctrl+Y (not ⌘+Y)'), panel.slice(panel.indexOf('Editing')));
 
   // ---- each key does what the panel says; time is read from the timecode, 0.1 s precision
   await blurAll(); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('Shift+ArrowRight'); await sleep(100);

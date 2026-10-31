@@ -376,6 +376,69 @@ try {
     rc.done();
   }
 
+  /* ---- A drags a cut while someone else edits a note on another shot, then A presses Ctrl+Z: only the cut goes back ---- */
+  {
+    const rc = await roomClient(), app = () => A.page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app; return { ids: a.S().map(s => s.id), starts: a.S().map(s => s.start), notes: a.S().map(s => s.notes), top: a.hist().peek()?.label || '', size: a.hist().size() }; });
+    await A.page.click('#zfit'); await sleep(200);
+    const free = await A.page.evaluate(() => { const cv = document.getElementById('tl'), r = cv.getBoundingClientRect(), y = r.top + r.height * .7, xs = []; for (let x = Math.ceil(r.left) + 2; x < r.right - 2; x += 2) { cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true })); if (cv.style.cursor === 'ew-resize') xs.push(x); } return { xs, y }; });
+    const run = free.xs.filter(x => x < (free.xs[0] || 0) + 16), grab = run[Math.floor(run.length / 2)];
+    await A.page.evaluate(() => { document.activeElement?.blur(); window.__CUE_MEDIA_TEST.app.hist().clear(); });
+    const a0 = await app(), far = a0.ids.length - 1, mark = ' [B, mid-drag]';
+    await A.page.mouse.move(grab, free.y); await A.page.mouse.down();
+    for (let i = 1; i <= 4; i++) { await A.page.mouse.move(grab + i * 6, free.y); await sleep(20); }
+    rc.doc.transact(() => { const t = rc.shot(a0.ids[far]).get('notes'); t.insert(t.length, mark); });
+    await sleep(900);
+    for (let i = 5; i <= 8; i++) { await A.page.mouse.move(grab + i * 6, free.y); await sleep(20); }
+    await A.page.mouse.up();
+    const got = await until(async () => (await app()).notes[far].endsWith(mark));
+    const a1 = await app();
+    await A.page.keyboard.press('Control+z'); await sleep(900);
+    const a2 = await app(), bNote = rc.shot(a0.ids[far]).get('notes').toString();
+    check('A drags a cut while B edits a note on another shot; A\'s Ctrl+Z puts the cut back and B\'s note stays (in A and in the room)',
+      !!grab && !!got && a1.size === 1 && a1.top === 'move cut' && a1.starts[1] > a0.starts[1] + .1 && Math.abs(a2.starts[1] - a0.starts[1]) < .001 && a2.notes[far].endsWith(mark) && bNote.endsWith(mark),
+      JSON.stringify({ grab: !!grab, got: !!got, step: [a1.size, a1.top], start: [a0.starts[1], a1.starts[1], a2.starts[1]], aNote: a2.notes[far].slice(-20), bNote: bNote.slice(-20) }));
+    rc.done();
+  }
+
+  /* ---- two browsers: A cuts at the playhead (then deletes a shot), B edits a note on another shot, which reaches A
+     through applyRemote; A's undo converges in both and B's note stays ---- */
+  {
+    const st = pg => pg.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app; return { ids: a.S().map(s => s.id), notes: a.S().map(s => s.notes), sel: document.querySelector('.card.sel')?.dataset.id || '', top: a.hist().peek()?.label || '', toast: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent }; });
+    const bEdit = (id, mark) => B.page.evaluate(([id, mark]) => { const a = window.__CUE_MEDIA_TEST.app, s = a.S().find(x => x.id === id); s.notes = (s.notes || '') + mark; a.scheduleSave(); a.renderAll(); }, [id, mark]);
+    const noteOf = (s, id) => s.notes[s.ids.indexOf(id)] || '';
+    const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    await until(async () => same((await st(A.page)).ids, (await st(B.page)).ids));
+    // cut at
+    await A.page.evaluate(() => { document.activeElement?.blur(); window.__CUE_MEDIA_TEST.app.hist().clear(); });
+    const a0 = await st(A.page);
+    await A.page.keyboard.press('Shift+ArrowRight'); await A.page.keyboard.press('ArrowRight'); await sleep(100); await A.page.keyboard.press('m'); await sleep(300);
+    const a1 = await st(A.page), added = a1.ids.find(id => !a0.ids.includes(id)), other = a0.ids[a0.ids.length - 1], mark = ' [B, after the cut]';
+    const bSaw = await until(async () => (await st(B.page)).ids.includes(added));
+    await bEdit(other, mark);
+    const aSaw = await until(async () => noteOf(await st(A.page), other).endsWith(mark));
+    await A.page.keyboard.press('Control+z'); await sleep(150);
+    const tz = (await st(A.page)).toast;
+    const conv = await until(async () => { const [x, y] = [await st(A.page), await st(B.page)]; return same(x.ids, a0.ids) && same(y.ids, a0.ids) && noteOf(x, other).endsWith(mark) && noteOf(y, other).endsWith(mark) ? [x, y] : null; });
+    check('A cuts at the playhead, B\'s note on another shot reaches A; A\'s Ctrl+Z removes the cut in both and B\'s note stays',
+      /^cut at /.test(a1.top) && !!added && !!bSaw && !!aSaw && !!conv && tz === 'Undone: ' + a1.top,
+      JSON.stringify({ top: a1.top, added, bSaw: !!bSaw, aSaw: !!aSaw, conv: !!conv, tz, a: (await st(A.page)).ids.length, b: (await st(B.page)).ids.length, n0: a0.ids.length }));
+    // delete shot
+    await A.page.locator('.card').nth(1).click(); await sleep(200);
+    await A.page.evaluate(() => { document.activeElement?.blur(); window.__CUE_MEDIA_TEST.app.hist().clear(); });
+    const d0 = await st(A.page), gone = d0.sel, mark2 = ' [B, after the delete]';
+    await A.page.keyboard.press('Delete'); await sleep(120); await A.page.keyboard.press('Delete'); await sleep(300);
+    const d1 = await st(A.page);
+    const bGone = await until(async () => !(await st(B.page)).ids.includes(gone));
+    await bEdit(other, mark2);
+    const aSaw2 = await until(async () => noteOf(await st(A.page), other).endsWith(mark2));
+    await A.page.keyboard.press('Control+z'); await sleep(150);
+    const tz2 = (await st(A.page)).toast;
+    const conv2 = await until(async () => { const [x, y] = [await st(A.page), await st(B.page)]; return same(x.ids, d0.ids) && same(y.ids, d0.ids) && noteOf(x, other).endsWith(mark2) && noteOf(y, other).endsWith(mark2) ? [x, y] : null; });
+    check('A deletes a shot, B\'s note on another shot reaches A; A\'s Ctrl+Z brings the shot back in both and B\'s note stays',
+      !!gone && /^delete shot/.test(d1.top) && !d1.ids.includes(gone) && !!bGone && !!aSaw2 && !!conv2 && tz2 === 'Undone: ' + d1.top,
+      JSON.stringify({ gone, top: d1.top, tz2, bGone: !!bGone, aSaw2: !!aSaw2, conv2: !!conv2, a: (await st(A.page)).ids.length, b: (await st(B.page)).ids.length, n0: d0.ids.length }));
+  }
+
   /* ---- C: has a local project; a wrong token first, then the right link as a new project ---- */
   C = await newPage('C');
   await C.page.goto(app); await C.page.waitForSelector('.card'); await sleep(400);
