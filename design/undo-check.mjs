@@ -217,6 +217,22 @@ try {
   check('Remove song, then undo right away: the song is back and plays, with its file in storage', sg0.playing && sg0.file && fast === 'remove song' && sg1.meta === 'tone.wav' && sg1.playing && sg1.file, JSON.stringify({ sg0, fast, sg1 }));
   clearHist(page);
 
+  // Replace song, then undo, redo, undo, with the player reading each file 0.5 s longer than it decoded (a VBR mp3):
+  // its length correction isn't a change of the user's, so no step is skipped
+  const wav2 = Buffer.from(wav); wav2.writeUInt32LE(rate, 24); wav2.writeUInt32LE(rate, 28); wav2.writeUInt16LE(1, 32); wav2.writeUInt16LE(8, 34);
+  await page.setInputFiles('#song', { name: 'tone2.wav', mimeType: 'audio/wav', buffer: wav2 });
+  await page.waitForFunction(() => __A().cur().song && __A().cur().song.name === 'tone2.wav', null, { timeout: 8000 }); await sleep(500);
+  await page.evaluate(() => { const g = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration').get; Object.defineProperty(HTMLAudioElement.prototype, 'duration', { configurable: true, get() { const d = g.call(this); return isFinite(d) ? d + 0.5 : d; } }); });
+  const rs = [];
+  for (const dir of ['undo', 'redo', 'undo']) {
+    await page.evaluate(d => __A().doUndo(d), dir); await sleep(900);
+    rs.push(await page.evaluate(() => ({ song: __A().cur().song?.name, dur: +(__A().cur().song?.duration || 0).toFixed(2), toast: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent })));
+  }
+  await page.evaluate(() => delete HTMLAudioElement.prototype.duration);
+  const sg2 = await songNow();
+  check('Replace song, undo, redo, undo with a length correction in between: every step runs, the first song is back and plays', rs[0].song === 'tone.wav' && rs[1].song === 'tone2.wav' && rs[2].song === 'tone.wav' && rs.every(r => !/changed since/.test(r.toast)) && sg2.name === 'tone.wav' && sg2.file, JSON.stringify({ rs, sg2 }));
+  clearHist(page);
+
   // parked files don't outlive the tab: delete a shot with an image, save, reload: the file goes (a boot sweep). While
   // another tab is open, a booting tab leaves what the other one parked (its undo may still need it)
   await page.locator('.card').nth(1).click(); await sleep(200);

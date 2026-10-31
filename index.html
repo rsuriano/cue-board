@@ -147,7 +147,10 @@ function create(o={}){const max=o.max||100,onChange=o.onChange||(()=>{}),onDrop=
     peek:()=>undo[undo.length-1]||null,
     clear(){const gone=[...undo,...redo];undo=[];redo=[];if(gone.length){drop(gone);onChange()}},
     /** some step still points at this media id */
-    holds(id){return [...undo,...redo].some(s=>mediaOf(s).includes(id))}};
+    holds(id){return [...undo,...redo].some(s=>mediaOf(s).includes(id))},
+    /** a correction that isn't the user's (the player read the song's real length): every step side holding meta field
+        f's old value now holds the new one, so the next undo or redo doesn't take it for a change */
+    amendMeta(f,from,to){for(const s of [...undo,...redo])for(const c of s.changes)if(c.k==="meta"&&c.f===f){if(same(c.a,from))c.a=clone(to);if(same(c.b,from))c.b=clone(to)}}};
   return api}
 w.cueHistory={create,diff,same,clone,mediaOf,current,GONE};
 })(window)</script>
@@ -1534,7 +1537,7 @@ audio.addEventListener("loadedmetadata",()=>{if(!cur||!isFinite(audio.duration))
   if(!cur.song)cur.song={name:"",duration:0,peaks:[]};
   /* another file than the project's song (stored under another name): its length isn't the song's */
   const other=songStale||!!(audioName&&cur.song.name&&audioName!==cur.song.name);
-  if(!other&&Math.abs((cur.song.duration||0)-audio.duration)>.3){cur.song.duration=audio.duration;scheduleSave()}
+  if(!other&&Math.abs((cur.song.duration||0)-audio.duration)>.3){const was=H.clone(cur.song);cur.song.duration=audio.duration;hist.amendMeta("song",was,cur.song);scheduleSave()}
   renderTimeline();renderStrip();renderEdHead()});
 const base=n=>n.replace(/\.[^.]+$/,"");
 async function loadSongFile(file){
