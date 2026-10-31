@@ -1531,7 +1531,7 @@ document.addEventListener("keydown",e=>{
   if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();
   const u=k==="z"&&!e.shiftKey,r=(k==="z"&&e.shiftKey)||(k==="y"&&e.ctrlKey&&!e.metaKey&&!e.shiftKey);if(!u&&!r)return;
   if(document.querySelector("dialog[open]"))return;
-  const tg=e.target;if(tg&&(/INPUT|TEXTAREA|SELECT/.test(tg.tagName)||tg.isContentEditable))return;
+  const tg=e.target;if(tg&&(tg.tagName==="TEXTAREA"||tg.isContentEditable||(tg.tagName==="INPUT"&&!/^(checkbox|radio|range|button|submit|reset|color|file)$/i.test(tg.type))))return; /* selects and checkboxes have no undo of their own */
   e.preventDefault();if(e.repeat&&performance.now()-undoAt<150)return;undoAt=performance.now();
   doUndo(u?"undo":"redo")});
 
