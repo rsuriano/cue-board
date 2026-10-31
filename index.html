@@ -1499,6 +1499,9 @@ function doUndo(dir){if(!cur||drag||mGrip||mLift||(sd&&sd.on))return;hist.breakM
   /* files this step stopped pointing at: freed after the save, unless the step (now on the other stack) holds them */
   const has=new Set(projectMediaIds(cur));had.forEach(id=>{if(!has.has(id))releaseMedia(id)});
   scheduleSave();if(csess)csess.select(selId);
+  /* a take that came back may still have a job running, and the poll stops once nothing is pending: start it again
+     (it stops itself if there's nothing to fetch) */
+  ensurePolling();
   const draw=()=>{lastKey="";renderAll();if(side==="b")renderB()};draw();
   loadProjectMedia(cur).then(n=>{if(n&&cur&&cur.id===s.pid)draw()});
   toast((dir==="undo"?"Undone: ":"Redone: ")+s.label)}
@@ -2753,7 +2756,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,doUndo,pollTake,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,doUndo,pollTake,polling:()=>!!pollTimer,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.

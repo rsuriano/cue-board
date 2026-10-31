@@ -152,6 +152,35 @@ try {
   await page.unroute('https://openrouter.ai/api/v1/videos/job-drag');
   clearHist(page);
 
+  // undoing "delete shot" / "delete take" brings back a take whose job is still running: the poll (stopped, since
+  // nothing was pending) starts again and the finished clip arrives without a reload
+  const pendTake = (sid, tid) => page.evaluate(([sid, tid]) => { const a = __A(), s = a.S().find(x => x.id === sid); s.takes = [...(s.takes || []), { id: tid, jobId: 'job-' + tid, model: 'x', dur: 4, status: 'pending', media: '', note: '', error: '', created: Date.now() }]; a.scheduleSave(); a.hist().clear(); }, [sid, tid]);
+  const takeOf = (sid, tid) => page.evaluate(([sid, tid]) => { const s = __A().S().find(x => x.id === sid), t = s && s.takes.find(t => t.id === tid); return t ? t.status : null; }, [sid, tid]);
+  const doneJob = tid => page.route('https://openrouter.ai/api/v1/videos/job-' + tid, r => r.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ status: 'completed', unsigned_urls: ['data:video/mp4;base64,AAAAIGZ0eXBpc29t'] }) }));
+  const waitDone = async (sid, tid) => { for (let i = 0; i < 40; i++) { if (await takeOf(sid, tid) === 'completed') return true; await sleep(200); } return false; };
+  const pSid = await page.evaluate(() => __A().S()[5].id);
+  await pendTake(pSid, 't-ps');
+  await page.locator(`.card[data-id="${pSid}"]`).click(); await sleep(150); await blurAll(page);
+  await page.keyboard.press('Delete'); await sleep(120); await page.keyboard.press('Delete'); await sleep(300);
+  for (let i = 0; i < 60 && await page.evaluate(() => __A().polling()); i++) await sleep(250);
+  const stopped1 = !(await page.evaluate(() => __A().polling())) && !(await state(page)).ids.includes(pSid);
+  await doneJob('t-ps');
+  await page.keyboard.press('Control+z'); await sleep(200);
+  check('undo "delete shot" with a running job: the poll starts again and the take completes without a reload', stopped1 && await waitDone(pSid, 't-ps'), JSON.stringify({ stopped1, status: await takeOf(pSid, 't-ps') }));
+  await page.unroute('https://openrouter.ai/api/v1/videos/job-t-ps'); clearHist(page);
+  await pendTake(pSid, 't-pt');
+  await page.click('.sidetab[data-side="b"]'); await sleep(300);
+  const forget = page.locator('.take[data-id="t-pt"] [data-act="del"]');
+  await forget.click(); await sleep(100); await forget.click(); await sleep(300);
+  for (let i = 0; i < 60 && await page.evaluate(() => __A().polling()); i++) await sleep(250);
+  const stopped2 = !(await page.evaluate(() => __A().polling())) && await takeOf(pSid, 't-pt') === null;
+  await doneJob('t-pt'); await blurAll(page);
+  await page.keyboard.press('Control+z'); await sleep(200);
+  check('undo "delete take" with a running job: the take completes without a reload', stopped2 && await waitDone(pSid, 't-pt'), JSON.stringify({ stopped2, status: await takeOf(pSid, 't-pt') }));
+  await page.unroute('https://openrouter.ai/api/v1/videos/job-t-pt');
+  await page.click('.sidetab[data-side="a"]'); await sleep(300); await blurAll(page);
+  clearHist(page);
+
   // Ctrl+Z in the middle of a drag is ignored: the earlier step stays done, the drag is its own step, nothing goes to redo
   const n0 = await page.inputValue('#f-notes');
   await page.click('#f-notes'); await page.keyboard.press('End'); await page.keyboard.type(' x'); await blurAll(page); await sleep(100);
