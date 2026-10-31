@@ -151,6 +151,18 @@ try {
   await page.unroute('https://openrouter.ai/api/v1/videos/job-drag');
   clearHist(page);
 
+  // Ctrl+Z in the middle of a drag is ignored: the earlier step stays done, the drag is its own step, nothing goes to redo
+  const n0 = await page.inputValue('#f-notes');
+  await page.click('#f-notes'); await page.keyboard.press('End'); await page.keyboard.type(' x'); await blurAll(page); await sleep(100);
+  s0 = await state(page);
+  await page.mouse.move(grab, free.y); await page.mouse.down(); for (let i = 1; i <= 4; i++) { await page.mouse.move(grab + i * 6, free.y); await sleep(20); }
+  await page.keyboard.press('Control+z'); await sleep(150); await page.keyboard.press('Control+Shift+z'); await sleep(150);
+  for (let i = 5; i <= 8; i++) { await page.mouse.move(grab + i * 6, free.y); await sleep(20); } await page.mouse.up(); await sleep(250); s1 = await state(page);
+  check('Ctrl+Z and Ctrl+Shift+Z during a drag are ignored: the notes edit stays, the drag is a second step, redo is empty', s0.size === 1 && (await page.inputValue('#f-notes')) === n0 + ' x' && s1.size === 2 && s1.top === 'move cut' && !s1.redo, JSON.stringify({ s0: s0.size, s1: [s1.size, s1.top, s1.redo] }));
+  await page.keyboard.press('Control+z'); await sleep(200); await page.keyboard.press('Control+z'); await sleep(200); a = await state(page);
+  check('then two Ctrl+Z put back the cut and the notes', Math.abs(a.starts[1] - s0.starts[1]) < .001 && (await page.inputValue('#f-notes')) === n0, JSON.stringify([a.starts[1], s0.starts[1]]));
+  clearHist(page);
+
   // holding Ctrl+Z: repeats, capped (each step is a cut, so count by shots undone)
   for (let i = 0; i < 6; i++) { await page.keyboard.press('ArrowRight'); await page.keyboard.press('m'); await sleep(60); }
   s0 = await state(page);
@@ -262,6 +274,18 @@ try {
     // undo the cut again and leave it: the button is on (redo), which the hold reaches
     await ph.tap('#mtUndo'); await sleep(200); await ph.evaluate(() => __A().hist().clear()); await sleep(100); t = await tool();
     check(`[${tag}] with the history cleared the button is disabled again`, t.disabled);
+    // a second finger taps Undo while a cut's grip is being dragged: ignored, and the drag is its own step
+    await ph.tap('#mtCut'); await sleep(300); p0 = await state(ph);
+    const gr = await ph.evaluate(() => {
+      const g = [...document.querySelectorAll('#mGrips .grip')].find(b => +b.dataset.i >= 1 && b.getBoundingClientRect().width && b.getBoundingClientRect().left > 40 && b.getBoundingClientRect().right < innerWidth - 80);
+      if (!g) return null; const r = g.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, i = +g.dataset.i;
+      const ev = (t, dx) => g.dispatchEvent(new PointerEvent(t, { pointerId: 7, clientX: x + dx, clientY: y, bubbles: true, isPrimary: true, pointerType: 'touch' }));
+      const a = __A(), s0 = a.S()[i].start; ev('pointerdown', 0); ev('pointermove', 20); ev('pointermove', 30);
+      a.doUndo('undo'); ev('pointermove', 40); ev('pointerup', 40);
+      return { i, s0, s1: a.S()[i].start };
+    });
+    p1 = await state(ph);
+    check(`[${tag}] Undo during a grip drag is ignored: the cut stays, the drag is a second step, redo is empty`, !!gr && gr.s1 > gr.s0 && p1.n === p0.n && p1.size === 2 && p1.top === 'move cut' && !p1.redo, JSON.stringify({ gr, p0: [p0.n, p0.size], p1: [p1.n, p1.size, p1.top, p1.redo] }));
     await ph.context().close();
   }
 } catch (e) { check('ran without throwing', false, e.stack); }

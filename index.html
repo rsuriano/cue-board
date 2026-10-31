@@ -1479,7 +1479,9 @@ const FIELD_LABEL={title:"title",shot:"shot type",notes:"notes",imgPrompt:"frame
 const fieldLabel=(f,s)=>(FIELD_LABEL[f]||f)+" of shot "+shotNo(s);
 document.addEventListener("focusout",e=>{if(e.target&&/INPUT|TEXTAREA/.test(e.target.tagName))hist.breakMerge()});
 let undoAt=0;
-function doUndo(dir){if(!cur)return;hist.breakMerge();
+/* not in the middle of a drag (a cut, a phone grip, a card or a lifted shot): the undo would land inside it, and the
+   drop would record its effect as part of the new step */
+function doUndo(dir){if(!cur||drag||mGrip||mLift||(sd&&sd.on))return;hist.breakMerge();
   const had=projectMediaIds(cur),r=dir==="undo"?hist.undo(cur):hist.redo(cur);
   if(r.empty){toast(dir==="undo"?"Nothing to undo":"Nothing to redo");return}
   if(!r.ok){toast(`Can't ${dir} ${r.step.label}: ${r.where} changed since`,3000);return}
