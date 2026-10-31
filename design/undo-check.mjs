@@ -1,7 +1,7 @@
 // Undo and redo in the browser: the keys on the desktop (Ctrl and ⌘ variants, native field undo untouched, the Delete
 // key path, a dragged cut as one step, a held key), the history's life (redo cleared by a new edit, cleared by a project
 // switch, media kept while a step holds it and freed after), and the phone's Undo button (present, disabled, enabled,
-// hold for redo, no overflow) at 390×844 and 390×700. Screenshots go to <out-dir>.
+// hold for redo, no overflow, 44px targets) at 390×844, 390×700 and 320×568. Screenshots go to <out-dir>.
 //   node design/undo-check.mjs <repo-root> <out-dir>
 // The example project, collaboration off (this repo's empty sync URL); every request outside the local server is aborted.
 import { createRequire } from 'node:module';
@@ -237,7 +237,7 @@ try {
   await page.context().close();
 
   // ======== phone ========
-  for (const [w, h] of [[390, 844], [390, 700]]) {
+  for (const [w, h] of [[390, 844], [390, 700], [320, 568]]) {
     const { page: ph } = await newPage({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' });
     const tag = `phone-${w}x${h}`;
     await ph.waitForFunction(() => /Mountain/.test(document.getElementById('projname').textContent) && document.getElementById('mtUndo'), null, { timeout: 15000 });
@@ -252,6 +252,7 @@ try {
     check(`[${tag}] same size, icon and stroke as the other toolbar buttons, nothing clipped`, t.others.every(o => o.w === t.undo.w && o.h === t.undo.h && o.icon === t.undo.icon && o.stroke === t.undo.stroke) && !t.undo.clipped && t.others.every(o => !o.clipped) && t.undo.icon === 20, JSON.stringify({ undo: t.undo, others: t.others }));
     check(`[${tag}] disabled while there is nothing to undo; named for the hold`, t.disabled && /hold to redo/i.test(t.aria), JSON.stringify([t.disabled, t.aria]));
     check(`[${tag}] no horizontal overflow`, t.overflow <= 0, String(t.overflow));
+    check(`[${tag}] every toolbar button is at least 44×44`, [t.undo, ...t.others].every(o => o.w >= 44 && o.h >= 44), JSON.stringify([t.undo, ...t.others].map(o => [o.label, o.w, o.h])));
     await ph.screenshot({ path: join(out, `${tag}-toolbar-disabled.png`), clip: { x: 0, y: h - 130, width: w, height: 130 } });
     await ph.screenshot({ path: join(out, `${tag}-full.png`) });
     // a cut from the toolbar enables it; a tap undoes; a hold redoes
