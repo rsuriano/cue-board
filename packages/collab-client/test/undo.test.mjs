@@ -108,6 +108,38 @@ test('A edits a note, B then edits the same note, A undoes: skipped with a notic
   } finally { done(); }
 });
 
+test('A drags cut 2, B adds a cut between its old and new place (or right next to the old one), A undoes: skipped, shot order kept', async () => {
+  const { A, B, done } = await room();
+  const cut = (id, start) => ({ id, start, title: id, notes: '', shot: '', img: '', imgPrompt: '', vidPrompt: '', key: '', endKey: '', takes: [] });
+  const add = (p, s) => { p.sections.push(s); p.sections.sort((x, y) => x.start - y.start); };   // the app keeps shots by start
+  const order = c => [...c.app.cur.sections].sort((x, y) => x.start - y.start).map(s => s.id);
+  try {
+    A.edit('move cut', p => { p.sections[1].start = 16; });
+    await until(() => B.shot('s2').start === 16, 'B sees the move');
+    B.edit('cut at 0:13', p => { add(p, cut('b1', 13)); });
+    await until(() => A.shot('b1'), 'A sees B\'s cut');
+    assert.equal(A.undo(), "Can't undo move cut: shot 03 changed since");
+    assert.equal(A.shot('s2').start, 16);
+    assert.deepEqual(order(A), ['s1', 'b1', 's2', 's3']);
+    await converged(A, B);
+    // a cut just short of where it would go back: the shot between would be under the shortest a drag allows
+    A.edit('move cut', p => { p.sections.find(s => s.id === 's3').start = 22; });
+    await until(() => B.shot('s3').start === 22, 'B sees the second move');
+    B.edit('cut at 0:19.9', p => { add(p, cut('b2', 19.9)); });
+    await until(() => A.shot('b2'), 'A sees B\'s second cut');
+    assert.match(A.undo(), /^Can't undo move cut: /);
+    assert.equal(A.shot('s3').start, 22);
+    // a cut elsewhere doesn't get in the way
+    A.edit('move cut', p => { p.sections.find(s => s.id === 's3').start = 23; });
+    await until(() => B.shot('s3').start === 23, 'B sees the third move');
+    B.edit('cut at 0:40', p => { add(p, cut('b3', 40)); });
+    await until(() => A.shot('b3'), 'A sees B\'s far cut');
+    assert.equal(A.undo(), 'Undone: move cut');
+    assert.equal(A.shot('s3').start, 22);
+    await converged(A, B);
+  } finally { done(); }
+});
+
 test('undo and redo while disconnected, then reconnect: both converge on A\'s final state, B\'s offline edit kept', async () => {
   const { A, B, done } = await room();
   try {

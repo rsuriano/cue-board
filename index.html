@@ -74,6 +74,8 @@ w.cueReport={build,scrub,errors:()=>errs.map(e=>Object.assign({},e))};
 const stable=v=>v===undefined?"u":v===null||typeof v!=="object"?JSON.stringify(v):Array.isArray(v)?"["+v.map(stable).join(",")+"]":"{"+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+stable(v[k])).join(",")+"}";
 const same=(a,b)=>stable(a)===stable(b),clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
 const SKIP=new Set(["id","updated","sections"]),MEDIA=new Set(["img","key","endKey"]),GONE=Symbol("gone");
+/* the shortest shot an undone cut move may leave: under the .2 s a drag keeps, so a neighbour exactly there still fits */
+const MIN_GAP=.15;
 /* the changes that turn project `a` into project `b`: meta fields (title, song, refs…), whole shots added or removed
    (with their takes), shot fields, whole takes added or removed, take fields. Order is never stored: shots sort by start */
 function diff(a,b){const out=[];
@@ -126,6 +128,11 @@ function create(o={}){const max=o.max||100,onChange=o.onChange||(()=>{}),onDrop=
   function step(p,from,to,dir){const s=from.pop();if(!s)return{ok:false,empty:true};
     if(s.pid!==p.id){drop([s]);onChange();return{ok:false,step:s,where:"the project"}}
     for(const c of s.changes){const v=current(p,c);if(v===GONE||!same(v,dir==="undo"?c.a:c.b)){drop([s]);onChange();return{ok:false,step:s,where:where(p,c)}}}
+    /* a cut moving back over (or right next to) a cut this step doesn't own, one a collaborator added or moved since:
+       the shots would change order or one would shrink to nothing, so that's a change too */
+    const own=new Set(s.changes.filter(c=>c.k==="shot"||(c.k==="sf"&&c.f==="start")).map(c=>c.id));
+    for(const c of s.changes)if(c.k==="sf"&&c.f==="start"){const x=+(dir==="undo"?c.a:c.b),y=+(dir==="undo"?c.b:c.a),lo=Math.min(x,y)-MIN_GAP,hi=Math.max(x,y)+MIN_GAP;
+      if((p.sections||[]).some(o=>!own.has(o.id)&&o.start>lo&&o.start<hi)){drop([s]);onChange();return{ok:false,step:s,where:where(p,c)}}}
     for(const c of dir==="undo"?[...s.changes].reverse():s.changes)applyChange(p,c,dir==="undo"?c.b:c.a);
     (p.sections||[]).sort((x,y)=>x.start-y.start||(x.id<y.id?-1:1));
     to.push(s);onChange();return{ok:true,step:s}}
