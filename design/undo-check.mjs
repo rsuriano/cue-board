@@ -179,6 +179,24 @@ try {
   a = await state(page);
   check('back in the example: its history is empty too, and the deleted shot stays deleted', !a.undo && a.n === 12, JSON.stringify([a.n, a.undo]));
 
+  // Remove song, then an undo the moment the step exists: the song comes back with its file, and plays
+  const rate = 8000, n = rate / 2, wav = Buffer.alloc(44 + n * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(Math.sin(i / 8) * 8000), 44 + i * 2);
+  await page.setInputFiles('#song', { name: 'tone.wav', mimeType: 'audio/wav', buffer: wav });
+  await page.waitForFunction(() => __A().cur().song && __A().cur().song.name === 'tone.wav', null, { timeout: 8000 }); await sleep(500);
+  const songNow = () => page.evaluate(async () => { const s = await __A().song(); return { playing: s.playing, name: s.playingName, file: !!(s.rec && s.rec.blob), meta: __A().cur().song?.name || '' }; });
+  const sg0 = await songNow(); clearHist(page);
+  const fast = await page.evaluate(async () => {
+    const a = __A(), h = a.hist(), b = document.getElementById('delsong'); b.hidden = false; b.click(); b.click();
+    for (let i = 0; i < 200 && h.peek()?.label !== 'remove song'; i++) await new Promise(r => setTimeout(r, 0));
+    const top = h.peek()?.label; a.doUndo('undo'); return top;
+  });
+  await sleep(600); const sg1 = await songNow();
+  check('Remove song, then undo right away: the song is back and plays, with its file in storage', sg0.playing && sg0.file && fast === 'remove song' && sg1.meta === 'tone.wav' && sg1.playing && sg1.file, JSON.stringify({ sg0, fast, sg1 }));
+  clearHist(page);
+
   // parked files don't outlive the tab: delete a shot with an image, save, reload: the file goes (a boot sweep). While
   // another tab is open, a booting tab leaves what the other one parked (its undo may still need it)
   await page.locator('.card').nth(1).click(); await sleep(200);

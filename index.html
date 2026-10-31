@@ -1869,11 +1869,12 @@ const deleteProject=async()=>{
   if(document.activeElement===$("moreb")&&!$("moreb").getClientRects().length||document.activeElement===document.body)$("newp").focus();
 };
 const resetDelp=twoTap($("delp"),"Delete project","Tap again to delete",deleteProject);
-const removeSong=()=>{
+const removeSong=async()=>{
   closeMore(true);if(!cur)return;stop();
-  /* the file goes with the step, so an undo plays it again (it's read before it's deleted) */
-  const extra={song:{before:null,after:null}},pid=cur.id;
-  idbDo("readonly",st=>st.get(pid)).then(rec=>{if(rec&&rec.blob)extra.song.before={blob:rec.blob,name:rec.name||""};idbDo("readwrite",st=>st.delete(pid))});
+  /* the file goes with the step, so an undo plays it again: read before the step exists (an undo right away has it) */
+  const pid=cur.id,rec=await idbDo("readonly",st=>st.get(pid));if(!cur||cur.id!==pid)return;
+  const extra={song:{before:rec&&rec.blob?{blob:rec.blob,name:rec.name||""}:null,after:null}};
+  idbDo("readwrite",st=>st.delete(pid));
   if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}audio.removeAttribute("src");try{audio.load()}catch(e){}
   hasAudio=false;hRec("remove song",()=>{cur.song=null},{extra});vt=0;scheduleSave();renderAll();toast("Song removed. Your cuts and shots are kept.");
 };
