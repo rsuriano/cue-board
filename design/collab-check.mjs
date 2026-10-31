@@ -376,6 +376,30 @@ try {
     rc.done();
   }
 
+  /* ---- A drags a cut while someone else edits a note on another shot, then A presses Ctrl+Z: only the cut goes back ---- */
+  {
+    const rc = await roomClient(), app = () => A.page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app; return { ids: a.S().map(s => s.id), starts: a.S().map(s => s.start), notes: a.S().map(s => s.notes), top: a.hist().peek()?.label || '', size: a.hist().size() }; });
+    await A.page.click('#zfit'); await sleep(200);
+    const free = await A.page.evaluate(() => { const cv = document.getElementById('tl'), r = cv.getBoundingClientRect(), y = r.top + r.height * .7, xs = []; for (let x = Math.ceil(r.left) + 2; x < r.right - 2; x += 2) { cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true })); if (cv.style.cursor === 'ew-resize') xs.push(x); } return { xs, y }; });
+    const run = free.xs.filter(x => x < (free.xs[0] || 0) + 16), grab = run[Math.floor(run.length / 2)];
+    await A.page.evaluate(() => { document.activeElement?.blur(); window.__CUE_MEDIA_TEST.app.hist().clear(); });
+    const a0 = await app(), far = a0.ids.length - 1, mark = ' [B, mid-drag]';
+    await A.page.mouse.move(grab, free.y); await A.page.mouse.down();
+    for (let i = 1; i <= 4; i++) { await A.page.mouse.move(grab + i * 6, free.y); await sleep(20); }
+    rc.doc.transact(() => { const t = rc.shot(a0.ids[far]).get('notes'); t.insert(t.length, mark); });
+    await sleep(900);
+    for (let i = 5; i <= 8; i++) { await A.page.mouse.move(grab + i * 6, free.y); await sleep(20); }
+    await A.page.mouse.up();
+    const got = await until(async () => (await app()).notes[far].endsWith(mark));
+    const a1 = await app();
+    await A.page.keyboard.press('Control+z'); await sleep(900);
+    const a2 = await app(), bNote = rc.shot(a0.ids[far]).get('notes').toString();
+    check('A drags a cut while B edits a note on another shot; A\'s Ctrl+Z puts the cut back and B\'s note stays (in A and in the room)',
+      !!grab && !!got && a1.size === 1 && a1.top === 'move cut' && a1.starts[1] > a0.starts[1] + .1 && Math.abs(a2.starts[1] - a0.starts[1]) < .001 && a2.notes[far].endsWith(mark) && bNote.endsWith(mark),
+      JSON.stringify({ grab: !!grab, got: !!got, step: [a1.size, a1.top], start: [a0.starts[1], a1.starts[1], a2.starts[1]], aNote: a2.notes[far].slice(-20), bNote: bNote.slice(-20) }));
+    rc.done();
+  }
+
   /* ---- C: has a local project; a wrong token first, then the right link as a new project ---- */
   C = await newPage('C');
   await C.page.goto(app); await C.page.waitForSelector('.card'); await sleep(400);
