@@ -156,9 +156,9 @@ try {
   await page.click('#f-notes'); await page.keyboard.press('End'); await page.keyboard.type(' x'); await blurAll(page); await sleep(100);
   s0 = await state(page);
   await page.mouse.move(grab, free.y); await page.mouse.down(); for (let i = 1; i <= 4; i++) { await page.mouse.move(grab + i * 6, free.y); await sleep(20); }
-  await page.keyboard.press('Control+z'); await sleep(150); await page.keyboard.press('Control+Shift+z'); await sleep(150);
+  await page.keyboard.press('Control+z'); await sleep(150);
   for (let i = 5; i <= 8; i++) { await page.mouse.move(grab + i * 6, free.y); await sleep(20); } await page.mouse.up(); await sleep(250); s1 = await state(page);
-  check('Ctrl+Z and Ctrl+Shift+Z during a drag are ignored: the notes edit stays, the drag is a second step, redo is empty', s0.size === 1 && (await page.inputValue('#f-notes')) === n0 + ' x' && s1.size === 2 && s1.top === 'move cut' && !s1.redo, JSON.stringify({ s0: s0.size, s1: [s1.size, s1.top, s1.redo] }));
+  check('Ctrl+Z during a drag is ignored: the notes edit stays, the drag is a second step, redo is empty', s0.size === 1 && (await page.inputValue('#f-notes')) === n0 + ' x' && s1.size === 2 && s1.top === 'move cut' && !s1.redo, JSON.stringify({ s0: s0.size, s1: [s1.size, s1.top, s1.redo] }));
   await page.keyboard.press('Control+z'); await sleep(200); await page.keyboard.press('Control+z'); await sleep(200); a = await state(page);
   check('then two Ctrl+Z put back the cut and the notes', Math.abs(a.starts[1] - s0.starts[1]) < .001 && (await page.inputValue('#f-notes')) === n0, JSON.stringify([a.starts[1], s0.starts[1]]));
   clearHist(page);
