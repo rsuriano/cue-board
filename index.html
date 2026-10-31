@@ -1400,19 +1400,20 @@ const TAB=uid("t"),PARK_KEY="cueboard-parked:",TAB_LOCK="cueboard-tab:";
 function saveParked(){try{if(parked.size)localStorage.setItem(PARK_KEY+TAB,JSON.stringify([...parked.keys()]));else localStorage.removeItem(PARK_KEY+TAB)}catch(e){}}
 try{navigator.locks.request(TAB_LOCK+TAB,()=>new Promise(()=>{})).catch(()=>{})}catch(e){}
 async function openTabs(){try{const q=await navigator.locks.query();return new Set((q.held||[]).map(l=>l.name).filter(n=>n.startsWith(TAB_LOCK)).map(n=>n.slice(TAB_LOCK.length)))}catch(e){return null}}
-/* a few seconds after boot: media files no saved project uses go. What a closed tab parked, always (without the locks
-   API every other tab counts as closed). Any other unused file (a crash before a save, an upload whose project was never
-   saved) only when no other tab is open: another tab may be holding it for its undo or about to save the project that
-   uses it. Files this tab has shown or made (mediaCache) and the open project's files are never touched */
+/* a few seconds after boot: what a closed tab parked for its undo goes, if no saved project uses it. Only those files:
+   any other unused file stays (it may be mid-import, or belong to a tab running an older version). Without the locks API
+   a closed tab can't be told from an open one, so nothing is swept. Files this tab has shown or made (mediaCache) and
+   the open project's files are never touched */
 async function sweepMedia(){
-  const tabs=await openTabs(),alone=!!tabs&&![...tabs].some(t=>t!==TAB),closed=new Set();
+  const tabs=await openTabs(),closed=new Set();if(!tabs)return;
   try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(!k||!k.startsWith(PARK_KEY))continue;const t=k.slice(PARK_KEY.length);
-    if(t===TAB||(tabs&&tabs.has(t)))continue;
+    if(t===TAB||tabs.has(t))continue;
     try{(JSON.parse(localStorage.getItem(k))||[]).forEach(id=>closed.add(id))}catch(e){}localStorage.removeItem(k)}}catch(e){}
-  const [keys,ps]=await Promise.all([idbS("media","readonly",st=>st.getAllKeys()),idbS("projects","readonly",st=>st.getAll())]);
-  if(!Array.isArray(keys)||!Array.isArray(ps))return;
+  if(!closed.size)return;
+  const ps=await idbS("projects","readonly",st=>st.getAll());
+  if(!Array.isArray(ps))return;
   const used=new Set([...ps,cur,...projects].flatMap(projectMediaIds));
-  for(const id of keys)if(typeof id==="string"&&!used.has(id)&&!mediaCache.has(id)&&!parked.has(id)&&!toRelease.has(id)&&(alone||closed.has(id)))assets.delete(id).catch(()=>{})}
+  for(const id of closed)if(typeof id==="string"&&!used.has(id)&&!mediaCache.has(id)&&!parked.has(id)&&!toRelease.has(id))assets.delete(id).catch(()=>{})}
 
 /* now=true for typing in a shared text field: it goes to the room at once, so remote edits merge around the caret */
 function scheduleSave(now){if(!cur)return;dirty=true;setStatus("busy","Saving");clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush()},700);if(csess)csess.changed(!!now)}

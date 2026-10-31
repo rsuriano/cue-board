@@ -41,6 +41,7 @@ const blurAll = page => page.evaluate(() => document.activeElement && document.a
 const clearHist = page => page.evaluate(() => __A().hist().clear());
 const hasBlob = (page, id) => page.evaluate(async id => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); }); return new Promise(r => { const g = d.transaction('media').objectStore('media').get(id); g.onsuccess = () => r(!!g.result); g.onerror = () => r(false); }); }, id);
 const flush = page => page.evaluate(() => __A().flushNow());
+const putBlob = (page, id) => page.evaluate(async id => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); }); return new Promise(r => { const t = d.transaction('media', 'readwrite'); t.objectStore('media').put({ blob: new Blob(['x'], { type: 'image/png' }), type: 'image/png' }, id); t.oncomplete = () => r(true); }); }, id);
 
 try {
   // ======== desktop ========
@@ -225,16 +226,39 @@ try {
   await page.keyboard.press('Delete'); await sleep(120); await page.keyboard.press('Delete'); await sleep(200); await flush(page); await sleep(400);
   const parkedLs = () => page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('cueboard-parked:')).map(k => localStorage.getItem(k)).join('|'));
   check('a deleted shot\'s image is parked, and the parked list is in localStorage', !!leak && await hasBlob(page, leak) && (await parkedLs()).includes(leak), JSON.stringify({ leak, ls: await parkedLs() }));
+  // an unused file nobody parked (mid-import, or another version's upload) is never swept, with or without another tab
+  const orphan = 'm_orphan_test';
+  await putBlob(page, orphan);
   const tab2 = await page.context().newPage(); await tab2.goto(origin + '/index.html'); await tab2.waitForSelector('.card'); await sleep(3800);
   check('another tab booting while this one is open leaves its parked file alone', await hasBlob(page, leak));
+  check('another tab booting leaves an unused file nobody parked alone', await hasBlob(page, orphan));
   await tab2.close(); await sleep(300);
   await page.reload(); await page.waitForSelector('.card', { timeout: 15000 }); await sleep(3800);
   check('after a reload (no other tab open) the parked file is gone from browser storage, and so is the list', !(await hasBlob(page, leak)) && !(await parkedLs()).includes(leak), JSON.stringify({ blob: await hasBlob(page, leak), ls: await parkedLs() }));
+  check('after a reload alone, an unused file nobody parked is still in browser storage', await hasBlob(page, orphan));
   a = await state(page);
   const kept = await page.evaluate(() => [...new Set([...(__A().cur().refs || []), ...__A().S().flatMap(s => [s.img, s.key, s.endKey, ...(s.takes || []).map(t => t.media)])].filter(Boolean))]);
   const missing = []; for (const id of kept) if (!(await hasBlob(page, id))) missing.push(id);
   check('the project itself is as saved: the shot stays deleted, every file it uses is still here', a.n === 11 && !a.undo && kept.length > 0 && !missing.length, JSON.stringify({ n: a.n, files: kept.length, missing }));
   await page.context().close();
+
+  // without the Web Locks API an open tab can't be told from a closed one: a second tab opening sweeps nothing
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctx.route('**/*', r => (r.request().url().startsWith(origin) || /^(data|blob):/.test(r.request().url()) ? r.continue() : r.abort()));
+    await ctx.addInitScript(() => { Object.defineProperty(Navigator.prototype, 'locks', { get: () => undefined, configurable: true }); window.__CUE_MEDIA_TEST = {}; window.__A = () => window.__CUE_MEDIA_TEST.app; });
+    const p1 = await ctx.newPage(); p1.on('pageerror', e => errs.push(e.message));
+    await p1.goto(origin + '/index.html'); await p1.waitForSelector('.card', { timeout: 15000 }); await sleep(600);
+    await p1.locator('.card').nth(1).click(); await sleep(200);
+    await p1.setInputFiles('#f-img', { name: 'shot3.png', mimeType: 'image/png', buffer: PNG }); await sleep(600);
+    await clearHist(p1); await blurAll(p1);
+    const held = await p1.evaluate(() => __A().S().find(s => s.id === document.querySelector('.card.sel').dataset.id).img);
+    await p1.keyboard.press('Delete'); await sleep(120); await p1.keyboard.press('Delete'); await sleep(200); await flush(p1); await sleep(400);
+    const parkedOk = await p1.evaluate(id => !navigator.locks && __A().parked().has(id), held);
+    const p2 = await ctx.newPage(); await p2.goto(origin + '/index.html'); await p2.waitForSelector('.card'); await sleep(3800);
+    check('without the locks API, a second tab opening leaves the first tab\'s parked file alone', parkedOk && await hasBlob(p1, held), JSON.stringify({ parkedOk, blob: await hasBlob(p1, held) }));
+    await ctx.close();
+  }
 
   // ======== phone ========
   for (const [w, h] of [[390, 844], [390, 700], [320, 568]]) {
