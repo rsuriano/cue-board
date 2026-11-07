@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { tmpDir, server } from './helpers.mjs';
 import { AccessStore, canCreateRoom } from '../src/access.mjs';
 import { cleanRestoreInput, matchOrder } from '../src/restore.mjs';
@@ -118,6 +118,30 @@ test('(rs-b) every miss answers the same 404, whichever field was wrong: no such
     }
     assert.equal(t.api.calls.length, before);
     assert.equal((await fetch(t.srv.httpUrl + '/access/restore')).status, 404, 'GET is not a route');
+  } finally { await t.close(); }
+});
+
+test('(rs-g) refunded through the webhook (or bin/revoke-order): restore can\'t bring the token back, even while the Lemon Squeezy API still says "paid"; the same revoked check, nothing reissued', async () => {
+  const t = await setup({ orders: [lsOrder(), lsOrder({ id: '5550002', number: 32 })], restoreFails: 100 });
+  try {
+    const r = await restore(t.srv, { orderNumber: '31', email: EMAIL }); assert.equal(r.status, 200);
+    const a = new AccessStore(t.dir);
+    assert.equal(canCreateRoom(a, { verifiedToken: r.body.token }).ok, true);
+    const body = { meta: { event_name: 'order_refunded', test_mode: false }, data: { type: 'orders', id: '5550001', attributes: { status: 'refunded', refunded: true } } };
+    const raw = JSON.stringify(body);
+    const hook = await fetch(t.srv.httpUrl + '/webhooks/lemonsqueezy', { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature': createHmac('sha256', SECRET).update(raw).digest('hex') }, body: raw });
+    assert.equal(hook.status, 200);
+    assert.equal(canCreateRoom(a, { verifiedToken: r.body.token }).ok, false);
+    const entry = () => tokens(t.dir).find(x => x.orderId === '5550001'), was = JSON.stringify(entry());
+    const again = await restore(t.srv, { orderNumber: '31', email: EMAIL });
+    assert.equal(again.status, 404); assert.equal(again.body.error, 'restore_no_match');
+    assert.equal(JSON.stringify(entry()), was, 'same token hash, still revoked: nothing reissued');
+    assert.deepEqual(new AccessStore(t.dir, { orderSecret: SECRET }).issueFromOrder('5550001'), { ok: false, reason: 'revoked' });
+    // the CLI path lands on the same check
+    assert.equal((await restore(t.srv, { orderNumber: '32', email: EMAIL })).status, 200);
+    assert.equal(a.revokeOrder('5550002'), 'revoked');
+    assert.equal((await restore(t.srv, { orderNumber: '32', email: EMAIL })).status, 404);
+    assert.equal(tokens(t.dir).length, 2);
   } finally { await t.close(); }
 });
 

@@ -13,6 +13,8 @@
      body over MAX_BODY                                         413
      X-Signature missing or not hex HMAC-SHA256(secret, raw body)  401, before the body is parsed
      not JSON                                                   400
+     order_refunded (full or partial)                           200: AccessStore.revokeOrder marks the order's token
+                                                                revoked (kept, not deleted); an order with no token: nothing
      not order_created, not status "paid", another variant, no or malformed meta.custom_data.claim_id
                                                                 200 { ok: true } and nothing else (acked, so it isn't retried)
      a paid order of our variant                                200: AccessStore.issueFromClaim, idempotent by order id
@@ -79,6 +81,12 @@ export function createLemonSqueezyWebhook(o) {
     const attrs = data && typeof data === 'object' && data.attributes && typeof data.attributes === 'object' ? data.attributes : {};
     const orderId = data && (typeof data.id === 'string' || typeof data.id === 'number') ? String(data.id).slice(0, 64) : '';
     const ack = () => json(res, 200, { ok: true });
+    if (event === 'order_refunded') {
+      // full or partial (Lemon Squeezy sends this one event for both): the order's token stops at its next use
+      const r = o.access.revokeOrder(orderId);
+      log.info(r === 'revoked' ? 'lemonsqueezy order refunded: token revoked' : r === 'already' ? 'lemonsqueezy order refunded: already revoked' : 'lemonsqueezy order refunded: no token for it', { order: orderId, testMode: meta.test_mode === true });
+      ack(); return;
+    }
     if (event !== 'order_created') { log.info('lemonsqueezy webhook ignored: event', { event }); ack(); return; }
     const problem = paidOrderProblem(attrs, variantId);
     if (problem) { log.info('lemonsqueezy webhook ignored: ' + problem.reason, { order: orderId, ...problem.detail }); ack(); return; }

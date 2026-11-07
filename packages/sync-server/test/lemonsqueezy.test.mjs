@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHmac, randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { tmpDir, server } from './helpers.mjs';
 import { AccessStore, canCreateRoom, CLAIM_TTL_MS } from '../src/access.mjs';
 
@@ -32,6 +34,8 @@ async function poll(srv, claimId) {
   return { status: r.status, body: await r.json() };
 }
 const tokens = dir => new AccessStore(dir).readVerified().tokens;
+const bin = n => fileURLToPath(new URL(`../bin/${n}.mjs`, import.meta.url));
+const cli = (name, args, dir) => spawnSync(process.execPath, [bin(name), ...args, '--data-dir', dir], { encoding: 'utf8' });
 const capture = () => {
   const lines = [], rec = lv => (msg, fields = {}) => lines.push(JSON.stringify({ level: lv, msg, ...fields }));
   return { lines, log: { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') } };
@@ -182,6 +186,65 @@ test('(ls-h) the claim id travels only in a POST body: GET /access/claim?claim_i
     assert.equal((await fetch(srv.httpUrl + '/access/claim', { method: 'POST', body: 'not json' })).status, 400);
     assert.equal((await poll(srv, claimId)).body.status, 'ready', 'the body is');
   } finally { await srv.close(); }
+});
+
+test('(ls-i) a signed order_refunded revokes that order\'s token on the running server (no restart): canCreateRoom false, /verify 401, the entry kept and marked; a refund for an unknown order is a 200 no-op; a forged one does nothing', async () => {
+  const dir = tmpDir(), cap = capture(), srv = await server(dir, 0, { ...LS, log: cap.log });
+  try {
+    const claimId = randomUUID();
+    assert.equal((await hook(srv, order({ claimId, orderId: '4004' }))).status, 200);
+    const other = randomUUID(); assert.equal((await hook(srv, order({ claimId: other, orderId: '4005' }))).status, 200);
+    const tok = (await poll(srv, claimId)).body.token, tok2 = (await poll(srv, other)).body.token;
+    const a = new AccessStore(dir);
+    assert.equal(canCreateRoom(a, { verifiedToken: tok }).ok, true);
+    // forged: unsigned refund, 401, the token still stands
+    assert.equal((await hook(srv, order({ event: 'order_refunded', orderId: '4004', status: 'refunded' }), { sig: null })).status, 401);
+    assert.equal(canCreateRoom(a, { verifiedToken: tok }).ok, true);
+    // the real one (status "refunded", or "partial_refund": the same event, the same answer)
+    const refund = order({ event: 'order_refunded', orderId: '4004', status: 'partial_refund' });
+    let r = await hook(srv, refund); assert.equal(r.status, 200); assert.deepEqual(JSON.parse(r.text), { ok: true });
+    assert.deepEqual(canCreateRoom(a, { verifiedToken: tok }), { ok: false, reason: 'unverified' });
+    assert.equal((await fetch(srv.httpUrl + '/verify', { headers: { authorization: 'Bearer ' + tok } })).status, 401, 'the server already in memory refuses it');
+    const room = await fetch(srv.httpUrl + '/rooms', { method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'application/json' }, body: '{"name":"Refunded"}' });
+    assert.equal(room.status, 401);
+    assert.deepEqual((await poll(srv, claimId)).body, { status: 'unknown' }, 'the claim stops handing it out too');
+    // kept, marked with when; the other order untouched
+    const e = tokens(dir).find(t => t.orderId === '4004');
+    assert.ok(e && !Number.isNaN(Date.parse(e.revoked))); assert.equal(tokens(dir).length, 2);
+    assert.equal(canCreateRoom(a, { verifiedToken: tok2 }).ok, true);
+    // a retried refund keeps the first timestamp; a replayed order_created doesn't bring the token back
+    const when = e.revoked;
+    assert.equal((await hook(srv, refund)).status, 200);
+    assert.equal((await hook(srv, order({ orderId: '4004' }))).status, 200);
+    assert.equal(tokens(dir).find(t => t.orderId === '4004').revoked, when); assert.equal(tokens(dir).length, 2);
+    assert.equal(canCreateRoom(a, { verifiedToken: tok }).ok, false);
+    // unknown order, malformed order id, no data: acked, nothing written, nothing crashes
+    const before = fs.readFileSync(path.join(dir, 'verified.json'), 'utf8');
+    for (const b of [order({ event: 'order_refunded', orderId: '9999' }), order({ event: 'order_refunded', orderId: '../x' }), { meta: { event_name: 'order_refunded' } }]) {
+      r = await hook(srv, b); assert.equal(r.status, 200); assert.deepEqual(JSON.parse(r.text), { ok: true });
+    }
+    assert.equal(fs.readFileSync(path.join(dir, 'verified.json'), 'utf8'), before);
+    assert.ok(cap.lines.some(l => /token revoked/.test(l) && /"order":"4004"/.test(l)));
+    assert.ok(cap.lines.some(l => /no token for it/.test(l) && /"order":"9999"/.test(l)));
+    assert.equal((await fetch(srv.httpUrl + '/health')).status, 200);
+  } finally { await srv.close(); }
+});
+
+test('(ls-j) bin/revoke-order.mjs: revokes a paid order\'s token (kept, marked), says so again for a second run, exits 1 for an unknown order and 64 without one', () => {
+  const dir = tmpDir(), a = new AccessStore(dir), claimId = randomUUID();
+  a.issueFromClaim(claimId, { orderId: '6006' });
+  const tok = a.claimStatus(claimId).token;
+  const redeemed = a.redeem(a.createCode({ label: 'Nacho' }).code);
+  let r = cli('revoke-order', ['6006'], dir);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /revoked order 6006/);
+  assert.deepEqual(canCreateRoom(a, { verifiedToken: tok }), { ok: false, reason: 'unverified' });
+  assert.equal(canCreateRoom(a, { verifiedToken: redeemed.token }).ok, true, 'code tokens untouched');
+  const e = a.readVerified().tokens.find(t => t.orderId === '6006'); assert.ok(e.revoked); assert.equal(a.readVerified().tokens.length, 2);
+  r = cli('revoke-order', ['6006'], dir); assert.equal(r.status, 0); assert.match(r.stdout, /already revoked/);
+  assert.equal(a.readVerified().tokens.find(t => t.orderId === '6006').revoked, e.revoked);
+  r = cli('revoke-order', ['7007'], dir); assert.equal(r.status, 1); assert.match(r.stderr, /no paid order 7007/);
+  r = cli('revoke-order', [], dir); assert.equal(r.status, 64);
+  assert.equal(fs.statSync(a.verifiedFile).mode & 0o777, 0o600);
 });
 
 test('(ls-g) nothing secret leaks: logs and answers never carry the signing secret, the claim id, the token, the email or a stack trace; the claim poll is rate-limited per IP', async () => {

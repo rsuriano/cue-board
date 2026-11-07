@@ -8,10 +8,7 @@
    Then AccessStore.issueFromOrder hands back that order's token (the same one every time). The route (api.mjs) answers
    every miss the same way, whichever field was wrong, and rate-limits attempts per IP and for everyone.
    Nothing here logs or returns the email, the order number, the API key or Lemon Squeezy's answer.
-
-   UNVERIFIED against the live docs when written (no web access then): the endpoint, the filter[user_email] filter, the
-   JSON:API headers, page[size] ≤ 100 with links.next, and the attribute names below are from memory of
-   https://docs.lemonsqueezy.com/api/orders. Check them before setting LEMONSQUEEZY_API_KEY in production. */
+   API reference: https://docs.lemonsqueezy.com/api/orders */
 import { paidOrderProblem } from './webhooks/lemonsqueezy.mjs';
 
 export const LS_API = 'https://api.lemonsqueezy.com';

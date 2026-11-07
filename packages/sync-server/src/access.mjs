@@ -8,12 +8,12 @@
                     written by the CLI only (bin/create-code.mjs, bin/revoke-code.mjs); the server reads it on every use,
                     so a code made or revoked while the server runs counts at once, and the two never race on one file
      verified.json  { tokens: [{ sha256, code: <code id>, created }] }
-                    written by the server only (a redeem, a paid order); the CLI reads it (list-codes shows how many
-                    redeemed each code). A token bought through Lemon Squeezy (webhooks/lemonsqueezy.mjs) has the same
-                    shape with code: null, plus source: 'lemonsqueezy', orderId, label and box (the token sealed under
-                    the webhook secret, so POST /access/restore hands back the same token); one entry per order; it
-                    stands while its entry exists and has no `revoked` (the operator deletes or marks the entry, e.g.
-                    after a refund)
+                    written by the server (a redeem, a paid order, a refund); the CLI reads it (list-codes shows how many
+                    redeemed each code) and writes it only for bin/revoke-order.mjs (a refund the webhook missed). A
+                    token bought through Lemon Squeezy (webhooks/lemonsqueezy.mjs) has the same shape with code: null,
+                    plus source: 'lemonsqueezy', orderId, label and box (the token sealed under the webhook secret, so
+                    POST /access/restore hands back the same token); one entry per order; it stands while its entry
+                    has no `revoked` (set by revokeOrder: an order_refunded webhook or bin/revoke-order.mjs)
      claims.json    { claims: [{ sha256, orderId, created, expires, box }] }  a paid order waiting for its browser to
                     collect the token (POST /access/claim). sha256 is the hash of the browser's claim id; box is the token
                     encrypted with a key derived from the claim id, so the file alone gives neither. Entries are ready
@@ -184,6 +184,22 @@ export class AccessStore {
     v.tokens.push(n);
     writeJson(this.verifiedFile, v);
     return { ok: true, token, label: n.label, reused: false, replaced: false };
+  }
+
+  /** Server (an order_refunded webhook) or CLI (bin/revoke-order.mjs): a paid order's token stops working. The entry is
+      marked `revoked: <iso>` and kept (history, and so a replayed order_created stays a duplicate); identify() already
+      refuses a revoked paid entry, and issueFromOrder won't hand it back on a restore. Read from disk on every use, so
+      it counts at the token's next request. An order with no entry (the webhook never issued one) is `unknown`.
+      @param {string} orderId @param {{ now?: number }} [o] @returns {'revoked' | 'already' | 'unknown'} */
+  revokeOrder(orderId, { now = Date.now() } = {}) {
+    orderId = String(orderId ?? '');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return 'unknown';
+    const v = this.readVerified(), e = v.tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
+    if (!e) return 'unknown';
+    if (e.revoked) return 'already';
+    e.revoked = new Date(now).toISOString();
+    writeJson(this.verifiedFile, v);
+    return 'revoked';
   }
 
   /** Server: what POST /access/claim answers. A well-formed claim id the server hasn't seen is `pending` (the webhook may

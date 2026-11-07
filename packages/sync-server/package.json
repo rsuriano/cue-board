@@ -19,6 +19,7 @@
     "create-code": "node bin/create-code.mjs",
     "list-codes": "node bin/list-codes.mjs",
     "revoke-code": "node bin/revoke-code.mjs",
+    "revoke-order": "node bin/revoke-order.mjs",
     "attach-owner": "node bin/attach-owner.mjs",
     "list-reports": "node bin/list-reports.mjs",
     "show-report": "node bin/show-report.mjs",
