@@ -12,6 +12,8 @@
    REPORTS_PER_HOUR (5: problem reports per IP per hour) · REPORTS_PER_DAY (200: from everyone) · MAX_REPORTS (500 kept)
    LEMONSQUEEZY_WEBHOOK_SECRET (the webhook's signing secret, from the Lemon Squeezy dashboard) · LEMONSQUEEZY_VARIANT_ID
      (the $9 access variant; orders for anything else are ignored). Without both, POST /webhooks/lemonsqueezy answers 503
+   LEMONSQUEEZY_API_KEY (an API key from the Lemon Squeezy dashboard, used only to look up one order when a buyer restores
+     access on a new device: POST /access/restore). Without it, or without the two above, that route answers 503
    SERVE_DEMO=1 (serve demo/ at /demo/, dev only) · LOG_LEVEL (info) */
 import { startServer } from './server.mjs';
 import { createLogger } from './log.mjs';
@@ -33,7 +35,7 @@ srv = await startServer({
   corsOrigins: (env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
   maxRooms: num(env.MAX_ROOMS, 10_000), maxRoomBytes: num(env.MAX_ROOM_BYTES, 64 * 1024 * 1024), createPerHour: num(env.CREATE_PER_HOUR, 30),
   reportsPerHour: num(env.REPORTS_PER_HOUR, 5), reportsPerDay: num(env.REPORTS_PER_DAY, 200), maxReports: num(env.MAX_REPORTS, 500),
-  lemonSqueezy: { secret: env.LEMONSQUEEZY_WEBHOOK_SECRET || '', variantId: (env.LEMONSQUEEZY_VARIANT_ID || '').trim() },
+  lemonSqueezy: { secret: env.LEMONSQUEEZY_WEBHOOK_SECRET || '', variantId: (env.LEMONSQUEEZY_VARIANT_ID || '').trim(), apiKey: (env.LEMONSQUEEZY_API_KEY || '').trim() },
   media: {
     relayRoomBytesPerSec: num(env.RELAY_ROOM_BYTES_PER_SEC, 8 * 1024 * 1024), relayIpBytesPerSec: num(env.RELAY_IP_BYTES_PER_SEC, 4 * 1024 * 1024),
     relayMaxTransferBytes: num(env.RELAY_MAX_TRANSFER_BYTES, RELAY_MAX_FILE),

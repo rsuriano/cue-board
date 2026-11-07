@@ -10,17 +10,19 @@
      verified.json  { tokens: [{ sha256, code: <code id>, created }] }
                     written by the server only (a redeem, a paid order); the CLI reads it (list-codes shows how many
                     redeemed each code). A token bought through Lemon Squeezy (webhooks/lemonsqueezy.mjs) has the same
-                    shape with code: null, plus source: 'lemonsqueezy', orderId and label; it stands while its entry
-                    exists and has no `revoked` (the operator deletes or marks the entry, e.g. after a refund)
+                    shape with code: null, plus source: 'lemonsqueezy', orderId, label and box (the token sealed under
+                    the webhook secret, so POST /access/restore hands back the same token); one entry per order; it
+                    stands while its entry exists and has no `revoked` (the operator deletes or marks the entry, e.g.
+                    after a refund)
      claims.json    { claims: [{ sha256, orderId, created, expires, box }] }  a paid order waiting for its browser to
-                    collect the token (GET /access/claim). sha256 is the hash of the browser's claim id; box is the token
+                    collect the token (POST /access/claim). sha256 is the hash of the browser's claim id; box is the token
                     encrypted with a key derived from the claim id, so the file alone gives neither. Entries are ready
                     until `expires` (CLAIM_TTL_MS), then answer unknown, and are dropped a day later (on any write)
    Codes and tokens are random, stored hashed, compared in constant time and never logged. Revoking a code revokes its
    tokens: a token counts only while its code exists and isn't revoked (checked on every use, nothing cached). */
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash, randomBytes, timingSafeEqual, createCipheriv, createDecipheriv } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual, createCipheriv, createDecipheriv } from 'node:crypto';
 
 const SHA256_HEX = /^[0-9a-f]{64}$/i;
 /** a claim id: a v4 UUID made by the browser (crypto.randomUUID), 122 random bits */
@@ -41,16 +43,20 @@ function findHash(/** @type {any[]} */ list, /** @type {string} */ token) {
 /* a claim's token at rest: AES-256-GCM under a key derived from the claim id (which only the buyer's browser and the
    webhook body carry), so claims.json on its own reveals no token */
 const claimKey = (/** @type {string} */ claimId) => createHash('sha256').update('cue-claim-key\0' + claimId).digest();
-function seal(/** @type {string} */ claimId, /** @type {string} */ token) {
-  const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', claimKey(claimId), iv);
+/* a paid order's token at rest, kept so POST /access/restore can hand the same token back (a new one would lock out the
+   devices already using the first): AES-256-GCM under a key derived from the webhook signing secret (env, not in
+   DATA_DIR) and the order id, so verified.json on its own still reveals no token */
+const orderKey = (/** @type {string} */ secret, /** @type {string} */ orderId) => createHmac('sha256', secret).update('cue-order-key\0' + orderId).digest();
+function seal(/** @type {Buffer} */ key, /** @type {string} */ token) {
+  const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', key, iv);
   const ct = Buffer.concat([c.update(token, 'utf8'), c.final()]);
   return [iv, c.getAuthTag(), ct].map(b => b.toString('base64url')).join('.');
 }
 /** @returns {string | null} */
-function unseal(/** @type {string} */ claimId, /** @type {unknown} */ box) {
+function unseal(/** @type {Buffer} */ key, /** @type {unknown} */ box) {
   try {
     const [iv, tag, ct] = String(box).split('.').map(p => Buffer.from(p, 'base64url'));
-    const d = createDecipheriv('aes-256-gcm', claimKey(claimId), iv); d.setAuthTag(tag);
+    const d = createDecipheriv('aes-256-gcm', key, iv); d.setAuthTag(tag);
     return Buffer.concat([d.update(ct), d.final()]).toString('utf8');
   } catch { return null; }
 }
@@ -67,8 +73,9 @@ function writeJson(file, v) {
 
 /** The operator's side: codes (CLI) and what the server needs to read and write. */
 export class AccessStore {
-  /** @param {string} dir DATA_DIR */
-  constructor(dir) { this.dir = path.resolve(dir); fs.mkdirSync(this.dir, { recursive: true }); }
+  /** @param {string} dir DATA_DIR @param {{ orderSecret?: string }} [o] orderSecret: LEMONSQUEEZY_WEBHOOK_SECRET, the key
+      paid tokens are sealed under for restores (without it nothing is sealed and issueFromOrder refuses) */
+  constructor(dir, { orderSecret = '' } = {}) { this.dir = path.resolve(dir); this.orderSecret = String(orderSecret || ''); fs.mkdirSync(this.dir, { recursive: true }); }
   get codesFile() { return path.join(this.dir, 'codes.json'); }
   get verifiedFile() { return path.join(this.dir, 'verified.json'); }
   get claimsFile() { return path.join(this.dir, 'claims.json'); }
@@ -136,14 +143,50 @@ export class AccessStore {
     const c = this.readClaims(), h = hex(claimId);
     // a claim id seen again (the same browser's second order) points at the newest token
     c.claims = c.claims.filter(x => x && typeof x.expires === 'number' && x.expires + CLAIM_KEEP_MS > now && x.sha256 !== h);
-    c.claims.push({ sha256: h, orderId, created, expires: now + CLAIM_TTL_MS, box: seal(claimId, token) });
+    c.claims.push({ sha256: h, orderId, created, expires: now + CLAIM_TTL_MS, box: seal(claimKey(claimId), token) });
     writeJson(this.claimsFile, c);
-    v.tokens.push({ sha256: hex(token), code: null, created, source: 'lemonsqueezy', orderId, label: 'Paid order ' + orderId });
+    v.tokens.push(this.#paidEntry(token, orderId, created));
     writeJson(this.verifiedFile, v);
     return { ok: true, duplicate: false };
   }
 
-  /** Server: what GET /access/claim answers. A well-formed claim id the server hasn't seen is `pending` (the webhook may
+  /** a verified.json entry for a paid order; with orderSecret, the token sealed for restores (`box`) */
+  #paidEntry(/** @type {string} */ token, /** @type {string} */ orderId, /** @type {string} */ created) {
+    /** @type {any} */ const e = { sha256: hex(token), code: null, created, source: 'lemonsqueezy', orderId, label: 'Paid order ' + orderId };
+    if (this.orderSecret) e.box = seal(orderKey(this.orderSecret, orderId), token);
+    return e;
+  }
+
+  /** Server: POST /access/restore, for an order already checked against the Lemon Squeezy API (paid, our variant, the
+      buyer's email). One token per order, as the webhook keeps it: the order's existing token is handed back (every
+      restore, on any device, gets the same one, and devices already using it keep working); an order the webhook never
+      reached gets its token now (a later webhook for it is a duplicate). Only when the stored token can't be opened
+      (sealed under a signing secret since rotated, or stored before sealing existed) is it replaced, which ends it on
+      other devices; that's `replaced: true`, for the log. An entry the operator revoked (a refund) stays revoked.
+      @param {string} orderId @param {{ now?: number }} [o]
+      @returns {{ ok: true, token: string, label: string, reused: boolean, replaced: boolean } | { ok: false, reason: 'bad_order' | 'revoked' | 'no_secret' }} */
+  issueFromOrder(orderId, { now = Date.now() } = {}) {
+    if (!this.orderSecret) return { ok: false, reason: 'no_secret' };
+    orderId = String(orderId ?? '');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return { ok: false, reason: 'bad_order' };
+    const v = this.readVerified(), e = v.tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
+    if (e && e.revoked) return { ok: false, reason: 'revoked' };
+    const key = orderKey(this.orderSecret, orderId);
+    if (e) {
+      const old = e.box ? unseal(key, e.box) : null;
+      if (old && typeof e.sha256 === 'string' && SHA256_HEX.test(e.sha256) && timingSafeEqual(Buffer.from(e.sha256, 'hex'), hash(old))) return { ok: true, token: old, label: String(e.label || 'Paid'), reused: true, replaced: false };
+      const token = randomBytes(32).toString('base64url');
+      e.sha256 = hex(token); e.box = seal(key, token); e.replaced = new Date(now).toISOString();
+      writeJson(this.verifiedFile, v);
+      return { ok: true, token, label: String(e.label || 'Paid'), reused: false, replaced: true };
+    }
+    const token = randomBytes(32).toString('base64url'), n = this.#paidEntry(token, orderId, new Date(now).toISOString());
+    v.tokens.push(n);
+    writeJson(this.verifiedFile, v);
+    return { ok: true, token, label: n.label, reused: false, replaced: false };
+  }
+
+  /** Server: what POST /access/claim answers. A well-formed claim id the server hasn't seen is `pending` (the webhook may
       still be on its way; the browser gives up after its own timeout); a claim past its TTL, or whose token was revoked
       meanwhile, is `unknown`. @returns {{ status: 'pending' } | { status: 'ready', token: string, label: string } | { status: 'unknown' }} */
   claimStatus(/** @type {string} */ claimId, now = Date.now()) {
@@ -151,7 +194,7 @@ export class AccessStore {
     const c = findHash(this.readClaims().claims, claimId);
     if (!c) return { status: 'pending' };
     if (!(typeof c.expires === 'number' && c.expires > now)) return { status: 'unknown' };
-    const token = unseal(claimId, c.box), id = token ? this.identify(token) : null;
+    const token = unseal(claimKey(claimId), c.box), id = token ? this.identify(token) : null;
     return token && id ? { status: 'ready', token, label: id.label } : { status: 'unknown' };
   }
 

@@ -20,10 +20,18 @@
                                    report allow-list (src/reports.mjs) and stored under DATA_DIR/reports/, never logged.
                                    400 bad_request · 413 too_large (over 16 KiB) · 429 report_limit (per IP: reportsPerHour,
                                    5; everyone: reportsPerDay, 200)
-     GET    /access/claim?claim_id=    no token: the claim id (a v4 UUID the browser made before a Lemon Squeezy checkout) is
-                                   the secret → 200 { status: 'pending' } (not seen yet: the webhook may be on its way) ·
+     POST   /access/claim { claim_id }  no token: the claim id (a v4 UUID the browser made before a Lemon Squeezy checkout)
+                                   is the secret, so it travels in the body, never the URL (access logs keep URLs) →
+                                   200 { status: 'pending' } (not seen yet: the webhook may be on its way) ·
                                    { status: 'ready', token, label } (a verified token, as POST /verify gives) ·
                                    { status: 'unknown' } (malformed, past its hour, or revoked). 429 claim_limit (per IP)
+     POST   /access/restore { orderNumber, email }  a paid token lost by its browser, back (restore.mjs) → 200 { token, label },
+                                   the order's one token, the same on every restore · 404 restore_no_match (one answer
+                                   for every miss: no such order, another email, unpaid, refunded, another product) ·
+                                   400 bad_request · 429 too_many_attempts (per IP: restoreFails, 5 misses, block
+                                   15 min; a success doesn't clear them) · 429 restore_busy (everyone: restoresPerHour,
+                                   100) · 502 restore_unavailable (Lemon Squeezy didn't answer) · 503 restore_not_configured
+                                   (no LEMONSQUEEZY_API_KEY, VARIANT_ID or WEBHOOK_SECRET: nothing is trusted without them)
      POST   /webhooks/lemonsqueezy     Lemon Squeezy's order webhook, signed (webhooks/lemonsqueezy.mjs); read raw and
                                    checked before anything else here, no CORS (it carries no Origin)
 
@@ -34,6 +42,7 @@ import { AccessStore, canCreateRoom, createFailureLimiter, createBurstLimiter } 
 import { ROOM_ID } from './store.mjs';
 import { ReportStore, cleanReport } from './reports.mjs';
 import { createLemonSqueezyWebhook } from './webhooks/lemonsqueezy.mjs';
+import { cleanRestoreInput, listOrdersByEmail, matchOrder } from './restore.mjs';
 
 const MAX_BODY = 16 * 1024, NAME_MAX = 120;
 const ERRORS = {
@@ -42,6 +51,8 @@ const ERRORS = {
   unverified: [401, 'Creating rooms is invite-only for now. Enter the code you were given.'], create_limit: [429, 'You created a lot of rooms in the last hour. Try again later.'],
   room_cap: [507, "The server can't take more rooms right now. Tell the operator."], unknown_room: [404, 'No such room.'], not_owner: [403, "Only the room's owner can do that."],
   claim_limit: [429, 'Too many checks. Try again in a minute.'],
+  restore_no_match: [404, "We couldn't find a paid order with that number and email."], restore_busy: [429, 'Too many restores right now. Try again later.'],
+  restore_unavailable: [502, "We couldn't reach the payment provider. Try again in a few minutes."], restore_not_configured: [503, "Restoring access isn't set up on this server."],
   report_limit: [429, 'Too many reports right now. Try again later.'], too_large: [413, 'That report is too big.'],
   origin: [403, 'Origin not allowed'], not_found: [404, 'Not found'], server: [500, 'Something went wrong on the server.'],
 };
@@ -50,19 +61,23 @@ const ERRORS = {
  * @param {{ store: import('./store.mjs').ProjectStore, log: ReturnType<typeof import('./log.mjs').createLogger>, dataDir: string,
  *   corsOrigins: string[], maxRooms: number, createPerHour: number, verifyFails?: number, verifyBlockMs?: number,
  *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number, claimsPerMinute?: number,
- *   lemonSqueezy?: { secret?: string, variantId?: string },
+ *   restoreFails?: number, restoreBlockMs?: number, restoresPerHour?: number,
+ *   lemonSqueezy?: { secret?: string, variantId?: string, apiKey?: string, apiBase?: string },
  *   clientIp: (req: import('node:http').IncomingMessage) => string,
  *   initDoc: (name: string) => import('yjs').Doc,
  *   kickRoom: (id: string, code: number, reason: string) => void, deleteRoom: (id: string) => boolean }} o
  */
 export function createApi(o) {
-  const access = new AccessStore(o.dataDir), log = o.log;
+  const ls = { secret: '', variantId: '', apiKey: '', apiBase: undefined, ...o.lemonSqueezy };
+  const access = new AccessStore(o.dataDir, { orderSecret: ls.secret }), log = o.log;
   const verifyLimit = createFailureLimiter({ max: o.verifyFails ?? 5, blockMs: o.verifyBlockMs ?? 15 * 60_000 });
   const createLimit = createBurstLimiter({ max: o.createPerHour });
   const reports = new ReportStore(o.dataDir, { max: o.maxReports ?? 500 });
   const reportIp = createBurstLimiter({ max: o.reportsPerHour ?? 5 }), reportAll = createBurstLimiter({ max: o.reportsPerDay ?? 200, windowMs: 24 * 3600_000 });
   const claimLimit = createBurstLimiter({ max: o.claimsPerMinute ?? 60, windowMs: 60_000 });
-  const lsWebhook = createLemonSqueezyWebhook({ access, log, clientIp: o.clientIp, ...o.lemonSqueezy });
+  const restoreLimit = createFailureLimiter({ max: o.restoreFails ?? 5, blockMs: o.restoreBlockMs ?? 15 * 60_000 });
+  const restoreAll = createBurstLimiter({ max: o.restoresPerHour ?? 100 });
+  const lsWebhook = createLemonSqueezyWebhook({ access, log, clientIp: o.clientIp, secret: ls.secret, variantId: ls.variantId });
   const origins = new Set(o.corsOrigins.map(s => s.trim()).filter(Boolean));
 
   /** @param {import('node:http').ServerResponse} res @param {number} status @param {any} body */
@@ -118,8 +133,9 @@ export function createApi(o) {
       if (m && m[2] && req.method === 'POST') return ownerAction(req, res, m[1], 'invite');
       if (m && !m[2] && req.method === 'DELETE') return ownerAction(req, res, m[1], 'delete');
       if (p === '/reports' && req.method === 'POST') return report(req, res, b);
-      if (p === '/access/claim' && req.method === 'GET') return claim(req, res, url);
-      if (p === '/verify' || p === '/rooms' || p === '/reports' || p === '/access/claim' || m) { fail(res, 'not_found'); return true; }
+      if (p === '/access/claim' && req.method === 'POST') return claim(req, res, b);
+      if (p === '/access/restore' && req.method === 'POST') return await restore(req, res, b);
+      if (p === '/verify' || p === '/rooms' || p === '/reports' || p === '/access/claim' || p === '/access/restore' || m) { fail(res, 'not_found'); return true; }
       return false;
     } catch (err) {
       // only our own words are logged: a JSON.parse message can quote codes.json (hashes)
@@ -207,15 +223,50 @@ export function createApi(o) {
   }
 
   /** A browser back from checkout asks for its token, every ~1.5 s for ~30 s. Only the outcome is logged, never the claim id.
-      @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {URL} url */
-  function claim(req, res, url) {
+      @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {any} b */
+  function claim(req, res, b) {
     const ip = o.clientIp(req);
     if (!claimLimit.take(ip)) { log.warn('claim refused: rate limit', { ip }); fail(res, 'claim_limit'); return true; }
-    const r = access.claimStatus(url.searchParams.get('claim_id') || '');
+    if (!b || typeof b !== 'object') { fail(res, 'bad_request'); return true; }
+    const r = access.claimStatus(typeof b.claim_id === 'string' ? b.claim_id : '');
     if (r.status === 'ready') log.info('claim collected', { ip, code: r.label });
     json(res, 200, r);
     return true;
   }
 
-  return { handle, access, reports, limits: { verify: verifyLimit, create: createLimit, reportIp, reportAll, claim: claimLimit } };
+  /** A lost paid token, back (restore.mjs). Every miss counts against the IP and answers the same; a success doesn't clear
+      the misses (a buyer restoring their own order between guesses would otherwise reset the count). The log gets the
+      miss's reason and, on success, the order id; never the email or the number typed.
+      @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {any} b */
+  async function restore(req, res, b) {
+    const ip = o.clientIp(req);
+    if (!ls.apiKey || !ls.variantId || !ls.secret) { log.error('restore refused: LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_VARIANT_ID or LEMONSQUEEZY_WEBHOOK_SECRET not set', { ip }); fail(res, 'restore_not_configured'); return true; }
+    const left = restoreLimit.blocked(ip);
+    if (left) { log.warn('restore blocked', { ip }); fail(res, 'too_many_attempts', { retryAfter: Math.ceil(left / 1000) }); return true; }
+    const input = cleanRestoreInput(b);
+    if (!input) { fail(res, 'bad_request'); return true; }
+    if (!restoreAll.take('all')) { log.warn('restore refused: hourly limit (everyone)', { ip }); fail(res, 'restore_busy'); return true; }
+    const miss = (/** @type {string} */ reason) => {
+      const blocked = restoreLimit.fail(ip);
+      log.warn('restore failed', { ip, reason, blocked });
+      if (blocked) fail(res, 'too_many_attempts', { retryAfter: Math.ceil(restoreLimit.blocked(ip) / 1000) }); else fail(res, 'restore_no_match');
+      return true;
+    };
+    /** @type {any[]} */ let orders;
+    try { orders = await listOrdersByEmail({ apiKey: ls.apiKey, apiBase: ls.apiBase }, input.email); } catch (err) {
+      const e = /** @type {any} */ (err), blocked = restoreLimit.fail(ip);
+      log.error('restore: lemon squeezy lookup failed', { ip, err: e && e.code ? e.code : e && e.name, blocked });
+      if (blocked) fail(res, 'too_many_attempts', { retryAfter: Math.ceil(restoreLimit.blocked(ip) / 1000) }); else fail(res, 'restore_unavailable');
+      return true;
+    }
+    const m = matchOrder(orders, input, ls.variantId);
+    if (!('orderId' in m)) return miss(m.reason);
+    const r = access.issueFromOrder(m.orderId);
+    if (!r.ok) return miss(r.reason);
+    log.info('access restored', { ip, order: m.orderId, reused: r.reused, replaced: r.replaced });
+    json(res, 200, { token: r.token, label: r.label });
+    return true;
+  }
+
+  return { handle, access, reports, limits: { verify: verifyLimit, create: createLimit, reportIp, reportAll, claim: claimLimit, restore: restoreLimit, restoreAll } };
 }

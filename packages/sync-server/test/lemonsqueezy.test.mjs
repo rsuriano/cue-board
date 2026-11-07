@@ -28,7 +28,7 @@ async function hook(srv, body, { sig, raw } = {}) {
   return { status: r.status, text: await r.text() };
 }
 async function poll(srv, claimId) {
-  const r = await fetch(srv.httpUrl + '/access/claim?claim_id=' + encodeURIComponent(claimId));
+  const r = await fetch(srv.httpUrl + '/access/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ claim_id: claimId }) });
   return { status: r.status, body: await r.json() };
 }
 const tokens = dir => new AccessStore(dir).readVerified().tokens;
@@ -53,7 +53,7 @@ test('(ls-a) a signed paid order issues one token: polling goes pending → read
     assert.equal(tokens(dir).length, 1);
     // the shape the rest of the server reads, plus bookkeeping; nothing in clear on disk
     const t = tokens(dir)[0];
-    assert.deepEqual(Object.keys(t).sort(), ['code', 'created', 'label', 'orderId', 'sha256', 'source']);
+    assert.deepEqual(Object.keys(t).sort(), ['box', 'code', 'created', 'label', 'orderId', 'sha256', 'source']);
     assert.equal(t.source, 'lemonsqueezy'); assert.equal(t.orderId, '1001'); assert.equal(t.code, null);
     const disk = fs.readFileSync(path.join(dir, 'verified.json'), 'utf8') + fs.readFileSync(path.join(dir, 'claims.json'), 'utf8');
     assert.ok(!disk.includes(p.body.token) && !disk.includes(claimId) && !disk.includes('buyer@example.com'));
@@ -170,6 +170,20 @@ test('(ls-f) both paths converge: a redeemed code\'s token and a paid order\'s t
   assert.deepEqual(canCreateRoom(a, { verifiedToken: '' }), { ok: false, reason: 'unverified' });
 });
 
+test('(ls-h) the claim id travels only in a POST body: GET /access/claim?claim_id=… is not a route (404, no token, nothing in the answer), POST with it in the query string ignores it', async () => {
+  const dir = tmpDir(), srv = await server(dir, 0, LS);
+  try {
+    const claimId = randomUUID();
+    assert.equal((await hook(srv, order({ claimId, orderId: '3003' }))).status, 200);
+    const viaGet = await fetch(srv.httpUrl + '/access/claim?claim_id=' + claimId), text = await viaGet.text();
+    assert.equal(viaGet.status, 404); assert.ok(!/token|ready/.test(text), text);
+    const viaQuery = await fetch(srv.httpUrl + '/access/claim?claim_id=' + claimId, { method: 'POST', body: '{}' });
+    assert.deepEqual(await viaQuery.json(), { status: 'unknown' }, 'the query string is never read');
+    assert.equal((await fetch(srv.httpUrl + '/access/claim', { method: 'POST', body: 'not json' })).status, 400);
+    assert.equal((await poll(srv, claimId)).body.status, 'ready', 'the body is');
+  } finally { await srv.close(); }
+});
+
 test('(ls-g) nothing secret leaks: logs and answers never carry the signing secret, the claim id, the token, the email or a stack trace; the claim poll is rate-limited per IP', async () => {
   const dir = tmpDir(), cap = capture(), srv = await server(dir, 0, { ...LS, log: cap.log, claimsPerMinute: 5, logLevel: 'debug' });
   const answers = [];
@@ -183,7 +197,7 @@ test('(ls-g) nothing secret leaks: logs and answers never carry the signing secr
     fs.rmdirSync(path.join(dir, 'claims.json.tmp'));
     const p = await poll(srv, claimId); assert.equal(p.body.status, 'ready');
     for (let i = 0; i < 4; i++) await poll(srv, randomUUID());   // 5 per minute: this was the fifth
-    const limited = await fetch(srv.httpUrl + '/access/claim?claim_id=' + claimId);
+    const limited = await fetch(srv.httpUrl + '/access/claim', { method: 'POST', body: JSON.stringify({ claim_id: claimId }) });
     assert.equal(limited.status, 429); assert.equal((await limited.json()).error, 'claim_limit');
     const all = cap.lines.join('\n') + answers.join('\n');
     for (const s of [SECRET, claimId, p.body.token, 'buyer@example.com', sign(JSON.stringify(body))]) assert.ok(!all.includes(s), 'leaked: ' + s.slice(0, 12));

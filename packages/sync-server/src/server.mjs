@@ -40,7 +40,8 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
  *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, createPerHour?: number, verifyFails?: number, verifyBlockMs?: number,
  *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
- *   claimsPerMinute?: number, lemonSqueezy?: { secret?: string, variantId?: string },
+ *   claimsPerMinute?: number, restoreFails?: number, restoreBlockMs?: number, restoresPerHour?: number,
+ *   lemonSqueezy?: { secret?: string, variantId?: string, apiKey?: string, apiBase?: string },
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
 export async function startServer(opts = {}) {
@@ -175,7 +176,8 @@ export async function startServer(opts = {}) {
     store, log, dataDir: o.dataDir, corsOrigins: o.corsOrigins, maxRooms: o.maxRooms, createPerHour: o.createPerHour,
     verifyFails: o.verifyFails, verifyBlockMs: o.verifyBlockMs, clientIp, kickRoom, deleteRoom,
     reportsPerHour: o.reportsPerHour, reportsPerDay: o.reportsPerDay, maxReports: o.maxReports,
-    claimsPerMinute: o.claimsPerMinute, lemonSqueezy: o.lemonSqueezy,
+    claimsPerMinute: o.claimsPerMinute, restoreFails: o.restoreFails, restoreBlockMs: o.restoreBlockMs, restoresPerHour: o.restoresPerHour,
+    lemonSqueezy: o.lemonSqueezy,
     initDoc: name => { const d = new Y.Doc(); initProject(d, { title: name }); return d; },
   });
 

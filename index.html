@@ -10,7 +10,7 @@
      Empty = none: peers on the same network connect directly, everyone else through the sync server's encrypted relay. -->
 <meta name="cue-ice-urls" content="">
 <!-- Paid access to create rooms: a Lemon Squeezy checkout link (https://<store>.lemonsqueezy.com/buy/<id>). Empty = off: only
-     invite codes. Its redirect after payment goes back to this page with ?ls_claim=1 (or ?ls_claim=<the claim id>). -->
+     invite codes. Its redirect after payment goes back to this page with ?ls_claim=1 (never the claim id itself). -->
 <meta name="cue-ls-checkout-url" content="">
 <!-- The build this copy is (the deploy sets the short git sha); shown in problem reports. Empty = "dev". -->
 <meta name="cue-build" content="">
@@ -727,6 +727,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 #rmPeople .pchip{flex:none}
 #rmState:empty{display:none}
 .jmsg:empty{display:none}
+.jpair{display:grid;gap:var(--sp-3)}
 /* Report a problem: the two choices, the line under the first one aligned with its words, and the report as sent */
 .ropts{display:grid;gap:var(--sp-1)}
 .ropts .hint{padding-left:calc(var(--icon-lg) + var(--sp-2));margin-top:calc(var(--sp-1) * -1)}
@@ -1286,6 +1287,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div class="opts" id="jOptsA">
     <button type="button" class="opt" id="jHaveCode"><b>I have an invite code</b><span>Enter the code you were given.</span></button>
     <button type="button" class="opt" id="jBuy"><b>Get access for $9</b><span>One payment, no account. Checkout is on Lemon Squeezy; afterwards you come back here and this browser can create rooms for good.</span></button>
+    <p class="hint">Already paid? <button type="button" class="linkbtn" id="jRestore">Restore access</button></p>
+  </div>
+  <div class="jpair" id="jRestoreF">
+    <div class="field"><label for="jOrder">Order number</label><input id="jOrder" autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="e.g. 1234"></div>
+    <div class="field"><label for="jEmail">Email</label><input id="jEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="The email you paid with"></div>
   </div>
   <div class="field" id="jLinkF"><label for="jLink">Invite link</label><input id="jLink" autocomplete="off" spellcheck="false" placeholder="https://…/#join=…"></div>
   <div class="field" id="jCodeF"><label for="jCode">Verification code</label><input id="jCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="The code you were given" aria-describedby="jCodeHint"><p class="hint" id="jCodeHint">One code verifies this browser for good. Joining a room with a link needs no code.</p></div>
@@ -2852,20 +2858,21 @@ function leaveRoom(pid,quiet){
 let jRes=null;const jDone=v=>{const r=jRes;jRes=null;if(r)r(v)};
 function joinStep(step,title,lead){const d=$("dlgJoin");
   $("jTitle").textContent=title;$("jLead").textContent=lead||"";$("jMsg").textContent="";
-  $("jOptsC").hidden=step!=="collab";$("jOptsA").hidden=step!=="access";$("jLinkF").hidden=step!=="link";$("jCodeF").hidden=step!=="code";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";
-  $("jGo").hidden=!["link","name","code"].includes(step);$("jGo").textContent=step==="link"?"Join":"Continue";$("jCancel").textContent=step==="err"||step==="done"?"Close":"Cancel";
+  $("jOptsC").hidden=step!=="collab";$("jOptsA").hidden=step!=="access";$("jRestoreF").hidden=step!=="restore";$("jLinkF").hidden=step!=="link";$("jCodeF").hidden=step!=="code";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";
+  $("jGo").hidden=!["link","name","code","restore"].includes(step);$("jGo").textContent=step==="link"?"Join":"Continue";$("jCancel").textContent=step==="err"||step==="done"?"Close":"Cancel";
   d.dataset.step=step;if(!d.open)d.showModal();
-  setTimeout(()=>{const f={link:"jLink",name:"jName",code:"jCode",choose:"jNew",collab:"jShareNew",access:"jHaveCode"}[step];$(f||"jCancel").focus()},30)}
+  setTimeout(()=>{const f={link:"jLink",name:"jName",code:"jCode",choose:"jNew",collab:"jShareNew",access:"jHaveCode",restore:"jOrder"}[step];$(f||"jCancel").focus()},30)}
 const joinAsk=(step,title,lead)=>{joinStep(step,title,lead);return new Promise(r=>{jRes=r})};
 $("joinForm").onsubmit=e=>{e.preventDefault();const st=$("dlgJoin").dataset.step;
   if(st==="link"){const inv=parseInvite($("jLink").value);if(!inv){$("jMsg").textContent="That isn't an invite link. It ends in #join= and a long code.";return}jDone(inv)}
   else if(st==="name"){const n=$("jName").value.replace(/\s+/g," ").trim().slice(0,40);if(!n){$("jMsg").textContent="Type a name first.";return}jDone(n)}
-  else if(st==="code"){const c=$("jCode").value.trim();if(!c){$("jMsg").textContent="Type the code first.";return}jDone(c)}};
+  else if(st==="code"){const c=$("jCode").value.trim();if(!c){$("jMsg").textContent="Type the code first.";return}jDone(c)}
+  else if(st==="restore"){const n=$("jOrder").value.trim(),m=$("jEmail").value.trim();if(!n||!m){$("jMsg").textContent="Type the order number and the email first.";return}jDone({orderNumber:n,email:m})}};
 $("jCancel").onclick=()=>$("dlgJoin").close();
 $("dlgJoin").addEventListener("close",()=>jDone(null));
 $("jNew").onclick=()=>jDone("new");$("jShare").onclick=()=>jDone("share");
 $("jShareNew").onclick=()=>jDone("share-new");$("jJoinLink").onclick=()=>jDone("join");
-$("jHaveCode").onclick=()=>jDone("code");$("jBuy").onclick=()=>jDone("buy");
+$("jHaveCode").onclick=()=>jDone("code");$("jBuy").onclick=()=>jDone("buy");$("jRestore").onclick=()=>jDone("restore");
 /* the Collaborate panel: share the open project (a new room, invite-only to create) or join with a link (open to anyone) */
 async function collabFlow(){
   if(!SYNC_URL){toast("Collaboration isn't set up on this copy of Cue Board");return}
@@ -2882,7 +2889,7 @@ async function ensureVerified(api){
   if(cset.verified&&cset.verified.token)return true;
   /* with a checkout link set, a code is one of two ways in; the other leaves for Lemon Squeezy and comes back (claimFlow) */
   if(CHECKOUT_URL){const how=await joinAsk("access","Creating rooms needs access","Working on your own stays free, and so does joining a room with a link. To create rooms, use an invite code or pay once.");
-    if(how==="buy"){await startCheckout();return false}if(how!=="code")return false}
+    if(how==="buy"){await startCheckout();return false}if(how==="restore")return restoreFlow();if(how!=="code")return false}
   let msg="";$("jCode").value="";
   for(;;){joinStep("code",CHECKOUT_URL?"Enter your invite code":"Creating rooms is invite-only for now","Enter the code you were given.");$("jMsg").textContent=msg;
     const code=await new Promise(r=>{jRes=r});if(!code)return false;
@@ -2900,24 +2907,37 @@ function newClaimId(){if(crypto.randomUUID)return crypto.randomUUID();
 async function startCheckout(){const id=newClaimId();cset.pendingClaim=id;await saveCset();
   joinStep("busy","Opening checkout","One moment…");
   location.href=CHECKOUT_URL+(CHECKOUT_URL.includes("?")?"&":"?")+"checkout[custom][claim_id]="+id}
+const syncHttp=()=>SYNC_URL.replace(/\/+$/,"").replace(/^ws(s?):\/\//i,"http$1://");
+/* a paid token lost with this browser's storage (a new device, cleared site data): the order number and email from the
+   receipt get the order's token back from the server, the same one any other device of the buyer already uses */
+async function restoreFlow(){let msg="";$("jOrder").value="";$("jEmail").value="";
+  for(;;){joinStep("restore","Restore access","Use the order number and the email from your Lemon Squeezy receipt.");$("jMsg").textContent=msg;
+    const v=await new Promise(r=>{jRes=r});if(!v)return false;
+    joinStep("busy","Checking your order","One moment…");
+    let st=0,r=null;try{const res=await fetch(syncHttp()+"/access/restore",{method:"POST",cache:"no-store",headers:{"content-type":"application/json"},body:JSON.stringify(v)});st=res.status;r=await res.json()}catch(e){}
+    if(!$("dlgJoin").open)return false;
+    if(st===200&&r&&typeof r.token==="string"){cset.verified={token:r.token,label:String(r.label||"")};cset.pendingClaim=null;await saveCset();return true}
+    msg=r&&r.error==="not_found"?"Restoring access isn't available on this server yet.":r&&typeof r.message==="string"?r.message:"Couldn't reach the server. Check your connection and try again."}
+}
 const dropClaimParam=()=>{try{const u=new URL(location.href);u.searchParams.delete("ls_claim");history.replaceState(null,"",u.pathname+u.search+u.hash)}catch(e){}};
-/* back from checkout: ask the server every 1.5 s for 30 s (the payment's webhook can lag). ?ls_claim=<id> names the claim;
-   any other value (a fixed redirect such as ?ls_claim=1) means the one this browser kept. Still pending at the end: the
+/* back from checkout (?ls_claim=1): ask the server every 1.5 s for 30 s (the payment's webhook can lag) for the claim this
+   browser kept. The claim id is the key to the token, so it never goes in a URL here (they end up in access logs): not
+   in the page's (a claim id there is ignored) and not in the request's, a POST body. Still pending at the end: the
    param stays, so a reload checks again */
 async function claimFlow(){const q=new URLSearchParams(location.search).get("ls_claim");
   if(q===null||!SYNC_URL)return;
-  const id=CLAIM_RE.test(q)?q:cset.pendingClaim;
+  const id=cset.pendingClaim;
   if(!id||!CLAIM_RE.test(id)){dropClaimParam();return}
-  const base=SYNC_URL.replace(/\/+$/,"").replace(/^ws(s?):\/\//i,"http$1://");
+  const base=syncHttp();
   joinStep("busy","Confirming your payment","This takes a few seconds.");
   for(let i=0;i<20;i++){if(i)await new Promise(r=>setTimeout(r,1500));if(!$("dlgJoin").open)return;
-    let r=null;try{const res=await fetch(base+"/access/claim?claim_id="+id,{cache:"no-store"});if(res.ok)r=await res.json()}catch(e){}
+    let r=null;try{const res=await fetch(base+"/access/claim",{method:"POST",cache:"no-store",headers:{"content-type":"application/json"},body:JSON.stringify({claim_id:id})});if(res.ok)r=await res.json()}catch(e){}
     if(!$("dlgJoin").open)return;
     if(r&&r.status==="ready"&&typeof r.token==="string"){cset.verified={token:r.token,label:String(r.label||"")};cset.pendingClaim=null;await saveCset();dropClaimParam();
       joinStep("done","Payment confirmed","This browser can create rooms now. Open Collaborate and choose Share this project.");return}
     if(r&&r.status==="unknown"){if(cset.pendingClaim===id){cset.pendingClaim=null;await saveCset()}dropClaimParam();
-      joinStep("err","We can't find that payment","If you were charged, send a report with Report a problem (the flag next to Settings) and include the order number from your receipt.");return}}
-  joinStep("err","Your payment hasn't come through yet","Confirming can take a minute. Reload this page to check again. If you were charged and it still doesn't show, send a report with your order number.");
+      joinStep("err","We can't find that payment","If you were charged, open Collaborate, choose Share this project, then Restore access with the order number and email from your receipt.");return}}
+  joinStep("err","Your payment hasn't come through yet","Confirming can take a minute. Reload this page to check again, or use Restore access (Collaborate, Share this project) with the order number and email from your receipt.");
 }
 const roomName=()=>cur&&cur.title||"Untitled project";
 async function createRoomFlow(){

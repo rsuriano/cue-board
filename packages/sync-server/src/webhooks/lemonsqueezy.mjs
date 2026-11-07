@@ -1,6 +1,8 @@
 // @ts-check
 /* POST /webhooks/lemonsqueezy: a paid one-time order gives the buyer's browser a verified token (the same kind a
-   verification code gives, access.mjs), which it collects with GET /access/claim?claim_id=… (api.mjs).
+   verification code gives, access.mjs), which it collects with POST /access/claim { claim_id } (api.mjs; a body, never a
+   URL, so the claim id stays out of access logs). A buyer who lost that token gets it back with POST /access/restore
+   (restore.mjs), which runs the same paidOrderProblem check on the order as fetched from the Lemon Squeezy API.
 
    The browser makes a random claim id (a v4 UUID), keeps it, and opens the checkout with
    ?checkout[custom][claim_id]=<id>; Lemon Squeezy echoes custom checkout data back in the webhook as meta.custom_data.
@@ -21,6 +23,20 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const MAX_BODY = 64 * 1024;
 const SIG_HEX = /^[0-9a-f]{64}$/i;
+
+/**
+ * Is this order a paid purchase of the access variant? The one check both ways in use: the webhook (an order_created
+ * body's data.attributes) and POST /access/restore (an order from the Lemon Squeezy API, same attributes).
+ * @param {any} attrs an order's attributes @param {string} variantId LEMONSQUEEZY_VARIANT_ID
+ * @returns {null | { reason: 'not paid' | 'another variant', detail: Record<string, string> }} null when it qualifies
+ */
+export function paidOrderProblem(attrs, variantId) {
+  attrs = attrs && typeof attrs === 'object' ? attrs : {};
+  if (attrs.status !== 'paid' || attrs.refunded === true) return { reason: 'not paid', detail: { status: String(attrs.status).slice(0, 30) } };
+  const item = attrs.first_order_item && typeof attrs.first_order_item === 'object' ? attrs.first_order_item : {};
+  if (!variantId || String(item.variant_id ?? '') !== variantId) return { reason: 'another variant', detail: { variant: String(item.variant_id ?? '').slice(0, 30) } };
+  return null;
+}
 
 /**
  * @param {{ access: import('../access.mjs').AccessStore, log: ReturnType<typeof import('../log.mjs').createLogger>,
@@ -64,9 +80,8 @@ export function createLemonSqueezyWebhook(o) {
     const orderId = data && (typeof data.id === 'string' || typeof data.id === 'number') ? String(data.id).slice(0, 64) : '';
     const ack = () => json(res, 200, { ok: true });
     if (event !== 'order_created') { log.info('lemonsqueezy webhook ignored: event', { event }); ack(); return; }
-    if (attrs.status !== 'paid') { log.info('lemonsqueezy webhook ignored: not paid', { order: orderId, status: String(attrs.status).slice(0, 30) }); ack(); return; }
-    const item = attrs.first_order_item && typeof attrs.first_order_item === 'object' ? attrs.first_order_item : {};
-    if (String(item.variant_id ?? '') !== variantId) { log.info('lemonsqueezy webhook ignored: another variant', { order: orderId, variant: String(item.variant_id ?? '').slice(0, 30) }); ack(); return; }
+    const problem = paidOrderProblem(attrs, variantId);
+    if (problem) { log.info('lemonsqueezy webhook ignored: ' + problem.reason, { order: orderId, ...problem.detail }); ack(); return; }
     const custom = meta.custom_data && typeof meta.custom_data === 'object' ? meta.custom_data : {};
     const r = o.access.issueFromClaim(typeof custom.claim_id === 'string' ? custom.claim_id : '', { orderId });
     if (!r.ok) {
