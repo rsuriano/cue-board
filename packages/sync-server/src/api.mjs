@@ -20,6 +20,12 @@
                                    report allow-list (src/reports.mjs) and stored under DATA_DIR/reports/, never logged.
                                    400 bad_request · 413 too_large (over 16 KiB) · 429 report_limit (per IP: reportsPerHour,
                                    5; everyone: reportsPerDay, 200)
+     GET    /access/claim?claim_id=    no token: the claim id (a v4 UUID the browser made before a Lemon Squeezy checkout) is
+                                   the secret → 200 { status: 'pending' } (not seen yet: the webhook may be on its way) ·
+                                   { status: 'ready', token, label } (a verified token, as POST /verify gives) ·
+                                   { status: 'unknown' } (malformed, past its hour, or revoked). 429 claim_limit (per IP)
+     POST   /webhooks/lemonsqueezy     Lemon Squeezy's order webhook, signed (webhooks/lemonsqueezy.mjs); read raw and
+                                   checked before anything else here, no CORS (it carries no Origin)
 
    CORS: a browser request carries an Origin header; it's answered with CORS headers only if that origin is in
    `corsOrigins` (exact match, scheme and host). A request from any other origin is refused with 403 origin (defence in
@@ -27,6 +33,7 @@
 import { AccessStore, canCreateRoom, createFailureLimiter, createBurstLimiter } from './access.mjs';
 import { ROOM_ID } from './store.mjs';
 import { ReportStore, cleanReport } from './reports.mjs';
+import { createLemonSqueezyWebhook } from './webhooks/lemonsqueezy.mjs';
 
 const MAX_BODY = 16 * 1024, NAME_MAX = 120;
 const ERRORS = {
@@ -34,6 +41,7 @@ const ERRORS = {
   code_full: [409, 'That code has been used by as many people as it allows.'], too_many_attempts: [429, 'Too many attempts. Try again in 15 minutes.'],
   unverified: [401, 'Creating rooms is invite-only for now. Enter the code you were given.'], create_limit: [429, 'You created a lot of rooms in the last hour. Try again later.'],
   room_cap: [507, "The server can't take more rooms right now. Tell the operator."], unknown_room: [404, 'No such room.'], not_owner: [403, "Only the room's owner can do that."],
+  claim_limit: [429, 'Too many checks. Try again in a minute.'],
   report_limit: [429, 'Too many reports right now. Try again later.'], too_large: [413, 'That report is too big.'],
   origin: [403, 'Origin not allowed'], not_found: [404, 'Not found'], server: [500, 'Something went wrong on the server.'],
 };
@@ -41,7 +49,8 @@ const ERRORS = {
 /**
  * @param {{ store: import('./store.mjs').ProjectStore, log: ReturnType<typeof import('./log.mjs').createLogger>, dataDir: string,
  *   corsOrigins: string[], maxRooms: number, createPerHour: number, verifyFails?: number, verifyBlockMs?: number,
- *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
+ *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number, claimsPerMinute?: number,
+ *   lemonSqueezy?: { secret?: string, variantId?: string },
  *   clientIp: (req: import('node:http').IncomingMessage) => string,
  *   initDoc: (name: string) => import('yjs').Doc,
  *   kickRoom: (id: string, code: number, reason: string) => void, deleteRoom: (id: string) => boolean }} o
@@ -52,6 +61,8 @@ export function createApi(o) {
   const createLimit = createBurstLimiter({ max: o.createPerHour });
   const reports = new ReportStore(o.dataDir, { max: o.maxReports ?? 500 });
   const reportIp = createBurstLimiter({ max: o.reportsPerHour ?? 5 }), reportAll = createBurstLimiter({ max: o.reportsPerDay ?? 200, windowMs: 24 * 3600_000 });
+  const claimLimit = createBurstLimiter({ max: o.claimsPerMinute ?? 60, windowMs: 60_000 });
+  const lsWebhook = createLemonSqueezyWebhook({ access, log, clientIp: o.clientIp, ...o.lemonSqueezy });
   const origins = new Set(o.corsOrigins.map(s => s.trim()).filter(Boolean));
 
   /** @param {import('node:http').ServerResponse} res @param {number} status @param {any} body */
@@ -78,6 +89,15 @@ export function createApi(o) {
    * @returns {Promise<boolean>} false when the path isn't the API's (the caller answers 404)
    */
   async function handle(req, res, url) {
+    if (url.pathname === '/webhooks/lemonsqueezy') {
+      // its own raw body: the signature is over the exact bytes
+      try { await lsWebhook.handle(req, res); } catch (err) {
+        const e = /** @type {any} */ (err);
+        log.error('lemonsqueezy webhook failed', { err: e && e.code ? e.code : e && e.name });
+        if (!res.headersSent) fail(res, 'server');
+      }
+      return true;
+    }
     const b = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS' ? {} : await body(req);
     const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
     if (origin) {
@@ -98,7 +118,8 @@ export function createApi(o) {
       if (m && m[2] && req.method === 'POST') return ownerAction(req, res, m[1], 'invite');
       if (m && !m[2] && req.method === 'DELETE') return ownerAction(req, res, m[1], 'delete');
       if (p === '/reports' && req.method === 'POST') return report(req, res, b);
-      if (p === '/verify' || p === '/rooms' || p === '/reports' || m) { fail(res, 'not_found'); return true; }
+      if (p === '/access/claim' && req.method === 'GET') return claim(req, res, url);
+      if (p === '/verify' || p === '/rooms' || p === '/reports' || p === '/access/claim' || m) { fail(res, 'not_found'); return true; }
       return false;
     } catch (err) {
       // only our own words are logged: a JSON.parse message can quote codes.json (hashes)
@@ -185,5 +206,16 @@ export function createApi(o) {
     return true;
   }
 
-  return { handle, access, reports, limits: { verify: verifyLimit, create: createLimit, reportIp, reportAll } };
+  /** A browser back from checkout asks for its token, every ~1.5 s for ~30 s. Only the outcome is logged, never the claim id.
+      @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {URL} url */
+  function claim(req, res, url) {
+    const ip = o.clientIp(req);
+    if (!claimLimit.take(ip)) { log.warn('claim refused: rate limit', { ip }); fail(res, 'claim_limit'); return true; }
+    const r = access.claimStatus(url.searchParams.get('claim_id') || '');
+    if (r.status === 'ready') log.info('claim collected', { ip, code: r.label });
+    json(res, 200, r);
+    return true;
+  }
+
+  return { handle, access, reports, limits: { verify: verifyLimit, create: createLimit, reportIp, reportAll, claim: claimLimit } };
 }

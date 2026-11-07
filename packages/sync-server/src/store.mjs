@@ -6,7 +6,7 @@
                          until the CLI attaches an owner (bin/attach-owner.mjs). `code` is the label of the verification
                          code the creator redeemed (access.mjs), for the operator; never shown to members.
      <id>/updates.bin    Yjs updates, each framed as uint32 LE length + bytes; compaction rewrites it as one update
-   Two files at the top of DATA_DIR belong to access.mjs (codes.json, verified.json); they can't collide with a room
+   Three files at the top of DATA_DIR belong to access.mjs (codes.json, verified.json, claims.json); they can't collide with a room
    folder, since room ids are directories.
    All writes are synchronous: an update is on disk (in the OS page cache) before the server reacts to it. */
 import fs from 'node:fs';
