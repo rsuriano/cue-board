@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpDir, server } from './helpers.mjs';
 import { AccessStore, canCreateRoom, CLAIM_TTL_MS } from '../src/access.mjs';
+import { matchOrder } from '../src/restore.mjs';
 
 const SECRET = 'test-signing-secret-not-real', VARIANT = '424242';
 const LS = { lemonSqueezy: { secret: SECRET, variantId: VARIANT } };
@@ -16,9 +17,9 @@ const sign = (raw, secret = SECRET) => createHmac('sha256', secret).update(raw).
 /** the same string with its first character changed, always (a fixed replacement is a no-op 1 time in 16 or 64) */
 const flip = s => (s[0] === 'e' ? 'f' : 'e') + s.slice(1);
 /** an order_created body shaped like Lemon Squeezy's (meta.event_name, meta.custom_data, data.id, data.attributes) */
-function order({ orderId = '1001', claimId = randomUUID(), status = 'paid', variantId = Number(VARIANT), event = 'order_created', custom } = {}) {
+function order({ orderId = '1001', claimId = randomUUID(), status = 'paid', variantId = Number(VARIANT), event = 'order_created', custom, testMode = false } = {}) {
   return {
-    meta: { event_name: event, test_mode: false, custom_data: custom !== undefined ? custom : { claim_id: claimId } },
+    meta: { event_name: event, test_mode: testMode, custom_data: custom !== undefined ? custom : { claim_id: claimId } },
     data: { type: 'orders', id: orderId, attributes: { status, user_email: 'buyer@example.com', identifier: randomUUID(),
       first_order_item: { order_id: Number(orderId), product_id: 7, variant_id: variantId, price: 900 } } },
   };
@@ -41,7 +42,7 @@ const capture = () => {
   return { lines, log: { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') } };
 };
 
-test('(ls-a) a signed paid order issues one token: polling goes pending → ready, the token creates rooms; a replay of the same order (same or another claim id) issues nothing', async () => {
+test('(ls-a) a signed paid order issues one token: polling goes pending → ready (once: then unknown), the token creates rooms; a replay of the same order (same or another claim id) issues nothing', async () => {
   const dir = tmpDir(), srv = await server(dir, 0, LS);
   try {
     const claimId = randomUUID();
@@ -50,7 +51,7 @@ test('(ls-a) a signed paid order issues one token: polling goes pending → read
     let r = await hook(srv, body); assert.equal(r.status, 200); assert.deepEqual(JSON.parse(r.text), { ok: true });
     const p = await poll(srv, claimId);
     assert.equal(p.body.status, 'ready'); assert.match(p.body.token, /^[A-Za-z0-9_-]{40,}$/); assert.equal(p.body.label, 'Paid order 1001');
-    assert.deepEqual((await poll(srv, claimId)).body, p.body, 'polling again gives the same token');
+    assert.deepEqual((await poll(srv, claimId)).body, { status: 'unknown' }, 'collected once: a second poll gets nothing');
     // the exact same delivery again, and a forged-claim variant of it (needs the signature, but still): no second token
     assert.equal((await hook(srv, body)).status, 200);
     assert.equal((await hook(srv, order({ orderId: '1001' }))).status, 200);
@@ -130,31 +131,35 @@ test('(ls-d) acked and ignored: other events, unpaid orders, another variant, cu
   } finally { await srv.close(); }
 });
 
-test('(ls-e) claims: pending → ready → unknown after the TTL; malformed ids are unknown; old entries are dropped on the next write; a revoked paid token is unknown and refused', () => {
+test('(ls-e) claims: pending → ready (once) → unknown, and unknown after the TTL; malformed ids are unknown; old entries are dropped on the next write; a revoked paid token is unknown and refused', () => {
   const dir = tmpDir(), a = new AccessStore(dir), t0 = 1_000_000_000_000, id = randomUUID();
   assert.deepEqual(a.claimStatus(id, t0), { status: 'pending' });
   assert.deepEqual(a.issueFromClaim(id, { orderId: '1', now: t0 }), { ok: true, duplicate: false });
   const r = a.claimStatus(id, t0 + 1000); assert.equal(r.status, 'ready');
-  assert.deepEqual(a.claimStatus(id, t0 + CLAIM_TTL_MS - 1), r);
-  assert.deepEqual(a.claimStatus(id, t0 + CLAIM_TTL_MS), { status: 'unknown' });
+  assert.deepEqual(a.claimStatus(id, t0 + 2000), { status: 'unknown' }, 'ready is answered once');
+  assert.ok(a.readClaims().claims[0].collected && !('box' in a.readClaims().claims[0]), 'marked collected, the sealed token dropped');
+  // never collected: ready until the TTL, then unknown
+  const late = randomUUID(); a.issueFromClaim(late, { orderId: '1b', now: t0 });
+  assert.deepEqual(a.claimStatus(late, t0 + CLAIM_TTL_MS), { status: 'unknown' });
+  assert.equal(a.claimStatus(late, t0 + CLAIM_TTL_MS - 1).status, 'ready');
   // the token itself outlives the claim: it's in verified.json for good
   assert.equal(canCreateRoom(a, { verifiedToken: r.token }).ok, true);
   // replayed after the claim expired: still a duplicate, the claim doesn't come back
   assert.deepEqual(a.issueFromClaim(id, { orderId: '1', now: t0 + 2 * CLAIM_TTL_MS }), { ok: true, duplicate: true });
   assert.deepEqual(a.claimStatus(id, t0 + 2 * CLAIM_TTL_MS), { status: 'unknown' });
   for (const bad of ['', 'x', id.toUpperCase(), id + ' ', '../' + id, 'a'.repeat(5000), null, 5]) assert.deepEqual(a.claimStatus(/** @type {any} */ (bad), t0), { status: 'unknown' });
-  // a write a day later drops the expired entry
+  // a write a day later drops the expired entries
   a.issueFromClaim(randomUUID(), { orderId: '2', now: t0 + 26 * 3600_000 });
   assert.equal(a.readClaims().claims.length, 1);
-  // a refund: the operator marks the token revoked; the claim and the token stop working
+  // a refund before the browser collected: the claim stops handing the token out (its box is still there)
   const id3 = randomUUID(); a.issueFromClaim(id3, { orderId: '3', now: t0 + 27 * 3600_000 });
-  const tok3 = a.claimStatus(id3, t0 + 27 * 3600_000).token;
   const v = a.readVerified(); v.tokens.find(t => t.orderId === '3').revoked = new Date().toISOString(); fs.writeFileSync(a.verifiedFile, JSON.stringify(v));
-  assert.equal(canCreateRoom(a, { verifiedToken: tok3 }).ok, false);
   assert.deepEqual(a.claimStatus(id3, t0 + 27 * 3600_000), { status: 'unknown' });
+  assert.ok(a.readClaims().claims.find(x => x.orderId === '3').box, 'unknown because revoked, not because collected');
   // a tampered box is unknown, not a crash
-  const c = a.readClaims(); c.claims[0].box = 'AAAA.BBBB.CCCC'; fs.writeFileSync(a.claimsFile, JSON.stringify(c));
-  assert.deepEqual(a.claimStatus(id3, t0 + 27 * 3600_000), { status: 'unknown' });
+  const id4 = randomUUID(); a.issueFromClaim(id4, { orderId: '4', now: t0 + 27 * 3600_000 });
+  const c = a.readClaims(); c.claims.find(x => x.orderId === '4').box = 'AAAA.BBBB.CCCC'; fs.writeFileSync(a.claimsFile, JSON.stringify(c));
+  assert.deepEqual(a.claimStatus(id4, t0 + 27 * 3600_000), { status: 'unknown' });
 });
 
 test('(ls-f) both paths converge: a redeemed code\'s token and a paid order\'s token get the same answer from canCreateRoom, through the same identify()', () => {
@@ -230,21 +235,70 @@ test('(ls-i) a signed order_refunded revokes that order\'s token on the running 
   } finally { await srv.close(); }
 });
 
-test('(ls-j) bin/revoke-order.mjs: revokes a paid order\'s token (kept, marked), says so again for a second run, exits 1 for an unknown order and 64 without one', () => {
+test('(ls-j) bin/revoke-order.mjs: revokes a paid order\'s token in revoked-orders.json (verified.json only read), says so again for a second run, exits 1 for an unknown order and 64 without one', () => {
   const dir = tmpDir(), a = new AccessStore(dir), claimId = randomUUID();
   a.issueFromClaim(claimId, { orderId: '6006' });
   const tok = a.claimStatus(claimId).token;
   const redeemed = a.redeem(a.createCode({ label: 'Nacho' }).code);
+  const verifiedBefore = fs.readFileSync(a.verifiedFile, 'utf8');
   let r = cli('revoke-order', ['6006'], dir);
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /revoked order 6006/);
   assert.deepEqual(canCreateRoom(a, { verifiedToken: tok }), { ok: false, reason: 'unverified' });
   assert.equal(canCreateRoom(a, { verifiedToken: redeemed.token }).ok, true, 'code tokens untouched');
-  const e = a.readVerified().tokens.find(t => t.orderId === '6006'); assert.ok(e.revoked); assert.equal(a.readVerified().tokens.length, 2);
+  assert.equal(fs.readFileSync(a.verifiedFile, 'utf8'), verifiedBefore, 'the CLI never writes the server\'s file');
+  const when = a.readRevokedOrders().orders.find(o => o.orderId === '6006').revoked; assert.ok(!Number.isNaN(Date.parse(when)));
   r = cli('revoke-order', ['6006'], dir); assert.equal(r.status, 0); assert.match(r.stdout, /already revoked/);
-  assert.equal(a.readVerified().tokens.find(t => t.orderId === '6006').revoked, e.revoked);
+  assert.equal(a.readRevokedOrders().orders.length, 1);
   r = cli('revoke-order', ['7007'], dir); assert.equal(r.status, 1); assert.match(r.stderr, /no paid order 7007/);
   r = cli('revoke-order', [], dir); assert.equal(r.status, 64);
-  assert.equal(fs.statSync(a.verifiedFile).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(a.revokedOrdersFile).mode & 0o777, 0o600);
+  // an order the webhook already revoked (verified.json marked): the CLI says so and writes nothing
+  const other = randomUUID(); a.issueFromClaim(other, { orderId: '6007' }); a.revokeOrder('6007');
+  r = cli('revoke-order', ['6007'], dir); assert.match(r.stdout, /already revoked/); assert.equal(a.readRevokedOrders().orders.length, 1);
+});
+
+test('(ls-k) bin/revoke-order.mjs while the server runs and writes verified.json: no write is lost, the revocation holds and the new order stands', async () => {
+  const dir = tmpDir(), srv = await server(dir, 0, LS);
+  try {
+    const c1 = randomUUID(); assert.equal((await hook(srv, order({ claimId: c1, orderId: '8001' }))).status, 200);
+    const tok1 = (await poll(srv, c1)).body.token;
+    const r = cli('revoke-order', ['8001'], dir); assert.equal(r.status, 0, r.stderr);
+    // the server writes verified.json right after (a new order): with one shared file this could drop the CLI's change
+    const c2 = randomUUID(); assert.equal((await hook(srv, order({ claimId: c2, orderId: '8002' }))).status, 200);
+    const tok2 = (await poll(srv, c2)).body.token;
+    assert.equal((await fetch(srv.httpUrl + '/verify', { headers: { authorization: 'Bearer ' + tok1 } })).status, 401, 'revoked on the running server');
+    assert.equal((await fetch(srv.httpUrl + '/verify', { headers: { authorization: 'Bearer ' + tok2 } })).status, 200);
+    assert.equal(tokens(dir).length, 2);
+    assert.deepEqual(new AccessStore(dir).readRevokedOrders().orders.map(o => o.orderId), ['8001']);
+    // a refund webhook for an order the operator already revoked: acked, nothing more
+    assert.equal((await hook(srv, order({ event: 'order_refunded', orderId: '8001', status: 'refunded' }))).status, 200);
+    assert.equal(tokens(dir).find(t => t.orderId === '8001').revoked, undefined);
+  } finally { await srv.close(); }
+});
+
+test('(ls-l) test mode: a test-mode order is acked and issues nothing by default (meta.test_mode or attributes.test_mode); with allowTestMode (LEMONSQUEEZY_ALLOW_TEST_MODE=1) it issues like a real one; restore follows the same rule', async () => {
+  const dir = tmpDir(), cap = capture(), srv = await server(dir, 0, { ...LS, log: cap.log });
+  try {
+    const c1 = randomUUID(), viaMeta = order({ claimId: c1, orderId: '9101', testMode: true });
+    const c2 = randomUUID(), viaAttrs = order({ claimId: c2, orderId: '9102' }); viaAttrs.data.attributes.test_mode = true;
+    for (const b of [viaMeta, viaAttrs]) { const r = await hook(srv, b); assert.equal(r.status, 200); assert.deepEqual(JSON.parse(r.text), { ok: true }); }
+    assert.equal(tokens(dir).length, 0); assert.ok(!fs.existsSync(path.join(dir, 'claims.json')));
+    assert.deepEqual((await poll(srv, c1)).body, { status: 'pending' });
+    assert.ok(cap.lines.some(l => /ignored: test mode/.test(l) && /"order":"9101"/.test(l)), 'the operator sees why');
+    // a live order on the same server still works
+    const c3 = randomUUID(); await hook(srv, order({ claimId: c3, orderId: '9103' }));
+    assert.equal((await poll(srv, c3)).body.status, 'ready');
+  } finally { await srv.close(); }
+  const dir2 = tmpDir(), srv2 = await server(dir2, 0, { lemonSqueezy: { ...LS.lemonSqueezy, allowTestMode: true } });
+  try {
+    const c = randomUUID(); assert.equal((await hook(srv2, order({ claimId: c, orderId: '9201', testMode: true }))).status, 200);
+    const p = await poll(srv2, c); assert.equal(p.body.status, 'ready');
+    assert.equal((await fetch(srv2.httpUrl + '/verify', { headers: { authorization: 'Bearer ' + p.body.token } })).status, 200);
+  } finally { await srv2.close(); }
+  // restore: the same check on the order from the API
+  const ls = { id: '9301', attributes: { order_number: 5, user_email: 'b@example.com', status: 'paid', test_mode: true, first_order_item: { variant_id: Number(VARIANT) } } };
+  assert.deepEqual(matchOrder([ls], { orderNumber: '5', email: 'b@example.com' }, VARIANT), { reason: 'test mode' });
+  assert.deepEqual(matchOrder([ls], { orderNumber: '5', email: 'b@example.com' }, VARIANT, true), { orderId: '9301' });
 });
 
 test('(ls-g) nothing secret leaks: logs and answers never carry the signing secret, the claim id, the token, the email or a stack trace; the claim poll is rate-limited per IP', async () => {

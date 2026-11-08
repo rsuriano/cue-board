@@ -54,19 +54,18 @@ Media between collaborators (`docs/media-p2p.md`) uses `<meta name="cue-ice-urls
    — empty (this repo) means the paid-access panel never shows, same convention as the other
    feature flags here.
 5. Check: `curl -s -X POST https://sync.bedrocklabs.dev/webhooks/lemonsqueezy -d '{}'` answers 401
-   (no valid signature), then do one real **test-mode** purchase end to end from the live app and
+   (no valid signature), then, with `LEMONSQUEEZY_ALLOW_TEST_MODE=1` (step 8), do one real **test-mode** purchase end to end from the live app and
    confirm it lands in "This room" able to create a room.
 6. **Rotating `LEMONSQUEEZY_WEBHOOK_SECRET`** reissues a fresh token for a buyer's NEXT restore
    (`access.mjs`'s `issueFromOrder`); their already-opened browser keeps working until it needs to
    restore again.
 7. **Revoking a paid order's access without a refund webhook** (manual case):
    `cd /opt/cue-sync && DATA_DIR=<the service's DATA_DIR> npm run revoke-order -w @cue-board/sync-server -- <orderId>`.
-   Run this with the service stopped, or route it through the server instead — the CLI and the
-   running server both rewrite the same file and a revoke racing a live issue can lose one write.
-8. Lemon Squeezy's `test_mode` orders currently issue real tokens (so a free test-card checkout
-   works like a paid one) — fine for your own end-to-end check in step 5, but turn off Lemon
-   Squeezy's test mode on the live store before announcing this, or anyone could self-serve access
-   that way.
+   Safe with the service running: it writes only `revoked-orders.json`, a file the server reads but
+   never writes (the same split as `codes.json` for `revoke-code`).
+8. Lemon Squeezy `test_mode` orders are acked and ignored (no token, by the webhook or Restore)
+   unless the service has `LEMONSQUEEZY_ALLOW_TEST_MODE=1`. Set it only for your own step 5
+   test-mode purchase, then remove it and restart.
 
 The sync server URL is set by `<meta name="cue-sync-url" content="">` in `index.html`. It's empty in this repo, which turns collaboration off (no network, `collab.js` never loads). The hosted copy sets it, in hephaestus only, to `wss://sync.bedrocklabs.dev`. The sync server itself (`packages/sync-server`) is not deployed by hephaestus' pages; see its `SPIKE.md`. Never deploy `server.mjs` or `.env`: the hosted copy is static, and each visitor uses their own OpenRouter key, stored in their browser.
 

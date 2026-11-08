@@ -41,7 +41,7 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, createPerHour?: number, verifyFails?: number, verifyBlockMs?: number,
  *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
  *   claimsPerMinute?: number, restoreFails?: number, restoreBlockMs?: number, restoresPerHour?: number,
- *   lemonSqueezy?: { secret?: string, variantId?: string, apiKey?: string, apiBase?: string },
+ *   lemonSqueezy?: { secret?: string, variantId?: string, apiKey?: string, apiBase?: string, allowTestMode?: boolean },
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
 export async function startServer(opts = {}) {

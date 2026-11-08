@@ -8,16 +8,19 @@
                     written by the CLI only (bin/create-code.mjs, bin/revoke-code.mjs); the server reads it on every use,
                     so a code made or revoked while the server runs counts at once, and the two never race on one file
      verified.json  { tokens: [{ sha256, code: <code id>, created }] }
-                    written by the server (a redeem, a paid order, a refund); the CLI reads it (list-codes shows how many
-                    redeemed each code) and writes it only for bin/revoke-order.mjs (a refund the webhook missed). A
-                    token bought through Lemon Squeezy (webhooks/lemonsqueezy.mjs) has the same shape with code: null,
-                    plus source: 'lemonsqueezy', orderId, label and box (the token sealed under the webhook secret, so
-                    POST /access/restore hands back the same token); one entry per order; it stands while its entry
-                    has no `revoked` (set by revokeOrder: an order_refunded webhook or bin/revoke-order.mjs)
+                    written by the server only (a redeem, a paid order, a refund); the CLI reads it (list-codes shows how
+                    many redeemed each code). A token bought through Lemon Squeezy (webhooks/lemonsqueezy.mjs) has the
+                    same shape with code: null, plus source: 'lemonsqueezy', orderId, label and box (the token sealed
+                    under the webhook secret, so POST /access/restore hands back the same token); one entry per order; it
+                    stands while its entry has no `revoked` (an order_refunded webhook) and its order isn't in
+                    revoked-orders.json
+     revoked-orders.json  { orders: [{ orderId, revoked }] }  paid orders the operator revoked (bin/revoke-order.mjs, a
+                    refund the webhook missed); written by the CLI only and read by the server on every use, as codes.json
      claims.json    { claims: [{ sha256, orderId, created, expires, box }] }  a paid order waiting for its browser to
                     collect the token (POST /access/claim). sha256 is the hash of the browser's claim id; box is the token
                     encrypted with a key derived from the claim id, so the file alone gives neither. Entries are ready
-                    until `expires` (CLAIM_TTL_MS), then answer unknown, and are dropped a day later (on any write)
+                    once, until `expires` (CLAIM_TTL_MS): collected, the box is dropped and they answer unknown, as past
+                    `expires`; they're dropped a day later (on the next issue)
    Codes and tokens are random, stored hashed, compared in constant time and never logged. Revoking a code revokes its
    tokens: a token counts only while its code exists and isn't revoked (checked on every use, nothing cached). */
 import fs from 'node:fs';
@@ -79,6 +82,7 @@ export class AccessStore {
   get codesFile() { return path.join(this.dir, 'codes.json'); }
   get verifiedFile() { return path.join(this.dir, 'verified.json'); }
   get claimsFile() { return path.join(this.dir, 'claims.json'); }
+  get revokedOrdersFile() { return path.join(this.dir, 'revoked-orders.json'); }
 
   /** @returns {{ codes: any[] }} */
   readCodes() { const v = readJson(this.codesFile, { codes: [] }); return v && Array.isArray(v.codes) ? v : { codes: [] }; }
@@ -86,6 +90,8 @@ export class AccessStore {
   readVerified() { const v = readJson(this.verifiedFile, { tokens: [] }); return v && Array.isArray(v.tokens) ? v : { tokens: [] }; }
   /** @returns {{ claims: any[] }} */
   readClaims() { const v = readJson(this.claimsFile, { claims: [] }); return v && Array.isArray(v.claims) ? v : { claims: [] }; }
+  /** @returns {{ orders: any[] }} */
+  readRevokedOrders() { const v = readJson(this.revokedOrdersFile, { orders: [] }); return v && Array.isArray(v.orders) ? v : { orders: [] }; }
 
   /** CLI: a new code. Returned once, in clear; only its hash is stored. @param {{ label: string, maxUsers?: number | null }} o */
   createCode({ label, maxUsers = null }) {
@@ -136,11 +142,19 @@ export class AccessStore {
     if (typeof claimId !== 'string' || !CLAIM_ID.test(claimId)) return { ok: false, reason: 'bad_claim' };
     orderId = String(orderId ?? '');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return { ok: false, reason: 'bad_order' };
-    const v = this.readVerified();
-    if (v.tokens.some(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId)) return { ok: true, duplicate: true };
+    const v = this.readVerified(), c = this.readClaims(), h = hex(claimId);
+    if (v.tokens.some(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId)) {
+      // already issued (a retried webhook, or a restore got there first): a claim id with no entry yet gets one that's
+      // already over, so a browser still polling for it hears `unknown` (go restore) instead of `pending` until it gives up
+      if (!findHash(c.claims, claimId)) {
+        c.claims = c.claims.filter(x => x && typeof x.expires === 'number' && x.expires + CLAIM_KEEP_MS > now);
+        c.claims.push({ sha256: h, orderId, created: new Date(now).toISOString(), expires: now, duplicate: true });
+        writeJson(this.claimsFile, c);
+      }
+      return { ok: true, duplicate: true };
+    }
     const token = randomBytes(32).toString('base64url'), created = new Date(now).toISOString();
     // the claim first: if this write fails nothing was issued, and the webhook's retry starts over
-    const c = this.readClaims(), h = hex(claimId);
     // a claim id seen again (the same browser's second order) points at the newest token
     c.claims = c.claims.filter(x => x && typeof x.expires === 'number' && x.expires + CLAIM_KEEP_MS > now && x.sha256 !== h);
     c.claims.push({ sha256: h, orderId, created, expires: now + CLAIM_TTL_MS, box: seal(claimKey(claimId), token) });
@@ -170,7 +184,7 @@ export class AccessStore {
     orderId = String(orderId ?? '');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return { ok: false, reason: 'bad_order' };
     const v = this.readVerified(), e = v.tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
-    if (e && e.revoked) return { ok: false, reason: 'revoked' };
+    if ((e && e.revoked) || this.#operatorRevoked(orderId)) return { ok: false, reason: 'revoked' };
     const key = orderKey(this.orderSecret, orderId);
     if (e) {
       const old = e.box ? unseal(key, e.box) : null;
@@ -186,32 +200,56 @@ export class AccessStore {
     return { ok: true, token, label: n.label, reused: false, replaced: false };
   }
 
-  /** Server (an order_refunded webhook) or CLI (bin/revoke-order.mjs): a paid order's token stops working. The entry is
-      marked `revoked: <iso>` and kept (history, and so a replayed order_created stays a duplicate); identify() already
-      refuses a revoked paid entry, and issueFromOrder won't hand it back on a restore. Read from disk on every use, so
-      it counts at the token's next request. An order with no entry (the webhook never issued one) is `unknown`.
+  /** Server (an order_refunded webhook): a paid order's token stops working. The entry is marked `revoked: <iso>` and
+      kept (history, and so a replayed order_created stays a duplicate); identify() already refuses a revoked paid entry,
+      and issueFromOrder won't hand it back on a restore. Read from disk on every use, so it counts at the token's next
+      request. An order with no entry (the webhook never issued one) is `unknown`. The CLI uses revokeOrderByOperator.
       @param {string} orderId @param {{ now?: number }} [o] @returns {'revoked' | 'already' | 'unknown'} */
   revokeOrder(orderId, { now = Date.now() } = {}) {
     orderId = String(orderId ?? '');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return 'unknown';
     const v = this.readVerified(), e = v.tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
     if (!e) return 'unknown';
-    if (e.revoked) return 'already';
+    if (e.revoked || this.#operatorRevoked(orderId)) return 'already';
     e.revoked = new Date(now).toISOString();
     writeJson(this.verifiedFile, v);
     return 'revoked';
   }
 
+  /** CLI (bin/revoke-order.mjs): the same as revokeOrder, written to revoked-orders.json instead, a file only the CLI
+      writes (as codes.json), so it never races the running server's writes to verified.json; it only reads that one.
+      @param {string} orderId @param {{ now?: number }} [o] @returns {'revoked' | 'already' | 'unknown'} */
+  revokeOrderByOperator(orderId, { now = Date.now() } = {}) {
+    orderId = String(orderId ?? '');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return 'unknown';
+    const e = this.readVerified().tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
+    if (!e) return 'unknown';
+    if (e.revoked || this.#operatorRevoked(orderId)) return 'already';
+    const all = this.readRevokedOrders();
+    all.orders.push({ orderId, revoked: new Date(now).toISOString() });
+    writeJson(this.revokedOrdersFile, all);
+    return 'revoked';
+  }
+
+  /** revoked by the operator (revoked-orders.json), read on every use like codes.json */
+  #operatorRevoked(/** @type {string} */ orderId) { return this.readRevokedOrders().orders.some(x => x && x.orderId === orderId); }
+
   /** Server: what POST /access/claim answers. A well-formed claim id the server hasn't seen is `pending` (the webhook may
       still be on its way; the browser gives up after its own timeout); a claim past its TTL, or whose token was revoked
-      meanwhile, is `unknown`. @returns {{ status: 'pending' } | { status: 'ready', token: string, label: string } | { status: 'unknown' }} */
+      meanwhile, is `unknown`. `ready` is answered once: the entry is then marked collected (its sealed token dropped) and
+      answers `unknown`, so whoever else saw the claim id (it rode in the checkout URL) can't collect the token too; a
+      browser that lost that one answer uses Restore. @returns {{ status: 'pending' } | { status: 'ready', token: string, label: string } | { status: 'unknown' }} */
   claimStatus(/** @type {string} */ claimId, now = Date.now()) {
     if (typeof claimId !== 'string' || !CLAIM_ID.test(claimId)) return { status: 'unknown' };
-    const c = findHash(this.readClaims().claims, claimId);
+    const all = this.readClaims(), c = findHash(all.claims, claimId);
     if (!c) return { status: 'pending' };
-    if (!(typeof c.expires === 'number' && c.expires > now)) return { status: 'unknown' };
+    if (!(typeof c.expires === 'number' && c.expires > now) || c.collected) return { status: 'unknown' };
     const token = unseal(claimKey(claimId), c.box), id = token ? this.identify(token) : null;
-    return token && id ? { status: 'ready', token, label: id.label } : { status: 'unknown' };
+    if (!token || !id) return { status: 'unknown' };
+    // written before answering: if this fails the token isn't handed out (500), and the next poll tries again
+    c.collected = new Date(now).toISOString(); delete c.box;
+    writeJson(this.claimsFile, all);
+    return { status: 'ready', token, label: id.label };
   }
 
   /** Server: the code behind a verified token, if the token is known and its code still stands. A paid token stands on
@@ -219,7 +257,7 @@ export class AccessStore {
   identify(/** @type {string} */ token) {
     const t = findHash(this.readVerified().tokens, token);
     if (!t) return null;
-    if (t.source === 'lemonsqueezy') return t.revoked ? null : { codeId: null, label: String(t.label || 'Paid'), tokenHash: t.sha256 };
+    if (t.source === 'lemonsqueezy') return t.revoked || this.#operatorRevoked(t.orderId) ? null : { codeId: null, label: String(t.label || 'Paid'), tokenHash: t.sha256 };
     const c = this.readCodes().codes.find(x => x && x.id === t.code);
     if (!c || c.revoked) return null;
     return { codeId: c.id, label: c.label, tokenHash: t.sha256 };

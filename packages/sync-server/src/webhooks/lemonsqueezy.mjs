@@ -15,6 +15,9 @@
      not JSON                                                   400
      order_refunded (full or partial)                           200: AccessStore.revokeOrder marks the order's token
                                                                 revoked (kept, not deleted); an order with no token: nothing
+     a test-mode order (meta.test_mode or attributes.test_mode true) without LEMONSQUEEZY_ALLOW_TEST_MODE=1
+                                                                200 and nothing issued: a test card is free, so a store left
+                                                                in test mode would otherwise hand out access for nothing
      not order_created, not status "paid", another variant, no or malformed meta.custom_data.claim_id
                                                                 200 { ok: true } and nothing else (acked, so it isn't retried)
      a paid order of our variant                                200: AccessStore.issueFromClaim, idempotent by order id
@@ -30,10 +33,12 @@ const SIG_HEX = /^[0-9a-f]{64}$/i;
  * Is this order a paid purchase of the access variant? The one check both ways in use: the webhook (an order_created
  * body's data.attributes) and POST /access/restore (an order from the Lemon Squeezy API, same attributes).
  * @param {any} attrs an order's attributes @param {string} variantId LEMONSQUEEZY_VARIANT_ID
- * @returns {null | { reason: 'not paid' | 'another variant', detail: Record<string, string> }} null when it qualifies
+ * @param {boolean} [allowTestMode] LEMONSQUEEZY_ALLOW_TEST_MODE=1: a test-mode order counts (the owner's own end-to-end check)
+ * @returns {null | { reason: 'test mode' | 'not paid' | 'another variant', detail: Record<string, string> }} null when it qualifies
  */
-export function paidOrderProblem(attrs, variantId) {
+export function paidOrderProblem(attrs, variantId, allowTestMode = false) {
   attrs = attrs && typeof attrs === 'object' ? attrs : {};
+  if (attrs.test_mode === true && !allowTestMode) return { reason: 'test mode', detail: {} };
   if (attrs.status !== 'paid' || attrs.refunded === true) return { reason: 'not paid', detail: { status: String(attrs.status).slice(0, 30) } };
   const item = attrs.first_order_item && typeof attrs.first_order_item === 'object' ? attrs.first_order_item : {};
   if (!variantId || String(item.variant_id ?? '') !== variantId) return { reason: 'another variant', detail: { variant: String(item.variant_id ?? '').slice(0, 30) } };
@@ -42,10 +47,10 @@ export function paidOrderProblem(attrs, variantId) {
 
 /**
  * @param {{ access: import('../access.mjs').AccessStore, log: ReturnType<typeof import('../log.mjs').createLogger>,
- *   secret?: string, variantId?: string, clientIp: (req: import('node:http').IncomingMessage) => string }} o
+ *   secret?: string, variantId?: string, allowTestMode?: boolean, clientIp: (req: import('node:http').IncomingMessage) => string }} o
  */
 export function createLemonSqueezyWebhook(o) {
-  const secret = String(o.secret || ''), variantId = String(o.variantId || '').trim(), log = o.log;
+  const secret = String(o.secret || ''), variantId = String(o.variantId || '').trim(), allowTestMode = o.allowTestMode === true, log = o.log;
 
   /** @param {import('node:http').ServerResponse} res @param {number} status @param {object} body */
   const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -88,16 +93,17 @@ export function createLemonSqueezyWebhook(o) {
       ack(); return;
     }
     if (event !== 'order_created') { log.info('lemonsqueezy webhook ignored: event', { event }); ack(); return; }
-    const problem = paidOrderProblem(attrs, variantId);
+    const testMode = meta.test_mode === true || attrs.test_mode === true;
+    const problem = testMode && !allowTestMode ? { reason: 'test mode (LEMONSQUEEZY_ALLOW_TEST_MODE not set)', detail: {} } : paidOrderProblem(attrs, variantId, allowTestMode);
     if (problem) { log.info('lemonsqueezy webhook ignored: ' + problem.reason, { order: orderId, ...problem.detail }); ack(); return; }
     const custom = meta.custom_data && typeof meta.custom_data === 'object' ? meta.custom_data : {};
     const r = o.access.issueFromClaim(typeof custom.claim_id === 'string' ? custom.claim_id : '', { orderId });
     if (!r.ok) {
       // a real payment the buyer can't collect: the operator finds it by order id and hands them a code instead
-      log.error('lemonsqueezy webhook: paid order without a usable claim id, nothing issued', { order: orderId, reason: r.reason, testMode: meta.test_mode === true });
+      log.error('lemonsqueezy webhook: paid order without a usable claim id, nothing issued', { order: orderId, reason: r.reason, testMode });
       ack(); return;
     }
-    log.info(r.duplicate ? 'lemonsqueezy webhook: order already processed' : 'lemonsqueezy order paid: token issued', { order: orderId, testMode: meta.test_mode === true });
+    log.info(r.duplicate ? 'lemonsqueezy webhook: order already processed' : 'lemonsqueezy order paid: token issued', { order: orderId, testMode });
     ack();
   }
 

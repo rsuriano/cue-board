@@ -139,7 +139,7 @@ test('(rs-g) refunded through the webhook (or bin/revoke-order): restore can\'t 
     assert.deepEqual(new AccessStore(t.dir, { orderSecret: SECRET }).issueFromOrder('5550001'), { ok: false, reason: 'revoked' });
     // the CLI path lands on the same check
     assert.equal((await restore(t.srv, { orderNumber: '32', email: EMAIL })).status, 200);
-    assert.equal(a.revokeOrder('5550002'), 'revoked');
+    assert.equal(a.revokeOrderByOperator('5550002'), 'revoked');
     assert.equal((await restore(t.srv, { orderNumber: '32', email: EMAIL })).status, 404);
     assert.equal(tokens(t.dir).length, 2);
   } finally { await t.close(); }
@@ -164,6 +164,39 @@ test('(rs-c) rate limits: 5 misses per IP block for 15 min (even a right answer 
     const busy = await restore(g.srv, { orderNumber: '31', email: EMAIL });
     assert.equal(busy.status, 429); assert.equal(busy.body.error, 'restore_busy'); assert.equal(g.api.calls.length, 2);
   } finally { await g.close(); }
+});
+
+test('(rs-h) junk never reaches the shared hourly budget: with restoresPerHour 1, a flood of malformed requests (empty, non-numeric number, email without "@" or a dotted domain) is 400 and a real buyer still gets through', async () => {
+  const t = await setup({ restoresPerHour: 1, restoreFails: 100 });
+  try {
+    const junk = [{}, { orderNumber: '', email: '' }, { orderNumber: 'abc', email: EMAIL }, { orderNumber: '31', email: 'buyer.example.com' },
+      { orderNumber: '31', email: 'buyer@example' }, { orderNumber: '31', email: 'a@b.' }, { orderNumber: '31', email: '@example.com' }, 'not json', '[]'];
+    for (let i = 0; i < 30; i++) { const b = junk[i % junk.length], r = await restore(t.srv, b); assert.equal(r.status, 400, JSON.stringify(b)); }
+    assert.equal(t.api.calls.length, 0);
+    assert.equal((await restore(t.srv, { orderNumber: '31', email: EMAIL })).status, 200, 'the one plausible attempt gets the budget');
+    assert.equal((await restore(t.srv, { orderNumber: '31', email: EMAIL })).body.error, 'restore_busy', 'and it was counted');
+  } finally { await t.close(); }
+  assert.deepEqual(cleanRestoreInput({ orderNumber: '#31', email: 'Buyer@Mail.Example.co' }), { orderNumber: '31', email: 'buyer@mail.example.co' });
+});
+
+test('(rs-i) a webhook arriving after a Restore already issued that order\'s token: a duplicate (200, no second token, no error), and the buying browser\'s claim poll ends at "unknown" instead of "pending" until it gives up', async () => {
+  const cap = capture(), t = await setup({ log: cap.log });
+  try {
+    const r = await restore(t.srv, { orderNumber: '31', email: EMAIL }); assert.equal(r.status, 200);
+    const claimId = randomUUID();
+    const pollIt = async () => (await (await fetch(t.srv.httpUrl + '/access/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ claim_id: claimId }) })).json());
+    assert.deepEqual(await pollIt(), { status: 'pending' }, 'the browser back from checkout, webhook not here yet');
+    const raw = JSON.stringify({ meta: { event_name: 'order_created', test_mode: false, custom_data: { claim_id: claimId } }, data: { type: 'orders', id: '5550001', attributes: lsOrder().attributes } });
+    const send = () => fetch(t.srv.httpUrl + '/webhooks/lemonsqueezy', { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature': createHmac('sha256', SECRET).update(raw).digest('hex') }, body: raw });
+    const hook = await send(); assert.equal(hook.status, 200); assert.deepEqual(await hook.json(), { ok: true });
+    assert.equal(tokens(t.dir).length, 1, 'no second token');
+    assert.deepEqual(await pollIt(), { status: 'unknown' }, 'the poll ends (the app then points to Restore)');
+    assert.ok(cap.lines.some(l => /already processed/.test(l) && /"order":"5550001"/.test(l)));
+    assert.ok(!cap.lines.some(l => /"level":"error"/.test(l)), 'no error logged');
+    // a retry of that webhook changes nothing; the restored token still works
+    assert.equal((await send()).status, 200); assert.equal(tokens(t.dir).length, 1); assert.deepEqual(await pollIt(), { status: 'unknown' });
+    assert.equal((await fetch(t.srv.httpUrl + '/verify', { headers: { authorization: 'Bearer ' + r.body.token } })).status, 200);
+  } finally { await t.close(); }
 });
 
 test('(rs-d) not configured: without LEMONSQUEEZY_API_KEY (or the variant, or the webhook secret) the route answers 503 and trusts nothing, asks nothing', async () => {

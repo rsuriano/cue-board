@@ -62,13 +62,13 @@ const ERRORS = {
  *   corsOrigins: string[], maxRooms: number, createPerHour: number, verifyFails?: number, verifyBlockMs?: number,
  *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number, claimsPerMinute?: number,
  *   restoreFails?: number, restoreBlockMs?: number, restoresPerHour?: number,
- *   lemonSqueezy?: { secret?: string, variantId?: string, apiKey?: string, apiBase?: string },
+ *   lemonSqueezy?: { secret?: string, variantId?: string, apiKey?: string, apiBase?: string, allowTestMode?: boolean },
  *   clientIp: (req: import('node:http').IncomingMessage) => string,
  *   initDoc: (name: string) => import('yjs').Doc,
  *   kickRoom: (id: string, code: number, reason: string) => void, deleteRoom: (id: string) => boolean }} o
  */
 export function createApi(o) {
-  const ls = { secret: '', variantId: '', apiKey: '', apiBase: undefined, ...o.lemonSqueezy };
+  const ls = { secret: '', variantId: '', apiKey: '', apiBase: undefined, allowTestMode: false, ...o.lemonSqueezy };
   const access = new AccessStore(o.dataDir, { orderSecret: ls.secret }), log = o.log;
   const verifyLimit = createFailureLimiter({ max: o.verifyFails ?? 5, blockMs: o.verifyBlockMs ?? 15 * 60_000 });
   const createLimit = createBurstLimiter({ max: o.createPerHour });
@@ -77,7 +77,7 @@ export function createApi(o) {
   const claimLimit = createBurstLimiter({ max: o.claimsPerMinute ?? 60, windowMs: 60_000 });
   const restoreLimit = createFailureLimiter({ max: o.restoreFails ?? 5, blockMs: o.restoreBlockMs ?? 15 * 60_000 });
   const restoreAll = createBurstLimiter({ max: o.restoresPerHour ?? 100 });
-  const lsWebhook = createLemonSqueezyWebhook({ access, log, clientIp: o.clientIp, secret: ls.secret, variantId: ls.variantId });
+  const lsWebhook = createLemonSqueezyWebhook({ access, log, clientIp: o.clientIp, secret: ls.secret, variantId: ls.variantId, allowTestMode: ls.allowTestMode === true });
   const origins = new Set(o.corsOrigins.map(s => s.trim()).filter(Boolean));
 
   /** @param {import('node:http').ServerResponse} res @param {number} status @param {any} body */
@@ -259,7 +259,7 @@ export function createApi(o) {
       if (blocked) fail(res, 'too_many_attempts', { retryAfter: Math.ceil(restoreLimit.blocked(ip) / 1000) }); else fail(res, 'restore_unavailable');
       return true;
     }
-    const m = matchOrder(orders, input, ls.variantId);
+    const m = matchOrder(orders, input, ls.variantId, ls.allowTestMode === true);
     if (!('orderId' in m)) return miss(m.reason);
     const r = access.issueFromOrder(m.orderId);
     if (!r.ok) return miss(r.reason);
