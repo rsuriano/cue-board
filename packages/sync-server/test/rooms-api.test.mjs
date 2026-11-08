@@ -1,14 +1,12 @@
-// Rooms created from the app, verification codes, owners (src/api.mjs, src/access.mjs). Ports 3368, 3375-3378, 3381-3383.
+// Rooms created from the app (a session from auth), owners (src/api.mjs, src/access.mjs). Ports 3368, 3375, 3377-3378, 3381-3383.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import WebSocket from 'ws';
-import * as Y from 'yjs';
-import { tmpDir, server, makeRoom, client, synced, until, join } from './helpers.mjs';
-import { AccessStore, createFailureLimiter, createBurstLimiter } from '../src/access.mjs';
+import { tmpDir, server, makeRoom, client, synced, until, join, signSession } from './helpers.mjs';
+import { createBurstLimiter } from '../src/access.mjs';
 import { ProjectStore } from '../src/store.mjs';
 
 const bin = n => fileURLToPath(new URL(`../bin/${n}.mjs`, import.meta.url));
@@ -24,28 +22,22 @@ async function api(srv, method, p, { token, body, origin, raw } = {}) {
   let j = null; try { j = JSON.parse(text); } catch { j = text; }
   return { status: r.status, body: j, headers: r.headers };
 }
-const code = (dir, label = 'Nacho', maxUsers) => new AccessStore(dir).createCode({ label, maxUsers });
 /** the provider's awareness keeps a timer until its doc is destroyed: both go */
 const stop = (...cs) => cs.forEach(c => { c.provider.destroy(); c.doc.destroy(); });
 
-test('(u) create room: unverified 401 with a plain message; verified 201 with invite and owner tokens; the room joins and syncs; the project file keeps only hashes', async () => {
+test('(u) create room: no session 401 with a plain message; a session 201 with invite and owner tokens; the room joins and syncs; the project file keeps only hashes, never the email', async () => {
   const dir = tmpDir(), srv = await server(dir, 3375);
   try {
     let r = await api(srv, 'POST', '/rooms', { body: { name: 'My film' } });
-    assert.equal(r.status, 401); assert.equal(r.body.error, 'unverified'); assert.match(r.body.message, /invite-only/);
-    const c = code(dir, 'Nacho');
-    r = await api(srv, 'POST', '/verify', { body: { code: c.code } });
-    assert.equal(r.status, 200); assert.equal(r.body.label, 'Nacho'); const vt = r.body.token; assert.match(vt, /^[A-Za-z0-9_-]{40,}$/);
-    r = await api(srv, 'GET', '/verify', { token: vt }); assert.deepEqual(r.body, { ok: true, label: 'Nacho' });
-    r = await api(srv, 'GET', '/verify', { token: 'x' + vt.slice(1) }); assert.equal(r.status, 401);
+    assert.equal(r.status, 401); assert.equal(r.body.error, 'no_session'); assert.match(r.body.message, /account/);
+    const vt = signSession();
     r = await api(srv, 'POST', '/rooms', { token: vt, body: { name: ' My \u0000film\n  trailer ' } });
     assert.equal(r.status, 201); const { roomId, token, ownerToken } = r.body;
     assert.ok(roomId && token && ownerToken && token !== ownerToken);
     const pj = JSON.parse(fs.readFileSync(path.join(dir, roomId, 'project.json'), 'utf8'));
-    assert.equal(pj.name, 'My film trailer'); assert.equal(pj.owner.code, 'Nacho'); assert.equal(pj.tokens.length, 1);
-    const files = fs.readFileSync(path.join(dir, roomId, 'project.json'), 'utf8') + fs.readFileSync(path.join(dir, 'verified.json'), 'utf8') + fs.readFileSync(path.join(dir, 'codes.json'), 'utf8');
-    for (const secret of [c.code, vt, token, ownerToken]) assert.ok(!files.includes(secret), 'secrets are stored hashed only');
-    assert.equal((fs.statSync(path.join(dir, 'verified.json')).mode & 0o777), 0o600);
+    assert.equal(pj.name, 'My film trailer'); assert.equal(pj.owner.code, 'invite:Nacho'); assert.equal(pj.tokens.length, 1);
+    const files = fs.readFileSync(path.join(dir, roomId, 'project.json'), 'utf8');
+    for (const secret of [vt, token, ownerToken, 'ana@example.com']) assert.ok(!files.includes(secret), 'secrets are stored hashed only');
     // the room is a real room: the first invite token joins, and the doc is a new project (title = name)
     const a = client(srv, roomId, token); await synced(a.provider);
     assert.equal(a.doc.getMap('meta').get('title'), 'My film trailer');
@@ -54,26 +46,16 @@ test('(u) create room: unverified 401 with a plain message; verified 201 with in
   } finally { await srv.close(); }
 });
 
-test('(v) codes: a wrong code 401, a revoked one 403, a full one 409; 5 failures block the IP for the window (also for a right code), then it works again; revoking a code revokes its tokens', async () => {
-  const dir = tmpDir(), srv = await server(dir, 3376, { verifyFails: 5, verifyBlockMs: 400 });
+test('(v) the old code endpoint is gone (codes live in auth now); malformed input is a plain 400, never a crash', async () => {
+  const dir = tmpDir(), srv = await server(dir, 3376);
   try {
-    const good = code(dir, 'Group', 1), store = new AccessStore(dir);
-    const bad = () => api(srv, 'POST', '/verify', { body: { code: 'not-a-code-at-all' } });
-    for (let i = 0; i < 4; i++) assert.equal((await bad()).status, 401);
-    let r = await bad(); assert.equal(r.status, 429); assert.equal(r.body.error, 'too_many_attempts'); assert.ok(r.body.retryAfter >= 1);
-    r = await api(srv, 'POST', '/verify', { body: { code: good.code } }); assert.equal(r.status, 429, 'blocked: a right code is not tried');
-    await new Promise(ok => setTimeout(ok, 450));
-    r = await api(srv, 'POST', '/verify', { body: { code: good.code } }); assert.equal(r.status, 200); const vt = r.body.token;
-    r = await api(srv, 'POST', '/verify', { body: { code: good.code } }); assert.equal(r.status, 409); assert.equal(r.body.error, 'code_full');
-    assert.equal((await api(srv, 'POST', '/verify', { body: { code: good.code } })).status, 409, 'a full code is not counted as a guess');
-    store.revokeCode(good.id);
-    r = await api(srv, 'POST', '/verify', { body: { code: good.code } }); assert.equal(r.status, 403); assert.equal(r.body.error, 'code_revoked');
-    assert.equal((await api(srv, 'GET', '/verify', { token: vt })).status, 401, 'its token is out too');
-    assert.equal((await api(srv, 'POST', '/rooms', { token: vt, body: { name: 'x' } })).status, 401);
-    // malformed input is a plain 400, never a crash
-    assert.equal((await api(srv, 'POST', '/verify', { raw: '{not json', body: null })).status, 400);
-    assert.equal((await api(srv, 'POST', '/verify', { body: { code: 5 } })).status, 400);
-    assert.equal((await api(srv, 'POST', '/verify', { raw: 'x'.repeat(20000), body: null })).status, 400);
+    assert.equal((await api(srv, 'POST', '/verify', { body: { code: 'x'.repeat(16) } })).status, 404);
+    assert.equal((await api(srv, 'GET', '/verify')).status, 404);
+    const vt = signSession();
+    assert.equal((await api(srv, 'POST', '/rooms', { token: vt, raw: '{not json', body: null })).status, 400);
+    assert.equal((await api(srv, 'POST', '/rooms', { token: vt, body: { name: 5 } })).status, 400);
+    assert.equal((await api(srv, 'POST', '/rooms', { token: vt, raw: 'x'.repeat(20000), body: null })).status, 400);
+    assert.equal((await api(srv, 'POST', '/rooms', { token: 'a'.repeat(5000), body: {} })).status, 401);
     assert.equal((await api(srv, 'GET', '/health')).status, 200);
   } finally { await srv.close(); }
 });
@@ -81,7 +63,7 @@ test('(v) codes: a wrong code 401, a revoked one 403, a full one 409; 5 failures
 test('(w) owner actions: a member token cannot delete or replace the link, the owner can; everyone with the old link is out at once; delete closes members with 4410, wipes the folder and nothing comes back', async () => {
   const dir = tmpDir(), srv = await server(dir, 3377);
   try {
-    const vt = (await api(srv, 'POST', '/verify', { body: { code: code(dir).code } })).body.token;
+    const vt = signSession();
     const { roomId, token, ownerToken } = (await api(srv, 'POST', '/rooms', { token: vt, body: { name: 'Owned' } })).body;
     for (const t of [token, vt, 'x' + ownerToken.slice(1), '']) {
       assert.equal((await api(srv, 'POST', `/rooms/${roomId}/invite`, { token: t })).status, 403);
@@ -138,7 +120,7 @@ test('(x) legacy rooms (CLI, no owner) join and sync as before; owner actions on
 test('(y) caps: MAX_ROOMS gives a plain 507, the per-token burst a 429, and an update past MAX_ROOM_BYTES is refused with 4413 while the room keeps serving small ones', async () => {
   const dir = tmpDir(), srv = await server(dir, 3381, { maxRooms: 2, createPerHour: 3, maxRoomBytes: 4000 });
   try {
-    const vt = (await api(srv, 'POST', '/verify', { body: { code: code(dir).code } })).body.token;
+    const vt = signSession();
     const first = await api(srv, 'POST', '/rooms', { token: vt, body: { name: 'one' } }); assert.equal(first.status, 201);
     assert.equal((await api(srv, 'POST', '/rooms', { token: vt, body: { name: 'two' } })).status, 201);
     let r = await api(srv, 'POST', '/rooms', { token: vt, body: { name: 'three' } });
@@ -165,59 +147,53 @@ test('(y) caps: MAX_ROOMS gives a plain 507, the per-token burst a 429, and an u
 test('(z) CORS: an allowed origin gets its header and a 204 preflight; any other origin is refused with 403 and no header; no Origin (curl) is fine', async () => {
   const dir = tmpDir(), srv = await server(dir, 3382, { corsOrigins: ['https://cue.example.dev'] });
   try {
-    let r = await api(srv, 'OPTIONS', '/verify', { origin: 'https://cue.example.dev' });
+    let r = await api(srv, 'OPTIONS', '/rooms', { origin: 'https://cue.example.dev' });
     assert.equal(r.status, 204); assert.equal(r.headers.get('access-control-allow-origin'), 'https://cue.example.dev');
     assert.match(r.headers.get('access-control-allow-headers'), /authorization/); assert.match(r.headers.get('access-control-allow-methods'), /DELETE/);
-    r = await api(srv, 'POST', '/verify', { origin: 'https://cue.example.dev', body: { code: 'nope' } });
+    r = await api(srv, 'POST', '/rooms', { origin: 'https://cue.example.dev', body: {} });
     assert.equal(r.status, 401); assert.equal(r.headers.get('access-control-allow-origin'), 'https://cue.example.dev'); assert.equal(r.headers.get('vary'), 'Origin');
     for (const o of ['https://evil.example', 'http://cue.example.dev', 'https://cue.example.dev.evil', 'null']) {
-      r = await api(srv, 'OPTIONS', '/verify', { origin: o }); assert.equal(r.status, 403, o); assert.equal(r.headers.get('access-control-allow-origin'), null);
+      r = await api(srv, 'OPTIONS', '/rooms', { origin: o }); assert.equal(r.status, 403, o); assert.equal(r.headers.get('access-control-allow-origin'), null);
       r = await api(srv, 'POST', '/rooms', { origin: o, body: {} }); assert.equal(r.status, 403, o);
     }
-    r = await api(srv, 'POST', '/verify', { body: { code: 'nope' } }); assert.equal(r.status, 401, 'no Origin: not a CORS request');
+    r = await api(srv, 'POST', '/rooms', { body: {} }); assert.equal(r.status, 401, 'no Origin: not a CORS request');
     assert.equal((await api(srv, 'GET', '/nothing-here')).status, 404);
   } finally { await srv.close(); }
 });
 
-test('(aa) no secrets in the log at debug level: codes, verified tokens, invite tokens and owner tokens never appear; restart keeps codes, tokens, owners and revocations', async () => {
+test('(aa) no secrets in the log at debug level: sessions, emails, invite tokens and owner tokens never appear; restart keeps tokens and owners', async () => {
   const dir = tmpDir(), lines = [];
   const rec = lv => (msg, fields = {}) => lines.push(JSON.stringify({ level: lv, msg, ...fields }));
   const log = { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') };
   let srv = await server(dir, 3383, { log, corsOrigins: ['https://app.example'] });
-  const c1 = code(dir, 'Ana'), c2 = code(dir, 'Luis');
   let vt, roomId, token, ownerToken;
   try {
-    await api(srv, 'POST', '/verify', { body: { code: 'wrong-' + c1.code } });
-    await api(srv, 'POST', '/verify', { body: { code: c1.code }, origin: 'https://nope.example' });
-    vt = (await api(srv, 'POST', '/verify', { body: { code: c1.code } })).body.token;
+    vt = signSession({ src: 'invite:Ana' });
+    await api(srv, 'POST', '/rooms', { token: vt, body: { name: 'x' }, origin: 'https://nope.example' });
     ({ roomId, token, ownerToken } = (await api(srv, 'POST', '/rooms', { token: vt, body: { name: 'Logged' } })).body);
     await api(srv, 'POST', `/rooms/${roomId}/invite`, { token: token });          // refused: a member token
     token = (await api(srv, 'POST', `/rooms/${roomId}/invite`, { token: ownerToken })).body.token;
     const a = client(srv, roomId, token); await synced(a.provider); stop(a);
-    await api(srv, 'POST', '/rooms', { token: 'x' + vt.slice(1), body: { name: 'nope' } });
-    await api(srv, 'POST', '/verify', { raw: '{"code": "' + c2.code + '"', body: null });   // malformed body carrying a code
+    await api(srv, 'POST', '/rooms', { token: vt.slice(0, -3) + 'AAA', body: { name: 'nope' } });
   } finally { await srv.close(); }
   assert.ok(lines.length > 5);
-  for (const s of [c1.code, c2.code, vt, token, ownerToken]) for (const l of lines) assert.ok(!l.includes(s), 'secret in log: ' + l);
-  assert.ok(lines.some(l => /"room created"/.test(l) && /"code":"Ana"/.test(l)), 'the label is logged, the code is not');
+  for (const s of [vt, token, ownerToken, 'ana@example.com']) for (const l of lines) assert.ok(!l.includes(s), 'secret in log: ' + l);
+  assert.ok(lines.some(l => /"room created"/.test(l) && /"code":"invite:Ana"/.test(l)), 'how the creator got in is logged, who is not');
   assert.ok(lines.some(l => /"rejected: origin"/.test(l)));
   // restart: everything persisted
-  new AccessStore(dir).revokeCode(c2.id);
   srv = await server(dir, 3368, { log });   // another port: fetch's keep-alive pool may still hold a socket to the old one
   try {
-    assert.deepEqual((await api(srv, 'GET', '/verify', { token: vt })).body, { ok: true, label: 'Ana' });
-    assert.equal((await api(srv, 'POST', '/verify', { body: { code: c2.code } })).status, 403);
-    assert.equal((await api(srv, 'POST', `/rooms/${roomId}/invite`, { token: 'x' + ownerToken.slice(1) })).status, 403);
+    assert.equal((await api(srv, 'POST', `/rooms/${roomId}/invite`, { token: ownerToken.slice(0, -1) + (ownerToken.at(-1) === 'A' ? 'B' : 'A') })).status, 403);
     assert.equal((await join(`${srv.url}/${roomId}?token=${token}`)).result, 'joined');
     assert.equal((await api(srv, 'DELETE', `/rooms/${roomId}`, { token: ownerToken })).status, 200);
     assert.equal((await api(srv, 'GET', '/health')).body.ok, true);
   } finally { await srv.close(); }
 });
 
-test('(ab) races: two creates at once make two rooms; a join racing a delete gets 4404 or 4410, never a half room; the CLIs round-trip', async () => {
+test('(ab) races: two creates at once make two rooms; a join racing a delete gets 4404 or 4410, never a half room', async () => {
   const dir = tmpDir(), srv = await server(dir, 3375);
   try {
-    const vt = (await api(srv, 'POST', '/verify', { body: { code: code(dir).code } })).body.token;
+    const vt = signSession();
     const [a, b] = await Promise.all([api(srv, 'POST', '/rooms', { token: vt, body: { name: 'A' } }), api(srv, 'POST', '/rooms', { token: vt, body: { name: 'B' } })]);
     assert.equal(a.status, 201); assert.equal(b.status, 201); assert.notEqual(a.body.roomId, b.body.roomId); assert.equal(srv.store.count(), 2);
     // delete fired while a join is in flight
@@ -229,26 +205,11 @@ test('(ab) races: two creates at once make two rooms; a join racing a delete get
     await new Promise(ok => setTimeout(ok, 100));
     assert.ok(!fs.existsSync(path.join(dir, roomId)) && !fs.existsSync(path.join(dir, roomId + '.deleting')));
     assert.equal(srv.rooms.has(roomId), false);
-    // the operator's CLIs
-    let out = cli('create-code', ['--label', 'Nacho', '--max-users', '2'], dir); assert.equal(out.status, 0, out.stderr);
-    const printed = /code: +(\S+)/.exec(out.stdout)[1], id = /id: +(\S+)/.exec(out.stdout)[1];
-    assert.ok(!fs.readFileSync(path.join(dir, 'codes.json'), 'utf8').includes(printed));
-    assert.equal((await api(srv, 'POST', '/verify', { body: { code: printed } })).status, 200);
-    out = cli('list-codes', [], dir); assert.match(out.stdout, new RegExp(`${id} +active +1/2 redeemed .*Nacho`));
-    out = cli('revoke-code', [id], dir); assert.equal(out.status, 0);
-    out = cli('list-codes', [], dir); assert.match(out.stdout, new RegExp(`${id} +revoked`));
-    assert.equal((await api(srv, 'POST', '/verify', { body: { code: printed } })).status, 403);
-    assert.equal(cli('revoke-code', ['c-nope'], dir).status, 1);
-    assert.equal(cli('create-code', ['--label', 'x', '--max-users', '0'], dir).status, 1);
   } finally { await srv.close(); }
 });
 
-test('(ac) limiters on their own: failures reset after a success, the block ends, the burst window slides, maps stay bounded', () => {
+test('(ac) the burst limiter on its own: the window slides', () => {
   let t = 0; const now = () => t;
-  const f = createFailureLimiter({ max: 3, blockMs: 1000, now });
-  assert.equal(f.fail('a'), false); assert.equal(f.fail('a'), false); f.ok('a'); assert.equal(f.fail('a'), false); assert.equal(f.fail('a'), false);
-  assert.equal(f.fail('a'), true); assert.equal(f.blocked('a'), 1000); t = 999; assert.equal(f.blocked('a'), 1); t = 1000; assert.equal(f.blocked('a'), 0);
-  for (let i = 0; i < 1500; i++) f.fail('k' + i); t += 5000; f.fail('z'); assert.ok(f.size() < 1500, 'stale entries are pruned');
   const b = createBurstLimiter({ max: 2, windowMs: 100, now });
   assert.ok(b.take('x')); assert.ok(b.take('x')); assert.ok(!b.take('x')); t += 101; assert.ok(b.take('x'));
   const s = new ProjectStore(tmpDir()); assert.equal(s.count(), 0); assert.equal(s.deleteProject('nope-nope-nope-nope'), false);

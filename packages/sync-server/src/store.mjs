@@ -3,11 +3,11 @@
      <id>/project.json   { id, name, created, tokens: [{ sha256, created }], owner?: { sha256, created, code? } }
                          invite tokens and the owner token are stored hashed only. `owner` is absent on rooms made by the
                          CLI before owners existed (legacy rooms): they join and sync as before, nobody can manage them
-                         until the CLI attaches an owner (bin/attach-owner.mjs). `code` is the label of the verification
-                         code the creator redeemed (access.mjs), for the operator; never shown to members.
+                         until the CLI attaches an owner (bin/attach-owner.mjs). `code` is how the creator got their
+                         account ('purchase' or 'invite:<label>'; before auth, the code's label), for the operator; never
+                         shown to members.
      <id>/updates.bin    Yjs updates, each framed as uint32 LE length + bytes; compaction rewrites it as one update
-   Two files at the top of DATA_DIR belong to access.mjs (codes.json, verified.json); they can't collide with a room
-   folder, since room ids are directories.
+   codes.json and verified.json at the top of an older DATA_DIR are no longer read (codes live in packages/auth).
    All writes are synchronous: an update is on disk (in the OS page cache) before the server reacts to it. */
 import fs from 'node:fs';
 import path from 'node:path';

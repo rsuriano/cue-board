@@ -7,11 +7,20 @@ import { WebsocketProvider } from 'y-websocket';
 import { startServer } from '../src/server.mjs';
 import { ProjectStore } from '../src/store.mjs';
 import { initProject } from '../src/schema.mjs';
+import { generateKeyPairSync, sign } from 'node:crypto';
+
+/** auth's key pair for tests: the server gets the public half (as AUTH_PUBLIC_KEY_FILE would), tests sign sessions */
+export const AUTH_KEYS = generateKeyPairSync('ed25519');
+/** A session as packages/auth issues it: base64url(JSON payload) + '.' + base64url(Ed25519 signature of that string). */
+export function signSession(fields = {}, key = AUTH_KEYS.privateKey) {
+  const now = Date.now(), p = Buffer.from(JSON.stringify({ typ: 'session', sub: 'ana@example.com', prd: 'cue-board', src: 'invite:Nacho', exp: now + 365 * 86400_000, chk: now, ...fields })).toString('base64url');
+  return p + '.' + sign(null, Buffer.from(p), key).toString('base64url');
+}
 
 export const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'cue-sync-test-'));
 
 export async function server(dataDir, port, extra = {}) {
-  return startServer({ port, dataDir, logLevel: process.env.LOG_LEVEL || 'silent', unloadAfterMs: 50, ...extra });
+  return startServer({ port, dataDir, logLevel: process.env.LOG_LEVEL || 'silent', unloadAfterMs: 50, authPublicKey: AUTH_KEYS.publicKey, ...extra });
 }
 
 /** A fresh room seeded like a new project (one shot). */

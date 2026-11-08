@@ -1,8 +1,8 @@
 // @ts-check
 /* The sync server's HTTP API, from the browser (packages/sync-server/src/api.mjs). Rooms created from the app,
-   verification codes, owner actions. Tokens go in the Authorization header, never in a URL. Every call resolves (it
+   owner actions. Tokens go in the Authorization header, never in a URL. Every call resolves (it
    never throws): { ok: true, ...fields } or { ok: false, error, message, status }, where `message` is a sentence the app
-   can show as it is and `error` a stable code ('unverified', 'bad_code', 'too_many_attempts', 'not_owner', ...; 'network'
+   can show as it is and `error` a stable code ('no_session', 'create_limit', 'not_owner', ...; 'network'
    when the server didn't answer at all, 'malformed' when its answer wasn't the JSON expected). */
 
 /** wss://sync.example.dev → https://sync.example.dev (the API lives on the same host as the WebSocket). */
@@ -38,12 +38,8 @@ export function createApi(syncUrl, opts = {}) {
   }
 
   return {
-    /** redeem a verification code → { ok, token, label } */
-    verify: (/** @type {string} */ code) => call('POST', '/verify', { body: { code: String(code || '').trim() } }),
-    /** is this verified token still good? → { ok, label } (401 unverified once its code is revoked) */
-    checkVerified: (/** @type {string} */ token) => call('GET', '/verify', { token }),
-    /** a new, empty room named after the project → { ok, roomId, token, ownerToken } */
-    createRoom: (/** @type {string} */ verifiedToken, /** @type {string} */ name) => call('POST', '/rooms', { token: verifiedToken, body: { name: String(name || '').slice(0, 120) } }),
+    /** a new, empty room named after the project, with a session from auth → { ok, roomId, token, ownerToken } */
+    createRoom: (/** @type {string} */ session, /** @type {string} */ name) => call('POST', '/rooms', { token: session, body: { name: String(name || '').slice(0, 120) } }),
     /** owner: a new invite link; every old one stops working and everyone connected is closed → { ok, token } */
     regenerateInvite: (/** @type {string} */ roomId, /** @type {string} */ ownerToken) => call('POST', `/rooms/${encodeURIComponent(roomId)}/invite`, { token: ownerToken }),
     /** owner: wipe the room on the server; members see "room deleted" → { ok } */

@@ -1,18 +1,21 @@
-// Rooms from the app: the Collaborate panel, the verification code, creating a room, the invite link, a second browser
-// joining and editing both ways, the owner replacing the link and deleting the room; the same panel on a phone.
+// Rooms from the app: the Collaborate panel, the $9 step when logged out, Have a code, the magic link logging in,
+// creating a room, the invite link, a second browser joining and editing both ways, the owner replacing the link and
+// deleting the room; the same panel on a phone.
 //   node design/rooms-check.mjs <repo-root> <out-dir>
-// Sync server on 127.0.0.1:3367 (throwaway DATA_DIR, CORS_ORIGINS = the static origin); nothing leaves 127.0.0.1.
+// Auth on 127.0.0.1:3366 and the sync server on 3367 (throwaway data dirs, CORS_ORIGINS = the static origin); nothing
+// leaves 127.0.0.1.
 import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, readFileSync, statSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { createPrivateKey, sign } from 'node:crypto';
 import { join, extname, normalize } from 'node:path';
 const { chromium } = createRequire('/home/ramiro/testkit/')('playwright-core');
 
 const [root, out] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });
-const SYNC_PORT = 3367, dataDir = mkdtempSync(join(tmpdir(), 'cue-rooms-check-'));
+const SYNC_PORT = 3367, AUTH_PORT = 3366, BUY = 'https://bedrock.lemonsqueezy.example/buy/cue', dataDir = mkdtempSync(join(tmpdir(), 'cue-rooms-check-')), authDir = mkdtempSync(join(tmpdir(), 'cue-rooms-auth-'));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let fails = 0; const consoleLog = [];
 const check = (name, ok, ev = '') => { if (!ok) fails++; console.log((ok ? 'PASS ' : 'FAIL ') + name + (ev ? ' · ' + ev : '')); };
@@ -22,24 +25,33 @@ const srv = createServer((q, r) => {
   try {
     if (!statSync(p).isFile()) throw 0;
     let body = readFileSync(p);
-    if (p.endsWith('index.html')) body = String(body).replace('<meta name="cue-sync-url" content="">', `<meta name="cue-sync-url" content="ws://127.0.0.1:${SYNC_PORT}">`);
+    if (p.endsWith('index.html')) body = String(body).replace('<meta name="cue-sync-url" content="">', `<meta name="cue-sync-url" content="ws://127.0.0.1:${SYNC_PORT}">`)
+      .replace('<meta name="cue-auth-url" content="">', `<meta name="cue-auth-url" content="http://127.0.0.1:${AUTH_PORT}">`).replace('<meta name="cue-buy-url" content="">', `<meta name="cue-buy-url" content="${BUY}">`);
     r.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' }); r.end(body);
   } catch { r.writeHead(404); r.end(); }
 });
 await new Promise(ok => srv.listen(0, '127.0.0.1', ok));
 const origin = `http://127.0.0.1:${srv.address().port}`, app = origin + '/index.html';
-const env = { ...process.env, PORT: String(SYNC_PORT), DATA_DIR: dataDir, MAX_CONNS_PER_IP: '64', LOG_LEVEL: 'debug', CORS_ORIGINS: origin };
+// auth (packages/auth) first: it makes the signing key the sync server checks sessions with. No Resend or Lemon Squeezy
+// key: emails are off, so the check opens the session the way an emailed link would (?key=<ticket>, signed here)
+const authEnv = { ...process.env, PORT: String(AUTH_PORT), DATA_DIR: authDir, SESSION_KEY_FILE: join(authDir, 'session.key'), LOG_LEVEL: 'debug', CORS_ORIGINS: origin };
+const auth = spawn(process.execPath, [join(root, 'packages/auth/src/main.mjs')], { env: authEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+let authLog = ''; auth.stdout.on('data', d => { authLog += d; }); auth.stderr.on('data', d => { authLog += d; });
+for (let i = 0; i < 50 && !/listening/.test(authLog); i++) await sleep(100);
+const env = { ...process.env, PORT: String(SYNC_PORT), DATA_DIR: dataDir, MAX_CONNS_PER_IP: '64', LOG_LEVEL: 'debug', CORS_ORIGINS: origin, AUTH_PUBLIC_KEY_FILE: join(authDir, 'session.key.pub') };
 const server = spawn(process.execPath, [join(root, 'packages/sync-server/src/main.mjs')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = ''; server.stdout.on('data', d => { serverLog += d; }); server.stderr.on('data', d => { serverLog += d; });
 for (let i = 0; i < 50 && !/listening/.test(serverLog); i++) await sleep(100);
-const made = spawnSync(process.execPath, [join(root, 'packages/sync-server/bin/create-code.mjs'), '--label', 'Nacho'], { env, encoding: 'utf8' });
-const CODE = /code: +(\S+)/.exec(made.stdout)?.[1];
-check('create-code prints a code once', !!CODE && !readFileSync(join(dataDir, 'codes.json'), 'utf8').includes(CODE));
+const made = spawnSync(process.execPath, [join(root, 'packages/auth/bin/create-code.mjs'), '--label', 'Nacho'], { env: authEnv, encoding: 'utf8' });
+const CODE = /code: +(\S+)/.exec(made.stdout)?.[1], CODE_ID = /id: +(\S+)/.exec(made.stdout)?.[1];
+check('auth create-code prints a code once', !!CODE && !readFileSync(join(authDir, 'codes.json'), 'utf8').includes(CODE));
+const tp = Buffer.from(JSON.stringify({ typ: 'ticket', sub: 'ana@example.com', prd: 'cue-board', code: CODE_ID, exp: Date.now() + 3600_000 })).toString('base64url');
+const TICKET = tp + '.' + sign(null, Buffer.from(tp), createPrivateKey(readFileSync(join(authDir, 'session.key')))).toString('base64url');
 
 const browser = await chromium.launch({ executablePath: '/snap/bin/chromium', headless: true, args: ['--no-sandbox'] });
 async function newPage(name, phone = null) {
   const ctx = await browser.newContext(phone ? { viewport: phone, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
-  await ctx.route('**/*', r => (r.request().url().startsWith(origin) || r.request().url().startsWith(`http://127.0.0.1:${SYNC_PORT}`) ? r.continue() : r.abort()));
+  await ctx.route('**/*', r => (r.request().url().startsWith(origin) || r.request().url().startsWith(`http://127.0.0.1:${SYNC_PORT}`) || r.request().url().startsWith(`http://127.0.0.1:${AUTH_PORT}`) ? r.continue() : r.abort()));
   await ctx.addInitScript(() => { window.__CUE_MEDIA_TEST = { off: true }; });
   const page = await ctx.newPage();
   page.on('console', m => consoleLog.push(`${name} ${m.type()}: ${m.text()}`)); page.on('pageerror', e => consoleLog.push(`${name} pageerror: ${e.message}`));
@@ -58,14 +70,25 @@ try {
   await A.page.click('#joinb'); await waitStep(A.page, 'collab');
   check('the panel offers Share this project and Join with a link', await A.page.isVisible('#jShareNew') && await A.page.isVisible('#jJoinLink') && !(await A.page.$eval('#jShareNew', b => b.disabled)));
   await shot(A.page, 'desktop-collaborate');
-  await A.page.click('#jShareNew'); await waitStep(A.page, 'code');
-  check('unverified: the code prompt, with the invite-only message', /invite-only/.test(await A.page.textContent('#jTitle')) && /code you were given/.test(await A.page.textContent('#jLead')));
-  await shot(A.page, 'desktop-code');
-  await A.page.fill('#jCode', 'not-the-code'); await A.page.click('#jGo'); await waitStep(A.page, 'code');
-  await A.page.waitForFunction(() => /didn't work/.test(document.getElementById('jMsg').textContent), null, { timeout: 5000 });
-  check('a wrong code: the server\'s sentence, the field stays', /didn't work/.test(await A.page.textContent('#jMsg')));
-  await shot(A.page, 'desktop-code-wrong');
-  await A.page.fill('#jCode', CODE); await A.page.click('#jGo'); await waitStep(A.page, 'name');
+  check('logged out: the panel offers Log in', /^Log in$/.test((await A.page.textContent('#jAcct')).trim()) && await A.page.isVisible('#jAcct'));
+  await A.page.click('#jShareNew'); await waitStep(A.page, 'pay');
+  check('logged out: one step, "Live collab, $9 once", Buy (the checkout link), Log in, Have a code',
+    /\$9 once/.test(await A.page.textContent('#jTitle')) && (await A.page.getAttribute('#jBuy', 'href')) === BUY && await A.page.isVisible('#jLogin') && await A.page.isVisible('#jHaveCode'));
+  await shot(A.page, 'desktop-pay');
+  await A.page.click('#jHaveCode'); await waitStep(A.page, 'code');
+  check('Have a code: email and code', await A.page.isVisible('#jEmail') && await A.page.isVisible('#jCode'));
+  await A.page.click('#jGo');
+  check('an empty email is caught in the app', /email/.test(await A.page.textContent('#jMsg')));
+  await A.page.fill('#jEmail', 'ana@example.com'); await A.page.fill('#jCode', CODE); await A.page.click('#jGo'); await waitStep(A.page, 'err');
+  check('auth answers (email is off here): its sentence, nothing breaks', /set up/.test(await A.page.textContent('#jLead')), await A.page.textContent('#jLead'));
+  await shot(A.page, 'desktop-code-sent');
+  await A.page.click('#jCancel');
+  // the emailed link: ?key=<ticket> opens the session and leaves the address bar
+  await A.page.goto(app + '?key=' + TICKET); await A.page.waitForFunction(() => !!localStorage.getItem('cue.account'), null, { timeout: 8000 }).catch(() => {});
+  check('the magic link logs in and drops the key from the address bar', !A.page.url().includes('key=') && /ana@example\.com/.test(await A.page.evaluate(() => localStorage.getItem('cue.account') || '')), A.page.url());
+  await A.page.click('#joinb'); await waitStep(A.page, 'collab');
+  check('logged in: "Logged in as" with Log out', /Logged in as ana@example\.com/.test(await A.page.textContent('#jAcct')) && await A.page.isVisible('#jLogout'));
+  await A.page.click('#jShareNew'); await waitStep(A.page, 'name');
   await A.page.fill('#jName', 'Ana Torres'); await A.page.click('#jGo'); await A.page.waitForSelector('#dlgRoom[open]', { timeout: 15000 });
   const link = await A.page.inputValue('#rmLink');
   check('the room is created and This room opens at once with the link (owner sees New link and Delete room)', /#join=[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}$/.test(link) && link.startsWith(app) && !(await A.page.evaluate(() => document.getElementById('dlgJoin').open)) && await A.page.isVisible('#rmRegen') && await A.page.isVisible('#rmDel') && !(await A.page.isVisible('#rmNotOwner')), link.replace(/\..*$/, '.<token>'));
@@ -80,9 +103,6 @@ try {
   check('A: Synced (the project was shared into the new room)', (await head(A.page)) === 'Synced', await head(A.page));
   const stored = await A.page.evaluate(() => JSON.stringify(Object.keys(localStorage).map(k => localStorage.getItem(k))) + location.href);
   check('no token in the address bar or localStorage', !stored.includes(link.split('#join=')[1].split('.')[1]) && !/#join/.test(stored));
-  // a second verified share: the code is not asked again
-  const verifiedOnce = await A.page.evaluate(async () => { const d = indexedDB.open('cueboard-local'); return new Promise(ok => { d.onsuccess = () => { const tx = d.result.transaction('settings').objectStore('settings').get('collab'); tx.onsuccess = () => ok(!!(tx.result && tx.result.verified && tx.result.verified.token)); tx.onerror = () => ok(false); }; d.onerror = () => ok(false); }); }).catch(() => null);
-  check('the verified state is kept in this browser (settings/collab.verified)', verifiedOnce === true, String(verifiedOnce));
 
   // ---- B joins with the link, edits flow both ways ----
   const B = await newPage('B');
@@ -174,10 +194,9 @@ try {
   await C.page.waitForFunction(() => /was deleted/.test(document.getElementById('mhead').textContent), null, { timeout: 9000 }).catch(() => {});
   check('member C: "This room was deleted", local copy kept', /was deleted/.test(await head(C.page)) && (await C.page.inputValue('#f-title')) === cTitle, await head(C.page));
   await shot(C.page, 'desktop-deleted');
-  check('server: the room folder is gone', !readFileSync(join(dataDir, 'verified.json'), 'utf8').includes(CODE) && !/[A-Za-z0-9_-]{16}\/project\.json/.test(''), '');
-  const left = spawnSync('ls', [dataDir], { encoding: 'utf8' }).stdout.trim().split('\n');
-  check('data dir holds only codes.json and verified.json', left.sort().join(',') === 'codes.json,verified.json', left.join(','));
-  check('no secret in the server log', !serverLog.includes(CODE) && !serverLog.includes(link.split('.').pop()) && !serverLog.includes(link2.split('.').pop()));
+  const left = spawnSync('ls', [dataDir], { encoding: 'utf8' }).stdout.trim();
+  check('server: the room folder is gone (the data dir is empty)', left === '', left);
+  check('no secret in the server or auth log', ![CODE, TICKET, 'ana@example.com', link.split('.').pop(), link2.split('.').pop()].some(s => serverLog.includes(s) || authLog.includes(s)));
   check('no page errors', !consoleLog.some(l => /pageerror|TypeError|ReferenceError/.test(l)), consoleLog.filter(l => /pageerror|Error/.test(l)).slice(0, 3).join(' | '));
 
   // ---- phone: the same panel as a sheet ----
@@ -188,16 +207,16 @@ try {
     if (h === 844) await shot(P.page, `phone-${h}-sheet`);
     await P.page.tap('#mJoin'); await waitStep(P.page, 'collab'); await sleep(350);
     await shot(P.page, `phone-${h}-collaborate`);
-    await P.page.tap('#jShareNew'); await waitStep(P.page, 'code'); await sleep(350);
-    check(`phone ${w}x${h}: the code prompt`, /invite-only/.test(await P.page.textContent('#jTitle')));
-    await shot(P.page, `phone-${h}-code`);
+    await P.page.tap('#jShareNew'); await waitStep(P.page, 'pay'); await sleep(350);
+    check(`phone ${w}x${h}: logged out, the $9 step`, /\$9 once/.test(await P.page.textContent('#jTitle')) && await P.page.isVisible('#jBuy'));
+    await shot(P.page, `phone-${h}-pay`);
     const over = await P.page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     check(`phone ${w}x${h}: no horizontal overflow`, !over);
     await P.ctx.close();
   }
   await A.ctx.close(); await B.ctx.close(); await C.ctx.close();
 } finally {
-  await browser.close(); server.kill(); srv.close(); rmSync(dataDir, { recursive: true, force: true });
+  await browser.close(); server.kill(); auth.kill(); srv.close(); rmSync(dataDir, { recursive: true, force: true }); rmSync(authDir, { recursive: true, force: true });
 }
 console.log(fails ? `${fails} FAIL` : 'ALL PASS');
 process.exit(fails ? 1 : 0);

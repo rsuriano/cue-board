@@ -3,11 +3,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '@cue-board/sync-server';
-import { AccessStore } from '../../sync-server/src/access.mjs';
 import { createApi, httpBase } from '../src/api.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { generateKeyPairSync, sign } from 'node:crypto';
+
+/** a session as packages/auth signs it, with a key the test server trusts */
+const keys = generateKeyPairSync('ed25519');
+const session = () => { const p = Buffer.from(JSON.stringify({ typ: 'session', sub: 'ana@example.com', prd: 'cue-board', src: 'purchase', exp: Date.now() + 86400_000, chk: Date.now() })).toString('base64url'); return p + '.' + sign(null, Buffer.from(p), keys.privateKey).toString('base64url'); };
 
 test('httpBase maps the sync URL onto the API origin', () => {
   assert.equal(httpBase('wss://sync.example.dev'), 'https://sync.example.dev');
@@ -15,17 +19,13 @@ test('httpBase maps the sync URL onto the API origin', () => {
   assert.equal(httpBase(' wss://sync.example.dev// '), 'https://sync.example.dev');
 });
 
-test('verify, createRoom, regenerateInvite, deleteRoom: plain results, never a throw; errors carry the server sentence', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-api-')), srv = await startServer({ port: 3379, dataDir: dir, logLevel: 'silent' });
+test('createRoom, regenerateInvite, deleteRoom: plain results, never a throw; errors carry the server sentence', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-api-')), srv = await startServer({ port: 3379, dataDir: dir, logLevel: 'silent', authPublicKey: keys.publicKey });
   const api = createApi(srv.url.replace(/\/r$/, ''));
   try {
-    let r = await api.verify('nope');
-    assert.equal(r.ok, false); assert.equal(r.error, 'bad_code'); assert.equal(r.status, 401); assert.match(r.message, /didn't work/);
-    r = await api.createRoom('', 'x'); assert.equal(r.error, 'unverified'); assert.match(r.message, /invite-only/);
-    const code = new AccessStore(dir).createCode({ label: 'Ana' }).code;
-    r = await api.verify(' ' + code + ' '); assert.equal(r.ok, true); assert.equal(r.label, 'Ana'); const vt = r.token;
-    assert.deepEqual(await api.checkVerified(vt), { ok: true, label: 'Ana' });
-    r = await api.createRoom(vt, 'My film'); assert.equal(r.ok, true); const { roomId, token, ownerToken } = r;
+    let r = await api.createRoom('', 'x');
+    assert.equal(r.ok, false); assert.equal(r.error, 'no_session'); assert.equal(r.status, 401); assert.match(r.message, /account/);
+    r = await api.createRoom(session(), 'My film'); assert.equal(r.ok, true); const { roomId, token, ownerToken } = r;
     assert.ok(roomId && token && ownerToken);
     r = await api.regenerateInvite(roomId, token); assert.equal(r.error, 'not_owner'); assert.match(r.message, /owner/);
     r = await api.regenerateInvite(roomId, ownerToken); assert.equal(r.ok, true); assert.notEqual(r.token, token);
@@ -34,5 +34,5 @@ test('verify, createRoom, regenerateInvite, deleteRoom: plain results, never a t
     r = await api.deleteRoom('../x', ownerToken); assert.equal(r.ok, false);
   } finally { await srv.close(); }
   const dead = createApi('ws://127.0.0.1:3379', { timeoutMs: 2000 });
-  const r = await dead.verify('x'); assert.equal(r.error, 'network'); assert.match(r.message, /didn't answer/);
+  const r = await dead.createRoom(session(), 'x'); assert.equal(r.error, 'network'); assert.match(r.message, /didn't answer/);
 });

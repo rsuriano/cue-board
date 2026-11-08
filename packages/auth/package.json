@@ -1,0 +1,17 @@
+{
+  "name": "@bedrock-labs/auth",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "create-code": "node bin/create-code.mjs",
+    "list-codes": "node bin/list-codes.mjs",
+    "revoke-code": "node bin/revoke-code.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

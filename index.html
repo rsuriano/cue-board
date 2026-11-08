@@ -9,6 +9,10 @@
 <!-- Media between collaborators (docs/media-p2p.md): ICE servers for WebRTC, e.g. "stun:stun.example.dev:3478 turn:user:secret@turn.example.dev:3478".
      Empty = none: peers on the same network connect directly, everyone else through the sync server's encrypted relay. -->
 <meta name="cue-ice-urls" content="">
+<!-- Accounts (packages/auth): the auth service (e.g. https://auth.bedrocklabs.dev) and the checkout link. Creating a room
+     needs an account; solo use and joining with a link never do. Empty auth URL = no Log in, rooms can't be created. -->
+<meta name="cue-auth-url" content="">
+<meta name="cue-buy-url" content="">
 <!-- The build this copy is (the deploy sets the short git sha); shown in problem reports. Empty = "dev". -->
 <meta name="cue-build" content="">
 <!-- Problem reports (docs/reports.md): the last 20 uncaught errors and rejections, kept from the first moment, and the
@@ -699,6 +703,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .songbar .mph{justify-items:start;padding:0}.opts{display:grid;gap:var(--sp-2)}
 .opt{all:unset;box-sizing:border-box;display:grid;gap:var(--sp-0-5);padding:var(--inset-card) var(--inset-panel);background:var(--surface-2);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-md);cursor:pointer}
 .opt b{font-weight:var(--w-semibold);color:var(--ink)}
+#jBuy{text-decoration:none;justify-content:center}
 .opt span{font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-2)}
 .opt:hover{background:var(--surface-3);border-color:var(--border-control)}
 .opt:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
@@ -1279,9 +1284,14 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div class="opts" id="jOptsC">
     <button type="button" class="opt" id="jShareNew"><b>Share this project</b><span id="jShareNewHint"></span></button>
     <button type="button" class="opt" id="jJoinLink"><b>Join with a link</b><span>Paste an invite link someone sent you. Anyone with a link can join its room.</span></button>
+    <p class="hint" id="jAcct"></p>
   </div>
+  <div class="opts" id="jPay"><a class="btn primary" id="jBuy" target="_blank" rel="noopener">Buy</a>
+    <p class="hint">Already have an account? <button type="button" class="linkbtn" id="jLogin">Log in</button></p>
+    <p class="hint">Have a code? <button type="button" class="linkbtn" id="jHaveCode">Enter it</button></p></div>
   <div class="field" id="jLinkF"><label for="jLink">Invite link</label><input id="jLink" autocomplete="off" spellcheck="false" placeholder="https://…/#join=…"></div>
-  <div class="field" id="jCodeF"><label for="jCode">Verification code</label><input id="jCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="The code you were given" aria-describedby="jCodeHint"><p class="hint" id="jCodeHint">One code verifies this browser for good. Joining a room with a link needs no code.</p></div>
+  <div class="field" id="jEmailF"><label for="jEmail">Email</label><input id="jEmail" type="email" autocomplete="email" spellcheck="false" placeholder="you@example.com"></div>
+  <div class="field" id="jCodeF"><label for="jCode">Code</label><input id="jCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="The code you were given"></div>
   <div class="field" id="jNameF"><label for="jName">Your name</label><input id="jName" autocomplete="nickname" maxlength="40" placeholder="e.g. Ana" aria-describedby="jNameHint"><p class="hint" id="jNameHint">Stored only in this browser.</p></div>
   <div class="opts" id="jOpts">
     <button type="button" class="opt" id="jNew"><b>Open the room as a new project</b><span>Your project stays exactly as it is. The room opens as a separate project next to it.</span></button>
@@ -2564,9 +2574,8 @@ $("setTest").onclick=async()=>{
 const SYNC_URL=((document.querySelector('meta[name="cue-sync-url"]')||{}).content||"").trim();
 const ICE_URLS=((document.querySelector('meta[name="cue-ice-urls"]')||{}).content||"").trim();
 const INVITE=/^([A-Za-z0-9_-]{16,64})\.([A-Za-z0-9_-]{16,128})(?:\.([A-Za-z0-9_-]{16,128}))?$/;
-/* verified: {token,label} once a verification code was redeemed here (the one state the "Share this project" gate reads);
-   rooms[pid].owner: the owner token of a room created here (or claimed through an owner link), stored like the invite token */
-let cset={name:"",rooms:{},verified:null},cmod=null,csess=null,csessPid=null,peers=[],deviceId="",cunshared=0;
+/* rooms[pid].owner: the owner token of a room created here (or claimed through an owner link), stored like the invite token */
+let cset={name:"",rooms:{}},cmod=null,csess=null,csessPid=null,peers=[],deviceId="",cunshared=0;
 /* an invite link: https://host/#join=<room>.<token>, the server CLI's ?room=…&token=… link, or just <room>.<token>.
    An owner link (attach-owner) carries a third part, the owner token, which only that browser keeps */
 function parseInvite(t){t=String(t||"").trim();let m=/[#&]join=([A-Za-z0-9_.-]+)/.exec(t);
@@ -2844,48 +2853,73 @@ let jRes=null;const jDone=v=>{const r=jRes;jRes=null;if(r)r(v)};
 function joinStep(step,title,lead){const d=$("dlgJoin");
   $("jTitle").textContent=title;$("jLead").textContent=lead||"";$("jMsg").textContent="";
   $("jOptsC").hidden=step!=="collab";$("jLinkF").hidden=step!=="link";$("jCodeF").hidden=step!=="code";$("jNameF").hidden=step!=="name";$("jOpts").hidden=step!=="choose";
-  $("jGo").hidden=!["link","name","code"].includes(step);$("jGo").textContent=step==="link"?"Join":"Continue";$("jCancel").textContent=step==="err"?"Close":"Cancel";
+  $("jPay").hidden=step!=="pay";$("jEmailF").hidden=step!=="code"&&step!=="login";
+  $("jGo").hidden=!["link","name","code","login"].includes(step);$("jGo").textContent=step==="link"?"Join":step==="name"?"Continue":"Email me a link";$("jCancel").textContent=step==="err"?"Close":"Cancel";
   d.dataset.step=step;if(!d.open)d.showModal();
-  setTimeout(()=>{const f={link:"jLink",name:"jName",code:"jCode",choose:"jNew",collab:"jShareNew"}[step];$(f||"jCancel").focus()},30)}
+  setTimeout(()=>{const f={link:"jLink",name:"jName",code:"jEmail",login:"jEmail",choose:"jNew",collab:"jShareNew",pay:"jBuy"}[step];$(f||"jCancel").focus()},30)}
 const joinAsk=(step,title,lead)=>{joinStep(step,title,lead);return new Promise(r=>{jRes=r})};
 $("joinForm").onsubmit=e=>{e.preventDefault();const st=$("dlgJoin").dataset.step;
   if(st==="link"){const inv=parseInvite($("jLink").value);if(!inv){$("jMsg").textContent="That isn't an invite link. It ends in #join= and a long code.";return}jDone(inv)}
   else if(st==="name"){const n=$("jName").value.replace(/\s+/g," ").trim().slice(0,40);if(!n){$("jMsg").textContent="Type a name first.";return}jDone(n)}
-  else if(st==="code"){const c=$("jCode").value.trim();if(!c){$("jMsg").textContent="Type the code first.";return}jDone(c)}};
+  else if(st==="code"||st==="login"){const email=$("jEmail").value.trim(),code=$("jCode").value.trim();
+    if(!/^\S+@\S+\.\S+$/.test(email)){$("jMsg").textContent="Type your email first.";return}if(st==="code"&&!code){$("jMsg").textContent="Type the code first.";return}jDone({email,code})}};
 $("jCancel").onclick=()=>$("dlgJoin").close();
 $("dlgJoin").addEventListener("close",()=>jDone(null));
 $("jNew").onclick=()=>jDone("new");$("jShare").onclick=()=>jDone("share");
 $("jShareNew").onclick=()=>jDone("share-new");$("jJoinLink").onclick=()=>jDone("join");
+$("jLogin").onclick=()=>jDone("login");$("jHaveCode").onclick=()=>jDone("code");$("jBuy").onclick=()=>$("dlgJoin").close();
+/* the account (packages/auth): {session,email} in localStorage, so a tab opened from the receipt or a login email logs
+   every tab in. Only creating a room needs it. A session the sync server takes was checked by auth in the last day:
+   freshAccount() renews it (auth answers the same one while it's fresh) and forgets it once auth says it's over */
+const meta=n=>((document.querySelector(`meta[name="${n}"]`)||{}).content||"").trim();
+const AUTH_URL=meta("cue-auth-url").replace(/\/+$/,""),BUY_URL=meta("cue-buy-url");
+const account={get(){try{const a=JSON.parse(ls("cue.account")||"null");return a&&typeof a.session==="string"?a:null}catch(e){return null}},
+  set(a){try{a?localStorage.setItem("cue.account",JSON.stringify({session:a.session,email:a.email})):localStorage.removeItem("cue.account")}catch(e){}}};
+async function authCall(path,body){try{const r=await fetch(AUTH_URL+path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({product:"cue-board",...body}),credentials:"omit",cache:"no-store"});
+  const j=await r.json().catch(()=>null);return r.ok&&j?{ok:true,...j}:{ok:false,status:r.status,message:j&&j.message||"The account server didn't accept that."}}
+  catch(e){return{ok:false,status:0,message:"The account server didn't answer. Check your connection and try again."}}}
+async function freshAccount(){const a=account.get();if(!a)return null;const r=await authCall("/session",{session:a.session});
+  if(r.ok)account.set(r);else if(r.status===401)account.set(null);return r}
+/* back from checkout (the receipt button) or a login email: ?key= opens a session, and leaves the address bar at once */
+async function keyFromUrl(){const u=new URL(location.href),k=u.searchParams.get("key");if(!k)return;
+  u.searchParams.delete("key");history.replaceState(history.state,"",u.pathname+u.search+u.hash);if(!AUTH_URL)return;
+  const r=await authCall("/session",{key:k});if(r.ok){account.set(r);toast("Logged in as "+r.email)}else toast(r.message)}
+/* Log in (email → link) and Have a code (email + code → link): both end on "check your email" */
+async function emailFlow(kind){$("jMsg").textContent="";$("jCode").value="";
+  const v=await joinAsk(kind,kind==="login"?"Log in":"Have a code?",kind==="login"?"Type the email you paid with. We'll send you a link to log in.":"Type your email and the code you were given. We'll send you a link to log in.");if(!v)return;
+  joinStep("busy","Sending the link","One moment…");const r=await authCall(kind==="login"?"/login":"/redeem",v);if(!$("dlgJoin").open)return;
+  joinStep("err",r.ok?"Check your email":"Couldn't send the link",r.message)}
+function renderAcct(){const a=account.get(),el=$("jAcct");el.hidden=!AUTH_URL;
+  el.innerHTML=a?`Logged in as ${esc(a.email)}. <button type="button" class="linkbtn" id="jLogout">Log out</button>`:`<button type="button" class="linkbtn" id="jLogin2">Log in</button>`;
+  if(a)$("jLogout").onclick=()=>{account.set(null);renderAcct()};else $("jLogin2").onclick=()=>jDone("login")}
 /* the Collaborate panel: share the open project (a new room, invite-only to create) or join with a link (open to anyone) */
 async function collabFlow(){
   if(!SYNC_URL){toast("Collaboration isn't set up on this copy of Cue Board");return}
   const can=!!cur&&!cset.rooms[cur.id];$("jShareNew").disabled=!can;
   $("jShareNewHint").textContent=!cur?"Open a project first.":!can?"This project is already in a room.":`Creates a room from “${cur.title||"Untitled project"}” and gives you a link to send. Everyone with the link edits it with you; media files stay on each device until they're shared.`;
-  const how=await joinAsk("collab","Collaborate","Work on a cue board together, live: everyone in a room edits the same cuts, notes, prompts and takes.");
+  renderAcct();const how=await joinAsk("collab","Collaborate","Work on a cue board together, live: everyone in a room edits the same cuts, notes, prompts and takes.");
   if(!how)return;
+  if(how==="login"){await emailFlow("login");return}
   if(how==="join"){$("jLink").value="";const inv=await joinAsk("link","Join with a link","Paste the invite link you were sent. Everyone with the link can edit the project with you.");if(inv)await joinFlow(inv);return}
   await createRoomFlow();
 }
-/* verified means a code was redeemed in this browser, once. A token the server no longer knows (its code was revoked)
-   drops back to unverified and asks again */
-async function ensureVerified(api){
-  if(cset.verified&&cset.verified.token)return true;
-  let msg="";$("jCode").value="";
-  for(;;){joinStep("code","Creating rooms is invite-only for now","Enter the code you were given.");$("jMsg").textContent=msg;
-    const code=await new Promise(r=>{jRes=r});if(!code)return false;
-    joinStep("busy","Checking the code","One moment…");const r=await api.verify(code);if(!$("dlgJoin").open)return false;
-    if(r.ok){cset.verified={token:r.token,label:r.label};await saveCset();return true}
-    msg=r.message}
+/* creating a room: logged in → a fresh session; logged out → one step: buy, log in, or a code (each ends outside this flow:
+   the link from the receipt or the email logs this browser in, then Share again) */
+async function ensureAccount(){
+  if(account.get()){joinStep("busy","Checking your account","One moment…");const r=await freshAccount();if(!$("dlgJoin").open)return null;
+    if(r&&r.ok)return r.session;if(r&&r.status!==401){joinStep("err","Couldn't check your account",r.message);return null}}
+  $("jBuy").href=BUY_URL;$("jBuy").hidden=!BUY_URL;
+  const how=await joinAsk("pay","Live collab, $9 once","Creating a room needs an account: pay once, no subscription. Joining a room with a link stays free.");
+  if(how)await emailFlow(how);return null;
 }
 const roomName=()=>cur&&cur.title||"Untitled project";
 async function createRoomFlow(){
   if(!cur||cset.rooms[cur.id])return;
   const pid=cur.id,m=await loadCollab();if(!m||!m.api){joinStep("err","Can't reach the sync server","It didn't answer. Check your connection and try again. Your projects are untouched.");return}
-  if(!(await ensureVerified(m.api)))return;
+  const session=await ensureAccount();if(!session)return;
   if(!cset.name){$("jName").value="";const n=await joinAsk("name","Your name in the room","The others see it next to the shots you have selected.");if(!n)return;cset.name=n;await saveCset()}
   joinStep("busy","Creating the room","One moment…");
-  let r=await m.api.createRoom(cset.verified.token,roomName());if(!$("dlgJoin").open)return;
-  if(!r.ok&&r.error==="unverified"){cset.verified=null;await saveCset();if(!(await ensureVerified(m.api)))return;joinStep("busy","Creating the room","One moment…");r=await m.api.createRoom(cset.verified.token,roomName());if(!$("dlgJoin").open)return}
+  const r=await m.api.createRoom(session,roomName());if(!$("dlgJoin").open)return;
   if(!r.ok){joinStep("err","Couldn't create the room",r.message+" Your project is untouched.");return}
   if(!cur||cur.id!==pid||cset.rooms[pid]){$("dlgJoin").close();return}
   /* as "Share this project into the room": this project's takes were all sent from here */
@@ -3287,12 +3321,13 @@ renderAll();
   if(!(await idb())){setStatus("err","Browser storage unavailable");toast("This browser blocks local storage, so nothing will be saved")}
   else setStatus("ok","Saved locally");
   try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im)}catch(e){}
-  try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms,verified:c.verified&&typeof c.verified.token==="string"?{token:c.verified.token,label:String(c.verified.label||"")}:null};
+  try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms};
     deviceId=(await getSetting("deviceId"))||"";if(!deviceId){deviceId=uid("d");await putSetting("deviceId",deviceId)}}catch(e){}
   /* takes and clips only on Wi-Fi: on by default on a phone, set in its Files sheet */
   try{const w=await getSetting("wifiOnly");wifiOnly=w===undefined?phone()&&matchMedia("(pointer:coarse)").matches:!!w}catch(e){}
   if(phone()||standalone())keepStorage();
   await detectProxy();
+  keyFromUrl();
   side=ls("cueboard-side")==="b"?"b":"a";setSide(side);
   store.subscribe(onProjects);
   /* late enough that a reloaded tab's last save has landed and its lock is gone */

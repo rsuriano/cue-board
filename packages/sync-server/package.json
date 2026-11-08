@@ -16,9 +16,6 @@
   "scripts": {
     "start": "node src/main.mjs",
     "create-project": "node bin/create-project.mjs",
-    "create-code": "node bin/create-code.mjs",
-    "list-codes": "node bin/list-codes.mjs",
-    "revoke-code": "node bin/revoke-code.mjs",
     "attach-owner": "node bin/attach-owner.mjs",
     "list-reports": "node bin/list-reports.mjs",
     "show-report": "node bin/show-report.mjs",
