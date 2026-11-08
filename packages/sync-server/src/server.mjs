@@ -3,7 +3,7 @@
    one Y.Doc per project room, persisted by ProjectStore.
 
    Join:   ws://<host>/r/<roomId>?token=<invite token>
-   HTTP:   api.mjs (rooms created from the app, verification codes, owner actions), /health
+   HTTP:   api.mjs (rooms created from the app with a session from auth, owner actions), /health
    Close codes: 4400 malformed message · 4401 bad token (also sent to everyone in a room whose invite link the owner
                 replaced) · 4404 unknown room · 4410 room deleted by its owner · 4413 room full: an update would take
                 the room's log past MAX_ROOM_BYTES, so it was not applied · 4429 too many connections from this IP
@@ -38,8 +38,8 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
- *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, createPerHour?: number, verifyFails?: number, verifyBlockMs?: number,
- *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
+ *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, createPerHour?: number,
+ *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
 export async function startServer(opts = {}) {
@@ -172,7 +172,7 @@ export async function startServer(opts = {}) {
 
   const api = createApi({
     store, log, dataDir: o.dataDir, corsOrigins: o.corsOrigins, maxRooms: o.maxRooms, createPerHour: o.createPerHour,
-    verifyFails: o.verifyFails, verifyBlockMs: o.verifyBlockMs, clientIp, kickRoom, deleteRoom,
+    authPublicKey: o.authPublicKey || null, clientIp, kickRoom, deleteRoom,
     reportsPerHour: o.reportsPerHour, reportsPerDay: o.reportsPerDay, maxReports: o.maxReports,
     initDoc: name => { const d = new Y.Doc(); initProject(d, { title: name }); return d; },
   });
@@ -347,5 +347,5 @@ export async function startServer(opts = {}) {
     log.info('stopped');
   }
 
-  return { port: addr.port, url: `ws://${o.host}:${addr.port}/r`, httpUrl: `http://${o.host}:${addr.port}`, rooms, store, access: api.access, deleteRoom, close, mediaStats: relay.stats };
+  return { port: addr.port, url: `ws://${o.host}:${addr.port}/r`, httpUrl: `http://${o.host}:${addr.port}`, rooms, store, deleteRoom, close, mediaStats: relay.stats };
 }
