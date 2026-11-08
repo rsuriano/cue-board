@@ -109,7 +109,7 @@ test('(ls-d) acked and ignored: other events, unpaid orders, another variant, cu
   const dir = tmpDir(), cap = capture(), srv = await server(dir, 0, { ...LS, log: cap.log });
   try {
     const cases = [
-      order({ event: 'order_refunded' }), order({ event: 'subscription_created' }), order({ status: 'pending' }), order({ status: 'refunded' }),
+      order({ event: 'order_refunded', orderId: '1999' }), order({ event: 'subscription_created' }), order({ status: 'pending' }), order({ status: 'refunded' }),
       order({ variantId: 999 }), order({ variantId: null }),
       order({ custom: undefined }), order({ custom: null }), order({ custom: {} }), order({ custom: 'claim' }), order({ custom: { claim_id: 42 } }),
       order({ custom: { claim_id: 'not-a-uuid' } }), order({ custom: { claim_id: '00000000-0000-0000-0000-000000000000' } }),
@@ -119,7 +119,8 @@ test('(ls-d) acked and ignored: other events, unpaid orders, another variant, cu
     // custom: undefined means "omit custom_data entirely"
     delete cases[6].meta.custom_data;
     for (const [i, b] of cases.entries()) { const r = await hook(srv, b); assert.equal(r.status, 200, 'case ' + i); assert.deepEqual(JSON.parse(r.text), { ok: true }, 'case ' + i); }
-    assert.equal(tokens(dir).length, 0); assert.ok(!fs.existsSync(path.join(dir, 'claims.json')));
+    // the one write: case 0's refund leaves its order a revoked entry with no token (ls-i)
+    assert.deepEqual(tokens(dir).map(t => t.sha256), [null]); assert.ok(!fs.existsSync(path.join(dir, 'claims.json')));
     assert.ok(cap.lines.some(l => /paid order without a usable claim id/.test(l)), 'a paid order nobody can collect is logged for the operator');
     assert.equal((await fetch(srv.httpUrl + '/health')).status, 200);
     // a claim id that's well formed but never made by any browser: it's a real paid order, so a token is issued and
@@ -223,14 +224,18 @@ test('(ls-i) a signed order_refunded revokes that order\'s token on the running 
     assert.equal((await hook(srv, order({ orderId: '4004' }))).status, 200);
     assert.equal(tokens(dir).find(t => t.orderId === '4004').revoked, when); assert.equal(tokens(dir).length, 2);
     assert.equal(canCreateRoom(a, { verifiedToken: tok }).ok, false);
-    // unknown order, malformed order id, no data: acked, nothing written, nothing crashes
+    // malformed order id, no data: acked, nothing written, nothing crashes
     const before = fs.readFileSync(path.join(dir, 'verified.json'), 'utf8');
-    for (const b of [order({ event: 'order_refunded', orderId: '9999' }), order({ event: 'order_refunded', orderId: '../x' }), { meta: { event_name: 'order_refunded' } }]) {
+    for (const b of [order({ event: 'order_refunded', orderId: '../x' }), { meta: { event_name: 'order_refunded' } }]) {
       r = await hook(srv, b); assert.equal(r.status, 200); assert.deepEqual(JSON.parse(r.text), { ok: true });
     }
     assert.equal(fs.readFileSync(path.join(dir, 'verified.json'), 'utf8'), before);
+    // an order not seen yet: acked, recorded revoked with no token (ls-n covers its late order_created)
+    r = await hook(srv, order({ event: 'order_refunded', orderId: '9999' })); assert.equal(r.status, 200);
+    const early = tokens(dir).find(t => t.orderId === '9999');
+    assert.ok(early && early.sha256 === null && !Number.isNaN(Date.parse(early.revoked)));
     assert.ok(cap.lines.some(l => /token revoked/.test(l) && /"order":"4004"/.test(l)));
-    assert.ok(cap.lines.some(l => /no token for it/.test(l) && /"order":"9999"/.test(l)));
+    assert.ok(cap.lines.some(l => /before its order arrived/.test(l) && /"order":"9999"/.test(l)));
     assert.equal((await fetch(srv.httpUrl + '/health')).status, 200);
   } finally { await srv.close(); }
 });
@@ -249,12 +254,17 @@ test('(ls-j) bin/revoke-order.mjs: revokes a paid order\'s token in revoked-orde
   const when = a.readRevokedOrders().orders.find(o => o.orderId === '6006').revoked; assert.ok(!Number.isNaN(Date.parse(when)));
   r = cli('revoke-order', ['6006'], dir); assert.equal(r.status, 0); assert.match(r.stdout, /already revoked/);
   assert.equal(a.readRevokedOrders().orders.length, 1);
-  r = cli('revoke-order', ['7007'], dir); assert.equal(r.status, 1); assert.match(r.stderr, /no paid order 7007/);
+  // an order not in verified.json yet: recorded anyway (its order_created, if it comes, issues nothing), said so
+  r = cli('revoke-order', ['7007'], dir); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /no paid order 7007 .*recorded as revoked/);
+  assert.equal(a.readRevokedOrders().orders.length, 2);
+  const late = randomUUID(); assert.deepEqual(a.issueFromClaim(late, { orderId: '7007' }), { ok: true, duplicate: true, revoked: true });
+  assert.deepEqual(a.claimStatus(late), { status: 'unknown' }, 'the late order hands out nothing');
+  r = cli('revoke-order', ['../x'], dir); assert.equal(r.status, 1); assert.match(r.stderr, /not an order id/);
   r = cli('revoke-order', [], dir); assert.equal(r.status, 64);
   assert.equal(fs.statSync(a.revokedOrdersFile).mode & 0o777, 0o600);
   // an order the webhook already revoked (verified.json marked): the CLI says so and writes nothing
   const other = randomUUID(); a.issueFromClaim(other, { orderId: '6007' }); a.revokeOrder('6007');
-  r = cli('revoke-order', ['6007'], dir); assert.match(r.stdout, /already revoked/); assert.equal(a.readRevokedOrders().orders.length, 1);
+  r = cli('revoke-order', ['6007'], dir); assert.match(r.stdout, /already revoked/); assert.equal(a.readRevokedOrders().orders.length, 2);
 });
 
 test('(ls-k) bin/revoke-order.mjs while the server runs and writes verified.json: no write is lost, the revocation holds and the new order stands', async () => {

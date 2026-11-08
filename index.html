@@ -2932,9 +2932,11 @@ async function claimFlow(){const q=new URLSearchParams(location.search).get("ls_
   joinStep("busy","Confirming your payment","This takes a few seconds.");
   for(let i=0;i<20;i++){if(i)await new Promise(r=>setTimeout(r,1500));if(!$("dlgJoin").open)return;
     let r=null;try{const res=await fetch(base+"/access/claim",{method:"POST",cache:"no-store",headers:{"content-type":"application/json"},body:JSON.stringify({claim_id:id})});if(res.ok)r=await res.json()}catch(e){}
-    if(!$("dlgJoin").open)return;
+    // ready is answered once: kept even if the dialog was closed while asking, or the buyer would need Restore
     if(r&&r.status==="ready"&&typeof r.token==="string"){cset.verified={token:r.token,label:String(r.label||"")};cset.pendingClaim=null;await saveCset();dropClaimParam();
+      if(!$("dlgJoin").open)return;
       joinStep("done","Payment confirmed","This browser can create rooms now. Open Collaborate and choose Share this project.");return}
+    if(!$("dlgJoin").open)return;
     if(r&&r.status==="unknown"){if(cset.pendingClaim===id){cset.pendingClaim=null;await saveCset()}dropClaimParam();
       joinStep("err","We can't find that payment","If you were charged, open Collaborate, choose Share this project, then Restore access with the order number and email from your receipt.");return}}
   joinStep("err","Your payment hasn't come through yet","Confirming can take a minute. Reload this page to check again, or use Restore access (Collaborate, Share this project) with the order number and email from your receipt.");

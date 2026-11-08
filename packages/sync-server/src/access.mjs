@@ -13,7 +13,8 @@
                     same shape with code: null, plus source: 'lemonsqueezy', orderId, label and box (the token sealed
                     under the webhook secret, so POST /access/restore hands back the same token); one entry per order; it
                     stands while its entry has no `revoked` (an order_refunded webhook) and its order isn't in
-                    revoked-orders.json
+                    revoked-orders.json. A refund that arrives before its order leaves an entry with sha256: null
+                    and `revoked`, so the order's late order_created issues nothing
      revoked-orders.json  { orders: [{ orderId, revoked }] }  paid orders the operator revoked (bin/revoke-order.mjs, a
                     refund the webhook missed); written by the CLI only and read by the server on every use, as codes.json
      claims.json    { claims: [{ sha256, orderId, created, expires, box }] }  a paid order waiting for its browser to
@@ -137,13 +138,17 @@ export class AccessStore {
       nothing, whatever claim id it carries, and answers `duplicate`. The order id stays in verified.json for good, so a
       replay after the claim expired still issues nothing.
       @param {string} claimId @param {{ orderId: string, now?: number }} o
-      @returns {{ ok: true, duplicate: boolean } | { ok: false, reason: 'bad_claim' | 'bad_order' }} */
+      An order already revoked (its refund, or the operator, got there before this webhook's retry) issues nothing either
+      and answers `revoked`.
+      @returns {{ ok: true, duplicate: boolean, revoked?: true } | { ok: false, reason: 'bad_claim' | 'bad_order' }} */
   issueFromClaim(claimId, { orderId, now = Date.now() }) {
     if (typeof claimId !== 'string' || !CLAIM_ID.test(claimId)) return { ok: false, reason: 'bad_claim' };
     orderId = String(orderId ?? '');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return { ok: false, reason: 'bad_order' };
     const v = this.readVerified(), c = this.readClaims(), h = hex(claimId);
-    if (v.tokens.some(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId)) {
+    const e = v.tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
+    if (e || this.#operatorRevoked(orderId)) {
+      const revoked = !!((e && e.revoked) || this.#operatorRevoked(orderId));
       // already issued (a retried webhook, or a restore got there first): a claim id with no entry yet gets one that's
       // already over, so a browser still polling for it hears `unknown` (go restore) instead of `pending` until it gives up
       if (!findHash(c.claims, claimId)) {
@@ -151,7 +156,7 @@ export class AccessStore {
         c.claims.push({ sha256: h, orderId, created: new Date(now).toISOString(), expires: now, duplicate: true });
         writeJson(this.claimsFile, c);
       }
-      return { ok: true, duplicate: true };
+      return revoked ? { ok: true, duplicate: true, revoked: true } : { ok: true, duplicate: true };
     }
     const token = randomBytes(32).toString('base64url'), created = new Date(now).toISOString();
     // the claim first: if this write fails nothing was issued, and the webhook's retry starts over
@@ -203,13 +208,19 @@ export class AccessStore {
   /** Server (an order_refunded webhook): a paid order's token stops working. The entry is marked `revoked: <iso>` and
       kept (history, and so a replayed order_created stays a duplicate); identify() already refuses a revoked paid entry,
       and issueFromOrder won't hand it back on a restore. Read from disk on every use, so it counts at the token's next
-      request. An order with no entry (the webhook never issued one) is `unknown`. The CLI uses revokeOrderByOperator.
-      @param {string} orderId @param {{ now?: number }} [o] @returns {'revoked' | 'already' | 'unknown'} */
+      request. An order with no entry yet (its order_created failed and Lemon Squeezy will retry it after this refund)
+      gets a revoked entry with no token (`sha256: null`), so that retry, or a restore, issues nothing: `early`. A malformed
+      order id is `unknown`. The CLI uses revokeOrderByOperator.
+      @param {string} orderId @param {{ now?: number }} [o] @returns {'revoked' | 'already' | 'early' | 'unknown'} */
   revokeOrder(orderId, { now = Date.now() } = {}) {
     orderId = String(orderId ?? '');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return 'unknown';
     const v = this.readVerified(), e = v.tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
-    if (!e) return 'unknown';
+    if (!e) {
+      v.tokens.push({ sha256: null, code: null, created: new Date(now).toISOString(), source: 'lemonsqueezy', orderId, label: 'Paid order ' + orderId, revoked: new Date(now).toISOString() });
+      writeJson(this.verifiedFile, v);
+      return 'early';
+    }
     if (e.revoked || this.#operatorRevoked(orderId)) return 'already';
     e.revoked = new Date(now).toISOString();
     writeJson(this.verifiedFile, v);
@@ -218,17 +229,17 @@ export class AccessStore {
 
   /** CLI (bin/revoke-order.mjs): the same as revokeOrder, written to revoked-orders.json instead, a file only the CLI
       writes (as codes.json), so it never races the running server's writes to verified.json; it only reads that one.
-      @param {string} orderId @param {{ now?: number }} [o] @returns {'revoked' | 'already' | 'unknown'} */
+      An order with no entry yet is recorded all the same (`early`): its order_created, if it ever arrives, issues nothing.
+      @param {string} orderId @param {{ now?: number }} [o] @returns {'revoked' | 'already' | 'early' | 'unknown'} */
   revokeOrderByOperator(orderId, { now = Date.now() } = {}) {
     orderId = String(orderId ?? '');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return 'unknown';
     const e = this.readVerified().tokens.find(t => t && t.source === 'lemonsqueezy' && t.orderId === orderId);
-    if (!e) return 'unknown';
-    if (e.revoked || this.#operatorRevoked(orderId)) return 'already';
+    if ((e && e.revoked) || this.#operatorRevoked(orderId)) return 'already';
     const all = this.readRevokedOrders();
     all.orders.push({ orderId, revoked: new Date(now).toISOString() });
     writeJson(this.revokedOrdersFile, all);
-    return 'revoked';
+    return e ? 'revoked' : 'early';
   }
 
   /** revoked by the operator (revoked-orders.json), read on every use like codes.json */

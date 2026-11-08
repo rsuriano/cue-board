@@ -1,13 +1,13 @@
 // Paid access in the app: Get access for $9 → checkout (a stand-in) → back with ?ls_claim=1 → the claim collected by POST;
 // the claim id never in a URL the browser requests from our hosts; then a fresh browser (a new device) restores the same
-// token with the order number and email; a buyer whose Restore beat the webhook hears "can't find" at once; the restore step
-// on a phone.
+// token with the order number and email; a buyer whose Restore beat the webhook hears "can't find" at once; a buyer who
+// closes the dialog mid-poll still keeps the token; the restore step on a phone.
 //   node design/paywall-check.mjs <repo-root> <out-dir>
 // Sync server in-process on a free port (throwaway DATA_DIR), a stand-in Lemon Squeezy API and checkout; nothing leaves 127.0.0.1.
 import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, readFileSync, statSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { createHmac } from 'node:crypto';
+import { createHmac, createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, extname, normalize } from 'node:path';
 const { chromium } = createRequire('/home/ramiro/testkit/')('playwright-core');
@@ -63,7 +63,7 @@ const webhook = async (orderId, attributes, claimId) => {
   const raw = JSON.stringify({ meta: { event_name: 'order_created', test_mode: false, custom_data: { claim_id: claimId } }, data: { type: 'orders', id: orderId, attributes } });
   await fetch(syncHttp + '/webhooks/lemonsqueezy', { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature': createHmac('sha256', SECRET).update(raw).digest('hex') }, body: raw });
 };
-async function newPage(name, phone = null, { restoreFirst = false } = {}) {
+async function newPage(name, phone = null, { restoreFirst = false, closeMidPoll = null } = {}) {
   const ctx = await browser.newContext(phone ? { viewport: phone, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   ctx.on('request', q => { if (q.url().startsWith(origin) || q.url().startsWith(syncHttp)) ours.push({ method: q.method(), url: q.url(), body: q.postData() || '' }); });
   let checkoutUrl = '', pendingAtCheckout;
@@ -82,8 +82,16 @@ async function newPage(name, phone = null, { restoreFirst = false } = {}) {
         // the buyer restored on another device before Lemon Squeezy's webhook got here; then it arrives, late
         await fetch(syncHttp + '/access/restore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderNumber: '42', email: EMAIL2 }) });
         await webhook(lsOrder2.id, lsOrder2.attributes, claimId);
-      } else await webhook(ORDER_ID, lsOrder.attributes, claimId);
+      } else if (closeMidPoll) await webhook(closeMidPoll.id, closeMidPoll.attributes, claimId);
+      else await webhook(ORDER_ID, lsOrder.attributes, claimId);
       return r.fulfill({ status: 302, headers: { location: app + '?ls_claim=1' } });
+    }
+    if (closeMidPoll && url === syncHttp + '/access/claim') {
+      // the buyer closes "Confirming your payment" while this poll is on its way; the answer (ready) comes after
+      await page.evaluate(() => document.getElementById('dlgJoin').close());
+      closeMidPoll.closedOpen = await page.evaluate(() => document.getElementById('dlgJoin').open);
+      closeMidPoll.polls = (closeMidPoll.polls || 0) + 1;
+      return r.continue();
     }
     return url.startsWith(origin) || url.startsWith(syncHttp) ? r.continue() : r.abort();
   });
@@ -160,6 +168,19 @@ try {
   check('the late webhook was a duplicate: still one token for that order', tok2.length === 1);
   await shot(C.page, 'desktop-claim-after-restore');
   await C.ctx.close();
+
+  // ---- D: the buyer closes the dialog while the poll that gets "ready" is in flight ----
+  const dOrder = { id: '9003', attributes: { ...lsOrder.attributes, identifier: '2d2e9c57-85b6-4a2a-9c6d-5f3d9b4c1e33', order_number: 43, user_email: 'third@example.com' } };
+  const D = await newPage('D', null, { closeMidPoll: dOrder });
+  await toAccess(D.page);
+  await D.page.click('#jBuy');
+  await D.page.waitForURL(/ls_claim=1/, { timeout: 10000 }); await D.page.waitForSelector('#projname', { timeout: 10000 });
+  for (let i = 0; i < 32 && !(await verified(D.page)); i++) await sleep(250);
+  const vD = await verified(D.page), dTok = JSON.parse(readFileSync(join(dataDir, 'verified.json'), 'utf8')).tokens.find(t => t.orderId === dOrder.id);
+  check('dialog closed while the poll was in flight: the "ready" token is still stored (no Restore needed), the pending claim cleared, the dialog stays closed',
+    dOrder.polls === 1 && dOrder.closedOpen === false && !!vD && !!dTok && createHash('sha256').update(vD.token).digest('hex') === dTok.sha256 && !(await collabSettings(D.page)).pendingClaim && !(await D.page.evaluate(() => document.getElementById('dlgJoin').open)),
+    `${dOrder.polls} poll(s), stored: ${!!vD}`);
+  await D.ctx.close();
 
   // ---- the restore step on a phone ----
   for (const [w, h] of [[390, 844], [375, 667]]) {

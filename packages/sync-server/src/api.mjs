@@ -30,7 +30,7 @@
                                    for every miss: no such order, another email, unpaid, refunded, another product) ·
                                    400 bad_request · 429 too_many_attempts (per IP: restoreFails, 5 misses, block
                                    15 min; a success doesn't clear them) · 429 restore_busy (everyone: restoresPerHour,
-                                   100) · 502 restore_unavailable (Lemon Squeezy didn't answer) · 503 restore_not_configured
+                                   100) · 502 restore_unavailable (Lemon Squeezy didn't answer; not a miss) · 503 restore_not_configured
                                    (no LEMONSQUEEZY_API_KEY, VARIANT_ID or WEBHOOK_SECRET: nothing is trusted without them)
      POST   /webhooks/lemonsqueezy     Lemon Squeezy's order webhook, signed (webhooks/lemonsqueezy.mjs); read raw and
                                    checked before anything else here, no CORS (it carries no Origin)
@@ -234,7 +234,8 @@ export function createApi(o) {
     return true;
   }
 
-  /** A lost paid token, back (restore.mjs). Every miss counts against the IP and answers the same; a success doesn't clear
+  /** A lost paid token, back (restore.mjs). Every miss counts against the IP and answers the same (a Lemon Squeezy outage
+      isn't a miss: 502, not counted); a success doesn't clear
       the misses (a buyer restoring their own order between guesses would otherwise reset the count). The log gets the
       miss's reason and, on success, the order id; never the email or the number typed.
       @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {any} b */
@@ -254,9 +255,10 @@ export function createApi(o) {
     };
     /** @type {any[]} */ let orders;
     try { orders = await listOrdersByEmail({ apiKey: ls.apiKey, apiBase: ls.apiBase }, input.email); } catch (err) {
-      const e = /** @type {any} */ (err), blocked = restoreLimit.fail(ip);
-      log.error('restore: lemon squeezy lookup failed', { ip, err: e && e.code ? e.code : e && e.name, blocked });
-      if (blocked) fail(res, 'too_many_attempts', { retryAfter: Math.ceil(restoreLimit.blocked(ip) / 1000) }); else fail(res, 'restore_unavailable');
+      // not a miss: the lookup itself failed (network, 5xx, timeout), so a buyer retrying through an outage isn't blocked
+      const e = /** @type {any} */ (err);
+      log.error('restore: lemon squeezy lookup failed', { ip, err: e && e.code ? e.code : e && e.name });
+      fail(res, 'restore_unavailable');
       return true;
     }
     const m = matchOrder(orders, input, ls.variantId, ls.allowTestMode === true);

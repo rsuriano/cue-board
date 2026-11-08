@@ -14,7 +14,9 @@
      X-Signature missing or not hex HMAC-SHA256(secret, raw body)  401, before the body is parsed
      not JSON                                                   400
      order_refunded (full or partial)                           200: AccessStore.revokeOrder marks the order's token
-                                                                revoked (kept, not deleted); an order with no token: nothing
+                                                                revoked (kept, not deleted); an order with no entry yet (its
+                                                                order_created failed and will be retried) gets a revoked
+                                                                entry with no token, so that retry issues nothing
      a test-mode order (meta.test_mode or attributes.test_mode true) without LEMONSQUEEZY_ALLOW_TEST_MODE=1
                                                                 200 and nothing issued: a test card is free, so a store left
                                                                 in test mode would otherwise hand out access for nothing
@@ -89,7 +91,8 @@ export function createLemonSqueezyWebhook(o) {
     if (event === 'order_refunded') {
       // full or partial (Lemon Squeezy sends this one event for both): the order's token stops at its next use
       const r = o.access.revokeOrder(orderId);
-      log.info(r === 'revoked' ? 'lemonsqueezy order refunded: token revoked' : r === 'already' ? 'lemonsqueezy order refunded: already revoked' : 'lemonsqueezy order refunded: no token for it', { order: orderId, testMode: meta.test_mode === true });
+      log.info(r === 'revoked' ? 'lemonsqueezy order refunded: token revoked' : r === 'already' ? 'lemonsqueezy order refunded: already revoked'
+        : r === 'early' ? 'lemonsqueezy order refunded before its order arrived: recorded, it will issue nothing' : 'lemonsqueezy order refunded: no usable order id', { order: orderId, testMode: meta.test_mode === true });
       ack(); return;
     }
     if (event !== 'order_created') { log.info('lemonsqueezy webhook ignored: event', { event }); ack(); return; }
@@ -103,7 +106,7 @@ export function createLemonSqueezyWebhook(o) {
       log.error('lemonsqueezy webhook: paid order without a usable claim id, nothing issued', { order: orderId, reason: r.reason, testMode });
       ack(); return;
     }
-    log.info(r.duplicate ? 'lemonsqueezy webhook: order already processed' : 'lemonsqueezy order paid: token issued', { order: orderId, testMode });
+    log.info(r.revoked ? 'lemonsqueezy webhook: order already refunded or revoked, nothing issued' : r.duplicate ? 'lemonsqueezy webhook: order already processed' : 'lemonsqueezy order paid: token issued', { order: orderId, testMode });
     ack();
   }
 

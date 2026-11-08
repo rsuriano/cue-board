@@ -199,6 +199,56 @@ test('(rs-i) a webhook arriving after a Restore already issued that order\'s tok
   } finally { await t.close(); }
 });
 
+test('(rs-j) a refund delivered before its order_created (that delivery failed and is retried later): the late order_created issues no token, its claim ends "unknown", Restore finds nothing; created then refunded still works as before', async () => {
+  const cap = capture(), t = await setup({ log: cap.log });
+  try {
+    const sign = raw => createHmac('sha256', SECRET).update(raw).digest('hex');
+    const send = body => { const raw = JSON.stringify(body); return fetch(t.srv.httpUrl + '/webhooks/lemonsqueezy', { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature': sign(raw) }, body: raw }); };
+    const pollIt = async id => (await (await fetch(t.srv.httpUrl + '/access/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ claim_id: id }) })).json());
+    const ev = (event, id, claimId, attrs = lsOrder({ id }).attributes) => ({ meta: { event_name: event, test_mode: false, custom_data: { claim_id: claimId } }, data: { type: 'orders', id, attributes: attrs } });
+    // refund first, then the retried order_created
+    const claimId = randomUUID();
+    assert.equal((await send(ev('order_refunded', '5550001', claimId, { ...lsOrder().attributes, status: 'refunded', refunded: true }))).status, 200);
+    assert.equal((await send(ev('order_created', '5550001', claimId))).status, 200);
+    assert.ok(tokens(t.dir).every(x => x.sha256 === null), 'no token issued');
+    assert.deepEqual(await pollIt(claimId), { status: 'unknown' });
+    assert.ok(cap.lines.some(l => /already refunded or revoked, nothing issued/.test(l) && /"order":"5550001"/.test(l)));
+    // Restore, with an order Lemon Squeezy (lagging) still lists as paid: refused too
+    assert.equal((await restore(t.srv, { orderNumber: '31', email: EMAIL })).status, 404);
+    assert.ok(tokens(t.dir).every(x => x.sha256 === null));
+    // the normal order: created, collected, then refunded
+    const c2 = randomUUID();
+    assert.equal((await send(ev('order_created', '5550002', c2))).status, 200);
+    const got = await pollIt(c2); assert.equal(got.status, 'ready');
+    assert.equal((await fetch(t.srv.httpUrl + '/verify', { headers: { authorization: 'Bearer ' + got.token } })).status, 200);
+    assert.equal((await send(ev('order_refunded', '5550002', c2))).status, 200);
+    assert.equal((await fetch(t.srv.httpUrl + '/verify', { headers: { authorization: 'Bearer ' + got.token } })).status, 401);
+  } finally { await t.close(); }
+  // the store directly, and the operator's revoke ahead of the order the same way
+  const a = new AccessStore(tmpDir(), { orderSecret: SECRET });
+  assert.equal(a.revokeOrder('77'), 'early'); assert.equal(a.revokeOrder('77'), 'already');
+  assert.deepEqual(a.issueFromClaim(randomUUID(), { orderId: '77' }), { ok: true, duplicate: true, revoked: true });
+  assert.deepEqual(a.issueFromOrder('77'), { ok: false, reason: 'revoked' });
+  assert.equal(a.revokeOrderByOperator('78'), 'early');
+  const c78 = randomUUID(); assert.deepEqual(a.issueFromClaim(c78, { orderId: '78' }), { ok: true, duplicate: true, revoked: true });
+  assert.deepEqual(a.claimStatus(c78), { status: 'unknown' }); assert.deepEqual(a.issueFromOrder('78'), { ok: false, reason: 'revoked' });
+  assert.equal(a.readVerified().tokens.filter(x => x.sha256 !== null).length, 0);
+});
+
+test('(rs-k) a Lemon Squeezy outage is not a miss: failed lookups (5xx) never block the IP, a real answer afterwards still works; genuine not-found answers still do block', async () => {
+  const t = await setup({ restoreFails: 3 });
+  try {
+    t.api.state.mode = 'error';
+    for (let i = 0; i < 6; i++) { const r = await restore(t.srv, { orderNumber: '31', email: EMAIL }); assert.equal(r.status, 502, 'attempt ' + i); assert.equal(r.body.error, 'restore_unavailable'); }
+    t.api.state.mode = 'ok';
+    assert.equal((await restore(t.srv, { orderNumber: '31', email: EMAIL })).status, 200, 'not locked out by the outage');
+    assert.equal((await restore(t.srv, { orderNumber: '900', email: EMAIL })).status, 404);
+    assert.equal((await restore(t.srv, { orderNumber: '901', email: EMAIL })).status, 404);
+    const third = await restore(t.srv, { orderNumber: '902', email: EMAIL });
+    assert.equal(third.status, 429); assert.equal(third.body.error, 'too_many_attempts');
+  } finally { await t.close(); }
+});
+
 test('(rs-d) not configured: without LEMONSQUEEZY_API_KEY (or the variant, or the webhook secret) the route answers 503 and trusts nothing, asks nothing', async () => {
   for (const ls of [{ apiKey: '' }, { variantId: '' }, { secret: '' }]) {
     const t = await setup({ ls });
