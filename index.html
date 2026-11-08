@@ -9,7 +9,7 @@
 <!-- Media between collaborators (docs/media-p2p.md): ICE servers for WebRTC, e.g. "stun:stun.example.dev:3478 turn:user:secret@turn.example.dev:3478".
      Empty = none: peers on the same network connect directly, everyone else through the sync server's encrypted relay. -->
 <meta name="cue-ice-urls" content="">
-<!-- Paid access to create rooms: a Lemon Squeezy checkout link (https://<store>.lemonsqueezy.com/buy/<id>). Empty = off: only
+<!-- Paid access to create rooms: a Lemon Squeezy checkout link (https://<store>.lemonsqueezy.com/checkout/buy/<variant-uuid>). Empty = off: only
      invite codes. Its redirect after payment goes back to this page with ?ls_claim=1 (never the claim id itself). -->
 <meta name="cue-ls-checkout-url" content="">
 <!-- The build this copy is (the deploy sets the short git sha); shown in problem reports. Empty = "dev". -->
@@ -2898,7 +2898,7 @@ async function ensureVerified(api){
     msg=r.message}
 }
 /* paid access: a random claim id, kept here, rides through the checkout as custom data; the server's webhook files the
-   token under it, and this page collects it on the way back (?ls_claim=…). A paid token is stored as cset.verified, the
+   token under it, and this page collects it on the way back (?ls_claim=1). A paid token is stored as cset.verified, the
    same as a redeemed code's, so nothing else tells them apart */
 const CLAIM_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 function newClaimId(){if(crypto.randomUUID)return crypto.randomUUID();
