@@ -225,7 +225,7 @@ w.cueHistory={create,diff,between,same,clone,mediaOf,current,GONE};
   --inset-row:var(--sp-2);      /* list rows, bars */
   --inset-card:var(--sp-3);     /* card bodies */
   --inset-panel:var(--sp-4);    /* panels */
-  --inset-dialog:var(--sp-6);   /* dialogs */
+  --inset-dialog:var(--sp-5);   /* dialogs */
   /* shape */
   --r-xs:3px; --r-sm:5px; --r-md:7px; --r-lg:10px; --r-round:50%;
   --hairline:1px; --ring:2px;
@@ -930,7 +930,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .takes{grid-template-columns:minmax(0,1fr)}
   /* sheets: dialogs, the Project sheet and the files panel rise from the bottom, above the keyboard */
   dialog{width:100%;max-width:100%;margin:auto 0 var(--kb,0px);max-height:calc(100dvh - var(--safe-t) - var(--sp-6) - var(--kb,0px));overflow:auto;overscroll-behavior:contain;border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;padding:var(--sp-2) var(--gutter) var(--safe-b)}
-  .dlg{padding:var(--sp-2) var(--safe-r) var(--sp-6) var(--safe-l)}
+  .dlg{padding:var(--sp-2) var(--safe-r) var(--inset-dialog) var(--safe-l)}
+  .setTabs{margin-inline:calc((var(--gutter) + var(--safe-l)) * -1) calc((var(--gutter) + var(--safe-r)) * -1)}
   .dlg .row:has(.field){grid-template-columns:minmax(0,1fr)}
   .sh{display:grid;gap:var(--gap-block);padding:0 var(--safe-r) var(--sp-6) var(--safe-l)}
   .sheet .sh-top{padding-top:var(--sp-1)}
