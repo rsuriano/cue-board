@@ -38,6 +38,14 @@ for (const [label, vp] of [['desktop', { width: 1280, height: 800 }], ['phone', 
   await page.evaluate(() => document.getElementById('settingsb').click()); await page.waitForTimeout(300);
   check(label + ': Settings opens on the Model tab', await tab(page, 'setTabModel') === 'true' && await vis(page, 'setKey') && !(await vis(page, 'setPaneAcct')));
   check(label + ': the Account tab is there', await vis(page, 'setTabAcct'));
+  // the tab bar runs edge to edge (negative margins equal to the dialog's side padding): not wider, no sideways scroll
+  const bar = await page.evaluate(() => {
+    const d = document.getElementById('dlgSettings'), t = d.querySelector('.setTabs'), dr = d.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    const inL = dr.left + d.clientLeft, inR = inL + d.clientWidth;
+    return { dl: inL, dr: inR, tl: tr.left, tr: tr.right, sw: d.scrollWidth, cw: d.clientWidth };
+  });
+  check(label + ': Settings tab bar sits edge to edge, dialog does not scroll sideways',
+    Math.abs(bar.tl - bar.dl) <= 0.5 && Math.abs(bar.tr - bar.dr) <= 0.5 && bar.sw <= bar.cw, JSON.stringify(bar));
   await page.click('#setTabAcct'); await page.waitForTimeout(200);
   const who = await page.textContent('#setAcctWho');
   check(label + ': Account shows the email and Log out', who.includes('rami@test.dev') && (await page.textContent('#setAcctBtn')) === 'Log out' && !(await vis(page, 'setKey')), who);
