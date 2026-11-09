@@ -1,4 +1,4 @@
-// The spec's approval criteria 1-5 and 8 (docs/auth.md), against a fake Lemon Squeezy and Resend. No real API is called.
+// The spec's approval criteria 1-5 and 8 (docs/specs/auth-paywall.md), against a fake Lemon Squeezy and Resend. No real API is called.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -94,13 +94,37 @@ test('(3) /login answers buyers and non-buyers identically; only a buyer gets th
     const m = a.up.mails[0];
     assert.deepEqual(m.to, ['ana@example.com']); assert.equal(m.from, 'Bedrock Labs <login@example.dev>'); assert.ok(m.subject && m.text);
     assert.match(m.text, /^https:\/\/cue\.example\.dev\/\?key=/m);
-    assert.equal(linkKey(m), KEY, 'the link carries the license key');
-    assert.equal((await session(a, linkKey(m))).status, 200, 'and the link opens a session');
-    // a refunded order sends nothing (same answer)
+    assert.ok(!JSON.stringify(m).includes(KEY), 'the email never carries the license key');
+    const ticket = linkKey(m), t = payload(ticket);
+    assert.deepEqual([t.typ, t.sub, t.prd, t.src, t.exp], ['ticket', 'ana@example.com', 'cue-board', 'purchase', a.clock.t + 3600_000], 'a one-hour purchase ticket');
+    assert.ok(!Buffer.from(ticket.split('.')[0], 'base64url').toString().includes(KEY), 'not inside the ticket either');
+    let r = await session(a, ticket);
+    assert.equal(r.status, 200, 'and the link opens a session'); assert.equal(r.body.email, 'ana@example.com'); assert.equal(payload(r.body.session).src, 'purchase');
+    const users = new Users(a.dir);
+    assert.equal(users.get('ana@example.com', 'cue-board').ref, KEY, 'the daily check still has the key (server side only)'); users.close();
+    assert.equal((await session(a, ticket, 'other')).status, 401, 'a ticket is for its own product');
+    // like the invite ticket: good for an hour, then refused
+    a.clock.t += 3600_000;
+    r = await session(a, ticket); assert.equal(r.status, 401); assert.equal(r.body.error, 'bad_key');
+    a.clock.t -= 3600_000;
+    // a refunded order sends nothing (same answer), and an unused ticket from before opens nothing
     a.up.orders.get('ana@example.com')[0].status = 'refunded';
+    a.up.keys.get(KEY).status = 'disabled';
     const refunded = await a.call('POST', '/login', { email: 'ana@example.com', product: 'cue-board' });
     assert.equal(refunded.text, buyer.text); await a.srv.idle(); assert.equal(a.up.mails.length, 1);
+    assert.equal((await session(a, ticket)).status, 401, 'a refund ends the ticket too');
     assert.equal((await a.call('POST', '/login', { email: 'not an email', product: 'cue-board' })).status, 400);
+  } finally { await a.srv.close(); }
+});
+
+test('/login is off for a product with no lsProductId: "off", and no call to Lemon Squeezy or Resend', async () => {
+  const a = await auth({ products: [{ id: 'cue-board', name: 'Cue Board', lsProductId: null, appUrl: 'https://cue.example.dev/' }] });
+  try {
+    a.up.buy(KEY, 111, 'ana@example.com');
+    const r = await a.call('POST', '/login', { email: 'ana@example.com', product: 'cue-board' });
+    await a.srv.idle();
+    assert.equal(r.status, 503); assert.equal(r.body.error, 'off');
+    assert.deepEqual(a.up.calls, []); assert.equal(a.up.mails.length, 0);
   } finally { await a.srv.close(); }
 });
 
@@ -203,10 +227,12 @@ test('secrets stay out of the log; the code CLIs round-trip; no signing key or n
     await a.call('POST', '/redeem', { email: 'ana.secret@example.com', code: c.code, product: 'cue-board' });
     await a.call('POST', '/session', { session: s });
     await a.srv.idle();
-    const ticket = linkKey(a.up.mails.at(-1));
+    const tickets = a.up.mails.map(linkKey), loginTicket = tickets.find(t => payload(t).src === 'purchase'), ticket = tickets.find(t => payload(t).code);
+    await session(a, loginTicket);
     const log = a.lines.join('\n');
     assert.ok(a.lines.length > 3, 'something was logged');
-    for (const secret of [KEY, s, c.code, ticket, 'ana.secret@example.com', 'test-ls', 'test-resend']) assert.ok(!log.includes(secret), 'never logged: ' + secret.slice(0, 12));
+    for (const secret of [KEY, s, c.code, ticket, loginTicket, 'ana.secret@example.com', 'test-ls', 'test-resend']) assert.ok(!log.includes(secret), 'never logged: ' + secret.slice(0, 12));
+    assert.ok(!JSON.stringify(a.up.mails).includes(KEY), 'never emailed: the license key');
     const sql = fs.readFileSync(path.join(a.dir, 'users.db')).toString('latin1');
     assert.ok(!sql.includes(c.code), 'codes never reach the users table');
   } finally { await a.srv.close(); }

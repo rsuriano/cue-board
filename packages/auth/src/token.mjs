@@ -4,6 +4,7 @@
               lasts a year (exp); chk is when the purchase or code was last checked. A session not checked in the last
               24h is refused by verifyToken (what the sync server runs), so the app renews it with POST /session.
      ticket   { typ: 'ticket', sub, prd, code: <code id>, exp }   the invite magic link; one hour
+              { typ: 'ticket', sub, prd, src: 'purchase', exp }   the "Log in" magic link; one hour, no license key in it
    Anyone with the public key (the sync server) checks a session without calling this service. */
 import fs from 'node:fs';
 import path from 'node:path';
