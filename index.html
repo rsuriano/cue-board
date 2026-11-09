@@ -334,6 +334,8 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .sides{display:flex;gap:var(--sp-0-5);padding:var(--sp-0-5);background:var(--inset);border-radius:var(--r-sm);box-shadow:inset 0 0 0 var(--hairline) var(--border)}
 .sidetab{all:unset;box-sizing:border-box;position:relative;display:inline-flex;align-items:center;height:var(--h-sm);padding:0 var(--sp-3);border-radius:var(--r-xs);font:var(--w-medium) var(--text-md)/var(--lh-control) var(--font-ui);color:var(--ink-2);white-space:nowrap;cursor:pointer}
 .sidetab:hover{color:var(--ink)}
+.setTabs{width:fit-content;margin-bottom:var(--sp-3)}
+.sidetab[hidden]{display:none}
 .sidetab[aria-selected="true"]{background:var(--surface-3);color:var(--ink);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong)}
 .sidetab:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 
@@ -1266,11 +1268,19 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 </form></dialog>
 <dialog id="dlgSettings"><form class="dlg" id="setForm">
   <h3>Settings</h3>
+  <nav class="sides setTabs" role="tablist" aria-label="Settings"><button type="button" class="sidetab" role="tab" id="setTabModel" aria-controls="setPaneModel" aria-selected="true">Model</button><button type="button" class="sidetab" role="tab" id="setTabAcct" aria-controls="setPaneAcct" aria-selected="false" hidden>Account</button></nav>
+  <div id="setPaneModel" role="tabpanel" aria-labelledby="setTabModel">
   <div class="field"><label for="setKey">OpenRouter API key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
   <p class="muted" id="setConn"></p>
   <div class="row"><label class="field" for="setImg">Frame model<select id="setImg"></select></label><label class="field" for="setImgRes">Frame size<select id="setImgRes"><option value="1K">1K (drafts, 720p)</option><option value="2K">2K (1080p)</option></select></label><label class="field" for="setImgN">Versions per Generate<select id="setImgN"><option value="1">1 (half the cost)</option><option value="2">2 (pick the best)</option></select></label></div>
   <label class="chk"><input type="checkbox" id="setAll"> Show every video model OpenRouter offers, not just Wan and Seedance</label>
   <div class="row"><button type="button" id="setTest" class="btn">Test key</button><span id="setMsg" class="muted"></span><span class="grow"></span><button type="button" id="setClose" class="btn ghost">Close</button><button type="submit" class="btn primary">Save</button></div>
+  </div>
+  <div id="setPaneAcct" role="tabpanel" aria-labelledby="setTabAcct" hidden>
+    <p id="setAcctWho"></p>
+    <p class="hint" id="setAcctHint"></p>
+    <div class="row"><button type="button" id="setAcctBtn" class="btn"></button><span class="grow"></span><button type="button" id="setClose2" class="btn ghost">Close</button></div>
+  </div>
 </form></dialog>
 <dialog id="dlgExport"><div class="dlg">
   <h3>Export project</h3>
@@ -2552,10 +2562,21 @@ function openSettings(msg){
   $("setKey").value=apiKey;$("setAll").checked=showAll;$("setMsg").textContent=msg||"";
   $("setImg").innerHTML=IMG_MODELS.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");$("setImg").value=imgSet.model;$("setImgRes").value=imgSet.res;$("setImgN").value=String(imgSet.n);
   $("setConn").textContent=viaProxy?(proxyHasKey?"Running through the local server, which already has an API key. You can leave the field empty.":"Running through the local server. Requests go through it to OpenRouter."):"This page calls OpenRouter directly from your browser.";
+  $("setTabAcct").hidden=!AUTH_URL;setSetTab("model");
   $("dlgSettings").showModal();setTimeout(()=>{if(!phone())$("setKey").focus()},30);
 }
+/* Settings tabs: Model (API key, models) is the default; Account (login) only where an auth service is set up */
+function setSetTab(t){const acct=t==="account"&&!!AUTH_URL;
+  $("setTabModel").setAttribute("aria-selected",String(!acct));$("setTabAcct").setAttribute("aria-selected",String(acct));
+  $("setPaneModel").hidden=acct;$("setPaneAcct").hidden=!acct;if(acct)renderSetAcct()}
+function renderSetAcct(){const a=account.get();
+  $("setAcctWho").textContent=a?"Logged in as "+a.email:"You're not logged in.";
+  $("setAcctHint").textContent=a?"Your account lets you create live collaboration rooms. Joining a room with a link never needs one.":"Log in with the email you paid with. We'll send you a link.";
+  $("setAcctBtn").textContent=a?"Log out":"Log in";
+  $("setAcctBtn").onclick=a?()=>{account.set(null);renderSetAcct();toast("Logged out")}:async()=>{$("dlgSettings").close();if(await emailFlow("login"))$("dlgJoin").close()}}
+$("setTabModel").onclick=()=>setSetTab("model");$("setTabAcct").onclick=()=>setSetTab("account");
 $("settingsb").onclick=()=>openSettings();
-$("setClose").onclick=()=>$("dlgSettings").close();
+$("setClose").onclick=$("setClose2").onclick=()=>$("dlgSettings").close();
 $("setForm").onsubmit=async e=>{e.preventDefault();
   apiKey=$("setKey").value.trim();showAll=$("setAll").checked;await putSetting("apiKey",apiKey);await putSetting("showAll",showAll);
   imgSet.model=$("setImg").value;imgSet.res=$("setImgRes").value;imgSet.n=+$("setImgN").value;await putSetting("img",{model:imgSet.model,res:imgSet.res,n:imgSet.n});
