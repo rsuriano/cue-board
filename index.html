@@ -1461,7 +1461,8 @@ async function flush(){
 function flushNow(){if(timer){clearTimeout(timer);timer=null;flush()}}
 window.addEventListener("pagehide",flushNow);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushNow()});
-function onProjects(list){
+let projReady;const projLoaded=new Promise(r=>projReady=r);
+function onProjects(list){projReady();
   projects=list.sort((a,b)=>(b.updated||0)-(a.updated||0));
   if(pendingInvite){const inv=pendingInvite;pendingInvite=null;setTimeout(()=>joinFlow(inv).finally(()=>{joining=false;if(!projects.length&&!cur)autoExample()}),0)}
   if(cur){const r=projects.find(p=>p.id===cur.id);
@@ -2868,7 +2869,7 @@ $("jCancel").onclick=()=>$("dlgJoin").close();
 $("dlgJoin").addEventListener("close",()=>jDone(null));
 $("jNew").onclick=()=>jDone("new");$("jShare").onclick=()=>jDone("share");
 $("jShareNew").onclick=()=>jDone("share-new");$("jJoinLink").onclick=()=>jDone("join");
-$("jLogin").onclick=()=>jDone("login");$("jHaveCode").onclick=()=>jDone("code");$("jBuy").onclick=()=>$("dlgJoin").close();
+$("jLogin").onclick=()=>jDone("login");$("jHaveCode").onclick=()=>jDone("code");$("jBuy").onclick=()=>{if(cur)ls(AFTER_BUY,JSON.stringify({project:cur.id,at:Date.now()}));$("dlgJoin").close()};
 /* the account (packages/auth): {session,email} in localStorage, so a tab opened from the receipt or a login email logs
    every tab in. Only creating a room needs it. A session the sync server takes was checked by auth in the last day:
    freshAccount() renews it (auth answers the same one while it's fresh) and forgets it once auth says it's over */
@@ -2881,10 +2882,17 @@ async function authCall(path,body){try{const r=await fetch(AUTH_URL+path,{method
   catch(e){return{ok:false,status:0,message:"The account server didn't answer. Check your connection and try again."}}}
 async function freshAccount(){const a=account.get();if(!a)return null;const r=await authCall("/session",{session:a.session});
   if(r.ok)account.set(r);else if(r.status===401)account.set(null);return r}
+/* Buy leaves for the checkout: this browser remembers which project was being shared (never sent, never in the URL),
+   so the receipt's ?key= link within the hour goes straight on with Share this project. Read once, then gone */
+const AFTER_BUY="cue.afterBuy";
+function takeAfterBuy(){let a=null;try{a=JSON.parse(ls(AFTER_BUY)||"null");localStorage.removeItem(AFTER_BUY)}catch(e){}
+  const age=a&&Date.now()-a.at;return a&&typeof a.project==="string"&&age>=0&&age<3600e3?a.project:null}
+async function resumeShare(pid){await projLoaded;const p=projects.find(x=>x.id===pid);if(!p||!SYNC_URL||cset.rooms[pid])return;
+  if(!cur||cur.id!==pid){if(dirty)flush();selectProject(p)}await createRoomFlow()}
 /* back from checkout (the receipt button) or a login email: ?key= opens a session, and leaves the address bar at once */
-async function keyFromUrl(){const u=new URL(location.href),k=u.searchParams.get("key");if(!k)return;
+async function keyFromUrl(){const u=new URL(location.href),k=u.searchParams.get("key");if(!k)return;const pid=takeAfterBuy();
   u.searchParams.delete("key");history.replaceState(history.state,"",u.pathname+u.search+u.hash);if(!AUTH_URL)return;
-  const r=await authCall("/session",{key:k});if(r.ok){account.set(r);toast("Logged in as "+r.email)}else toast(r.message)}
+  const r=await authCall("/session",{key:k});if(r.ok){account.set(r);toast("Logged in as "+r.email);if(pid)resumeShare(pid)}else toast(r.message)}
 /* a login link, its ticket or a license key pasted into Log in: the link opened in another browser, or in Safari
    instead of the home-screen app (each has its own storage) */
 const loginKey=t=>{t=String(t||"").trim();const m=/[?&]key=([\w.-]+)/.exec(t);if(m)t=m[1];return /^[\w-]{16,1024}(\.[\w-]{16,1024})?$/.test(t)?t:""};
@@ -2893,7 +2901,7 @@ const loginKey=t=>{t=String(t||"").trim();const m=/[?&]key=([\w.-]+)/.exec(t);if
 async function emailFlow(kind){$("jMsg").textContent="";$("jCode").value="";
   const v=await joinAsk(kind,kind==="login"?"Log in":"Have a code?",kind==="login"?"Type the email you paid with. We'll send you a link to log in. If it opened in another browser, paste the link here.":"Type your email and the code you were given. We'll send you a link to log in.");if(!v)return null;
   if(v.key){joinStep("busy","Logging in","One moment…");const r=await authCall("/session",{key:v.key});if(!$("dlgJoin").open)return null;
-    if(r.ok){account.set(r);toast("Logged in as "+r.email);return r.session}joinStep("err","Couldn't log in",r.message);return null}
+    if(r.ok){account.set(r);takeAfterBuy();toast("Logged in as "+r.email);return r.session}joinStep("err","Couldn't log in",r.message);return null}
   joinStep("busy","Sending the link","One moment…");const r=await authCall(kind==="login"?"/login":"/redeem",v);if(!$("dlgJoin").open)return null;
   joinStep("err",r.ok?"Check your email":"Couldn't send the link",r.message);return null}
 function renderAcct(){const a=account.get(),el=$("jAcct");el.hidden=!AUTH_URL;
