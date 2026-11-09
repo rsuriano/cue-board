@@ -3,11 +3,13 @@
    Products come from products.json: { id, name, lsProductId, appUrl }. JSON bodies (≤ 4 KiB), JSON answers, no-store.
 
      GET  /health
-     POST /login   { email, product }        always 200 with the same message. Afterwards, if that email bought the
-                                             product, it gets the magic link appUrl?key=<license key>. Lookups are
+     POST /login   { email, product }        always 200 with the same message ('off' for a product with no lsProductId).
+                                             Afterwards, if that email bought the product, it gets the magic link
+                                             appUrl?key=<one-hour ticket> (never the license key). Lookups are
                                              limited per IP and per email (loginPerHour); past that, requests are
                                              dropped silently (same answer). A Lemon Squeezy failure counts against nobody.
-     POST /session { key, product }          a license key (purchase) or an invite ticket (from /redeem's email)
+     POST /session { key, product }          a license key (the receipt button) or a ticket (from /login's or /redeem's
+                                             email; a purchase ticket looks the key up again)
                                              → 200 { session, email }. The key is validated, never activated, and must
                                              belong to `product`. Upserts the user (users.mjs).
                    { session }               renew: the same session while checked in the last 24h; past that the
@@ -76,7 +78,12 @@ export async function startAuth(o) {
     if (fails.blocked(ip)) return fail(res, 'too_many_attempts');
     const t = verifyToken(/** @type {any} */ (key), b.key, now());
     let who, source, ref;
-    if (t && t.typ === 'ticket') {
+    if (t && t.typ === 'ticket' && t.src === 'purchase') {   // /login's email: the key is looked up again, never sent
+      if (t.prd !== p.id) return fail(res, 'bad_key');
+      try { ref = p.lsProductId ? await up.findKey(t.sub, p.lsProductId) : ''; } catch (err) { log.warn('lemon squeezy failed', { err: /** @type {Error} */ (err).message }); return fail(res, 'upstream'); }
+      if (!ref) return fail(res, 'bad_key');
+      [who, source] = [t.sub, 'purchase'];
+    } else if (t && t.typ === 'ticket') {
       const c = codes.standing(t.code);
       if (!c || t.prd !== p.id) return fail(res, 'bad_key');
       if (c.maxUsers != null && users.seats(c.id, t.sub) >= c.maxUsers) return fail(res, 'code_full');
@@ -112,6 +119,7 @@ export async function startAuth(o) {
   function login(res, b, ip) {
     const p = products.get(b.product), to = email(b.email);
     if (!p || !to) return fail(res, 'bad_request');
+    if (!p.lsProductId) return fail(res, 'off');
     json(res, 200, { ok: true, message: SENT });
     const keys = ['ip:' + ip, 'email:' + to];
     if (keys.some(k => lookups.full(k))) { log.warn('login dropped: rate limit', { ip, who: tag(to) }); return; }
@@ -119,7 +127,7 @@ export async function startAuth(o) {
     const job = (async () => {
       try {
         const k = await up.findKey(to, Number(p.lsProductId));
-        if (k) await send(to, p, link(p, k));
+        if (k) await send(to, p, link(p, signToken(/** @type {any} */ (key), { typ: 'ticket', sub: to, prd: p.id, src: 'purchase', exp: now() + TICKET_MS })));
         log.info(k ? 'login link sent' : 'login: no purchase', { ip, who: tag(to), product: p.id });
       } catch (err) {
         keys.forEach(k => lookups.untake(k));

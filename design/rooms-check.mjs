@@ -45,8 +45,8 @@ for (let i = 0; i < 50 && !/listening/.test(serverLog); i++) await sleep(100);
 const made = spawnSync(process.execPath, [join(root, 'packages/auth/bin/create-code.mjs'), '--label', 'Nacho'], { env: authEnv, encoding: 'utf8' });
 const CODE = /code: +(\S+)/.exec(made.stdout)?.[1], CODE_ID = /id: +(\S+)/.exec(made.stdout)?.[1];
 check('auth create-code prints a code once', !!CODE && !readFileSync(join(authDir, 'codes.json'), 'utf8').includes(CODE));
-const tp = Buffer.from(JSON.stringify({ typ: 'ticket', sub: 'ana@example.com', prd: 'cue-board', code: CODE_ID, exp: Date.now() + 3600_000 })).toString('base64url');
-const TICKET = tp + '.' + sign(null, Buffer.from(tp), createPrivateKey(readFileSync(join(authDir, 'session.key')))).toString('base64url');
+const signTok = p => { const b = Buffer.from(JSON.stringify(p)).toString('base64url'); return b + '.' + sign(null, Buffer.from(b), createPrivateKey(readFileSync(join(authDir, 'session.key')))).toString('base64url'); };
+const TICKET = signTok({ typ: 'ticket', sub: 'ana@example.com', prd: 'cue-board', code: CODE_ID, exp: Date.now() + 3600_000 });
 
 const browser = await chromium.launch({ executablePath: '/snap/bin/chromium', headless: true, args: ['--no-sandbox'] });
 async function newPage(name, phone = null) {
@@ -64,6 +64,34 @@ const head = page => page.evaluate(() => document.getElementById('mhead').textCo
 const waitStep = (page, s, ms = 9000) => page.waitForSelector(`#dlgJoin[open][data-step="${s}"]`, { timeout: ms });
 
 try {
+  // ---- Log in by pasting (the link opened in another browser, or in Safari instead of the home-screen app): a login
+  // link, a bare ticket, a license key. Auth here has no Lemon Squeezy, so the license key's answer is faked ----
+  const L = await newPage('L'), LICENSE = '38B1460A-5104-4067-A91D-77B872934D51', sentKeys = [];
+  await L.ctx.route(`http://127.0.0.1:${AUTH_PORT}/session`, r => {
+    const b = JSON.parse(r.request().postData() || '{}'); if (b.key) sentKeys.push(b.key);
+    return b.key === LICENSE ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': origin }, body: JSON.stringify({ session: TICKET, email: 'buyer@example.com' }) }) : r.continue();
+  });
+  const acct = () => L.page.evaluate(() => localStorage.getItem('cue.account') || '');
+  const pasteLogin = async (text, viaPay) => {
+    await L.page.evaluate(() => localStorage.removeItem('cue.account'));
+    await L.page.click('#joinb'); await waitStep(L.page, 'collab');
+    if (viaPay) { await L.page.click('#jShareNew'); await waitStep(L.page, 'pay'); await L.page.click('#jLogin'); } else await L.page.click('#jLogin2');
+    await waitStep(L.page, 'login'); await L.page.fill('#jEmail', text); await L.page.click('#jGo');
+    await L.page.waitForFunction(() => !!localStorage.getItem('cue.account'), null, { timeout: 8000 }).catch(() => {}); await sleep(200);
+  };
+  await L.page.click('#joinb'); await waitStep(L.page, 'collab'); await L.page.click('#jLogin2'); await waitStep(L.page, 'login');
+  check('Log in says a link that opened elsewhere can be pasted', /paste the link/i.test(await L.page.textContent('#jLead')), await L.page.textContent('#jLead'));
+  await L.page.fill('#jEmail', 'not a link'); await L.page.click('#jGo');
+  check('Log in: neither an email nor a link is caught in the app', /paste the link/i.test(await L.page.textContent('#jMsg')), await L.page.textContent('#jMsg'));
+  await L.page.click('#jCancel');
+  await pasteLogin(`${app}?key=${TICKET}`);
+  check('pasting the login link into Log in logs in (dialog closed)', /ana@example\.com/.test(await acct()) && !(await L.page.evaluate(() => document.getElementById('dlgJoin').open)));
+  await pasteLogin(TICKET);
+  check('pasting the bare ticket logs in', /ana@example\.com/.test(await acct()));
+  await pasteLogin(LICENSE, true);
+  check('pasting a license key from the $9 step logs in and goes on to the name step', /buyer@example\.com/.test(await acct()) && sentKeys.at(-1) === LICENSE && (await step(L.page)) === 'name', await step(L.page));
+  await L.page.click('#jCancel'); await L.ctx.close();
+
   // ---- desktop: A creates a room from the open project ----
   const A = await newPage('A');
   check('bar: Collaborate (not Join) while the project is in no room', (await A.page.textContent('#joinb .lbl')) === 'Collaborate' && await A.page.isVisible('#joinb'));
@@ -86,10 +114,16 @@ try {
   // the emailed link: ?key=<ticket> opens the session and leaves the address bar
   await A.page.goto(app + '?key=' + TICKET); await A.page.waitForFunction(() => !!localStorage.getItem('cue.account'), null, { timeout: 8000 }).catch(() => {});
   check('the magic link logs in and drops the key from the address bar', !A.page.url().includes('key=') && /ana@example\.com/.test(await A.page.evaluate(() => localStorage.getItem('cue.account') || '')), A.page.url());
+  // the daily check runs out while the name step waits: a session auth checked 24h minus 4s ago is fresh at "Checking
+  // your account" and refused by the sync server once the name is typed; the app renews it once and creates the room
+  const due = Date.now() - 24 * 3600_000 + 4000, NEAR = signTok({ typ: 'session', sub: 'ana@example.com', prd: 'cue-board', src: 'invite:Nacho', exp: Date.now() + 365 * 24 * 3600_000, chk: due });
+  await A.page.evaluate(s => localStorage.setItem('cue.account', JSON.stringify({ session: s, email: 'ana@example.com' })), NEAR);
   await A.page.click('#joinb'); await waitStep(A.page, 'collab');
   check('logged in: "Logged in as" with Log out', /Logged in as ana@example\.com/.test(await A.page.textContent('#jAcct')) && await A.page.isVisible('#jLogout'));
   await A.page.click('#jShareNew'); await waitStep(A.page, 'name');
-  await A.page.fill('#jName', 'Ana Torres'); await A.page.click('#jGo'); await A.page.waitForSelector('#dlgRoom[open]', { timeout: 15000 });
+  await sleep(Math.max(0, due + 24 * 3600_000 + 500 - Date.now()));
+  await A.page.fill('#jName', 'Ana Torres'); await A.page.click('#jGo'); await A.page.waitForSelector('#dlgRoom[open]', { timeout: 15000 }).catch(() => {});
+  check('a session whose daily check ran out at the name step still creates the room (renewed once)', await A.page.evaluate(() => document.getElementById('dlgRoom').open) && /create refused: no session/.test(serverLog) && !(await A.page.evaluate(() => localStorage.getItem('cue.account'))).includes(NEAR));
   const link = await A.page.inputValue('#rmLink');
   check('the room is created and This room opens at once with the link (owner sees New link and Delete room)', /#join=[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}$/.test(link) && link.startsWith(app) && !(await A.page.evaluate(() => document.getElementById('dlgJoin').open)) && await A.page.isVisible('#rmRegen') && await A.page.isVisible('#rmDel') && !(await A.page.isVisible('#rmNotOwner')), link.replace(/\..*$/, '.<token>'));
   await shot(A.page, 'desktop-room-created');

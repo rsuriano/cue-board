@@ -1278,7 +1278,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <label class="chk"><input type="checkbox" id="expSong"> Include the song (leave it out if you'll share the file)</label>
   <div class="row"><span class="grow"></span><button type="button" id="expCancel" class="btn ghost">Cancel</button><button type="button" id="expGo" class="btn primary">Download</button></div>
 </div></dialog>
-<dialog id="dlgJoin"><form class="dlg" id="joinForm">
+<dialog id="dlgJoin"><form class="dlg" id="joinForm" novalidate>
   <h3 id="jTitle">Collaborate</h3>
   <p class="muted" id="jLead"></p>
   <div class="opts" id="jOptsC">
@@ -2861,8 +2861,9 @@ const joinAsk=(step,title,lead)=>{joinStep(step,title,lead);return new Promise(r
 $("joinForm").onsubmit=e=>{e.preventDefault();const st=$("dlgJoin").dataset.step;
   if(st==="link"){const inv=parseInvite($("jLink").value);if(!inv){$("jMsg").textContent="That isn't an invite link. It ends in #join= and a long code.";return}jDone(inv)}
   else if(st==="name"){const n=$("jName").value.replace(/\s+/g," ").trim().slice(0,40);if(!n){$("jMsg").textContent="Type a name first.";return}jDone(n)}
-  else if(st==="code"||st==="login"){const email=$("jEmail").value.trim(),code=$("jCode").value.trim();
-    if(!/^\S+@\S+\.\S+$/.test(email)){$("jMsg").textContent="Type your email first.";return}if(st==="code"&&!code){$("jMsg").textContent="Type the code first.";return}jDone({email,code})}};
+  else if(st==="code"||st==="login"){const email=$("jEmail").value.trim(),code=$("jCode").value.trim(),key=st==="login"&&loginKey(email);
+    if(key){jDone({key});return}
+    if(!/^\S+@\S+\.\S+$/.test(email)){$("jMsg").textContent=st==="login"?"Type your email, or paste the link from the email.":"Type your email first.";return}if(st==="code"&&!code){$("jMsg").textContent="Type the code first.";return}jDone({email,code})}};
 $("jCancel").onclick=()=>$("dlgJoin").close();
 $("dlgJoin").addEventListener("close",()=>jDone(null));
 $("jNew").onclick=()=>jDone("new");$("jShare").onclick=()=>jDone("share");
@@ -2884,11 +2885,17 @@ async function freshAccount(){const a=account.get();if(!a)return null;const r=aw
 async function keyFromUrl(){const u=new URL(location.href),k=u.searchParams.get("key");if(!k)return;
   u.searchParams.delete("key");history.replaceState(history.state,"",u.pathname+u.search+u.hash);if(!AUTH_URL)return;
   const r=await authCall("/session",{key:k});if(r.ok){account.set(r);toast("Logged in as "+r.email)}else toast(r.message)}
-/* Log in (email → link) and Have a code (email + code → link): both end on "check your email" */
+/* a login link, its ticket or a license key pasted into Log in: the link opened in another browser, or in Safari
+   instead of the home-screen app (each has its own storage) */
+const loginKey=t=>{t=String(t||"").trim();const m=/[?&]key=([\w.-]+)/.exec(t);if(m)t=m[1];return /^[\w-]{16,1024}(\.[\w-]{16,1024})?$/.test(t)?t:""};
+/* Log in (email → link) and Have a code (email + code → link): both end on "check your email". A pasted link logs in
+   here and answers the session */
 async function emailFlow(kind){$("jMsg").textContent="";$("jCode").value="";
-  const v=await joinAsk(kind,kind==="login"?"Log in":"Have a code?",kind==="login"?"Type the email you paid with. We'll send you a link to log in.":"Type your email and the code you were given. We'll send you a link to log in.");if(!v)return;
-  joinStep("busy","Sending the link","One moment…");const r=await authCall(kind==="login"?"/login":"/redeem",v);if(!$("dlgJoin").open)return;
-  joinStep("err",r.ok?"Check your email":"Couldn't send the link",r.message)}
+  const v=await joinAsk(kind,kind==="login"?"Log in":"Have a code?",kind==="login"?"Type the email you paid with. We'll send you a link to log in. If it opened in another browser, paste the link here.":"Type your email and the code you were given. We'll send you a link to log in.");if(!v)return null;
+  if(v.key){joinStep("busy","Logging in","One moment…");const r=await authCall("/session",{key:v.key});if(!$("dlgJoin").open)return null;
+    if(r.ok){account.set(r);toast("Logged in as "+r.email);return r.session}joinStep("err","Couldn't log in",r.message);return null}
+  joinStep("busy","Sending the link","One moment…");const r=await authCall(kind==="login"?"/login":"/redeem",v);if(!$("dlgJoin").open)return null;
+  joinStep("err",r.ok?"Check your email":"Couldn't send the link",r.message);return null}
 function renderAcct(){const a=account.get(),el=$("jAcct");el.hidden=!AUTH_URL;
   el.innerHTML=a?`Logged in as ${esc(a.email)}. <button type="button" class="linkbtn" id="jLogout">Log out</button>`:`<button type="button" class="linkbtn" id="jLogin2">Log in</button>`;
   if(a)$("jLogout").onclick=()=>{account.set(null);renderAcct()};else $("jLogin2").onclick=()=>jDone("login")}
@@ -2899,7 +2906,7 @@ async function collabFlow(){
   $("jShareNewHint").textContent=!cur?"Open a project first.":!can?"This project is already in a room.":`Creates a room from “${cur.title||"Untitled project"}” and gives you a link to send. Everyone with the link edits it with you; media files stay on each device until they're shared.`;
   renderAcct();const how=await joinAsk("collab","Collaborate","Work on a cue board together, live: everyone in a room edits the same cuts, notes, prompts and takes.");
   if(!how)return;
-  if(how==="login"){await emailFlow("login");return}
+  if(how==="login"){if(await emailFlow("login"))$("dlgJoin").close();return}
   if(how==="join"){$("jLink").value="";const inv=await joinAsk("link","Join with a link","Paste the invite link you were sent. Everyone with the link can edit the project with you.");if(inv)await joinFlow(inv);return}
   await createRoomFlow();
 }
@@ -2910,7 +2917,7 @@ async function ensureAccount(){
     if(r&&r.ok)return r.session;if(r&&r.status!==401){joinStep("err","Couldn't check your account",r.message);return null}}
   $("jBuy").href=BUY_URL;$("jBuy").hidden=!BUY_URL;
   const how=await joinAsk("pay","Live collab, $9 once","Creating a room needs an account: pay once, no subscription. Joining a room with a link stays free.");
-  if(how)await emailFlow(how);return null;
+  return how?emailFlow(how):null;
 }
 const roomName=()=>cur&&cur.title||"Untitled project";
 async function createRoomFlow(){
@@ -2919,7 +2926,10 @@ async function createRoomFlow(){
   const session=await ensureAccount();if(!session)return;
   if(!cset.name){$("jName").value="";const n=await joinAsk("name","Your name in the room","The others see it next to the shots you have selected.");if(!n)return;cset.name=n;await saveCset()}
   joinStep("busy","Creating the room","One moment…");
-  const r=await m.api.createRoom(session,roomName());if(!$("dlgJoin").open)return;
+  let r=await m.api.createRoom(session,roomName());
+  /* the daily check ran out while the name step waited: renew once and try again */
+  if(!r.ok&&r.error==="no_session"&&$("dlgJoin").open){const f=await freshAccount();if(f&&f.ok)r=await m.api.createRoom(f.session,roomName())}
+  if(!$("dlgJoin").open)return;
   if(!r.ok){joinStep("err","Couldn't create the room",r.message+" Your project is untouched.");return}
   if(!cur||cur.id!==pid||cset.rooms[pid]){$("dlgJoin").close();return}
   /* as "Share this project into the room": this project's takes were all sent from here */
