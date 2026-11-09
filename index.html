@@ -334,8 +334,14 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .sides{display:flex;gap:var(--sp-0-5);padding:var(--sp-0-5);background:var(--inset);border-radius:var(--r-sm);box-shadow:inset 0 0 0 var(--hairline) var(--border)}
 .sidetab{all:unset;box-sizing:border-box;position:relative;display:inline-flex;align-items:center;height:var(--h-sm);padding:0 var(--sp-3);border-radius:var(--r-xs);font:var(--w-medium) var(--text-md)/var(--lh-control) var(--font-ui);color:var(--ink-2);white-space:nowrap;cursor:pointer}
 .sidetab:hover{color:var(--ink)}
-.setTabs{width:fit-content;margin-bottom:var(--sp-3)}
-.sidetab[hidden]{display:none}
+.setTabs{display:flex;margin:calc(var(--sp-2) * -1) calc(var(--inset-dialog) * -1) 0;padding:0;border-bottom:var(--hairline) solid var(--border)}
+.setTab{all:unset;box-sizing:border-box;position:relative;flex:1;display:flex;align-items:center;justify-content:center;height:var(--h-lg,40px);margin-bottom:calc(var(--hairline) * -1);font:var(--w-medium) var(--text-md)/var(--lh-control) var(--font-ui);color:var(--ink-2);border-bottom:2px solid transparent;cursor:pointer}
+.setTab:hover{color:var(--ink)}
+.setTab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.setTab:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(var(--ring) * -1);border-radius:var(--r-xs)}
+.setTab[hidden]{display:none}
+#setPaneModel,#setPaneAcct{display:grid;gap:var(--gap-block)}
+#setPaneModel[hidden],#setPaneAcct[hidden]{display:none}
 .sidetab[aria-selected="true"]{background:var(--surface-3);color:var(--ink);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong)}
 .sidetab:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
 
@@ -1268,7 +1274,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 </form></dialog>
 <dialog id="dlgSettings"><form class="dlg" id="setForm">
   <h3>Settings</h3>
-  <nav class="sides setTabs" role="tablist" aria-label="Settings"><button type="button" class="sidetab" role="tab" id="setTabModel" aria-controls="setPaneModel" aria-selected="true">Model</button><button type="button" class="sidetab" role="tab" id="setTabAcct" aria-controls="setPaneAcct" aria-selected="false" hidden>Account</button></nav>
+  <nav class="setTabs" role="tablist" aria-label="Settings"><button type="button" class="setTab" role="tab" id="setTabModel" aria-controls="setPaneModel" aria-selected="true">Model</button><button type="button" class="setTab" role="tab" id="setTabAcct" aria-controls="setPaneAcct" aria-selected="false" hidden>Account</button></nav>
   <div id="setPaneModel" role="tabpanel" aria-labelledby="setTabModel">
   <div class="field"><label for="setKey">OpenRouter API key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
   <p class="muted" id="setConn"></p>
