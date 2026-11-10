@@ -826,13 +826,28 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
   .app{display:flex;flex-direction:column;gap:0;height:100dvh;max-width:none;padding:0}
-  /* app bar: the project's name, who's here, the files indicator */
+  /* app bar: the project's name (it opens the Projects sheet: who's here, files, the room), then Report a problem and
+     Settings, icon only. The files indicator and the bubbles live in that sheet; the indicator's dot moves to the name.
+     The files panel stays in the DOM (a bottom sheet here, opened from the sheet's Files row): its wrapper has no box */
   .top{display:flex;flex:none;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
-  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,.appops,.mlabel{display:none!important}
-  .tleft{flex:1}
+  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,#presence,#mstat,.mlabel,#reportb::after,#settingsb::after{display:none!important}
+  .top .collab,.top .mstat{display:contents}
+  .tleft{flex:1;min-width:0}
+  .tright{flex:none;gap:var(--sp-1)}
+  .appops{gap:var(--sp-1)}
+  #settingsb{width:var(--h-md);margin-right:0;padding:0}
+  #settingsb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  #settingsb .ico:first-child{margin:0}
   .tleft>.projgroup,.projpick{flex:1 1 auto;min-width:0}
-  #proj{width:auto;max-width:100%;background-color:transparent;border-color:transparent;padding-left:var(--sp-2);font:var(--w-semibold) var(--text-xl)/var(--lh-xl) var(--font-ui);letter-spacing:var(--track-tight)}
+  #proj{position:relative;width:auto;max-width:100%;background-color:transparent;border-color:transparent;padding-left:var(--sp-2);font:var(--w-semibold) var(--text-xl)/var(--lh-xl) var(--font-ui);letter-spacing:var(--track-tight)}
+  #projname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #proj:hover,#proj[aria-expanded="true"]{border-color:transparent}
+  /* the files indicator's dot, by the chevron: hollow when a file is missing here, red when something went wrong */
+  #proj[data-att]::after{content:"";position:absolute;top:var(--sp-2);right:var(--sp-1);width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round)}
+  #proj[data-att="off"]::after,#mFiles[data-att="off"] #mFilesV::before{box-shadow:inset 0 0 0 var(--hairline) var(--ink-2)}
+  #proj[data-att="err"]::after,#mFiles[data-att="err"] #mFilesV::before{background:var(--error)}
+  #mFiles[data-att] #mFilesV{display:inline-flex;align-items:center;gap:var(--sp-1-5)}
+  #mFiles[data-att] #mFilesV::before{content:"";flex:none;width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round)}
   .strip,.keys,#mark,#copylist,.transport>.grow,.btn kbd,#ed-empty,#f-imglbl,#f-imgmsg{display:none!important}
   #sideA,#sideB{flex:1;min-height:0}
   #sideA{display:flex;flex-direction:column;gap:0}
@@ -1262,9 +1277,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <button type="button" class="m-row" id="mRoomb" aria-haspopup="dialog"><span>This room</span><span class="muted">Invite link, leave</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
     <button type="button" class="btn" id="mJoin"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Collaborate</button>
   </section>
-  <button type="button" class="m-row" id="mSettings"><span>Settings</span><span class="muted">OpenRouter key</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
   <button type="button" class="m-row" id="mCopy"><span>Copy shot list</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
-  <button type="button" class="m-row" id="mReport"><span>Report a problem</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
   <p class="hint" id="mInstall" hidden>Add Cue Board to your Home Screen (Share, then Add to Home Screen) to keep your projects on this phone. In a browser tab, iOS may clear them after a week without a visit.</p>
   <button type="button" class="btn ghost m-del" id="mDelp"><span>Delete project</span></button>
 </div></dialog>
@@ -2698,7 +2711,7 @@ function mediaChip(x,m){if(!x||!x.total)return null;
   if(x.skipped)return["off",bT,"Bigger than this project's download limit. Download gets one anyway, Download all now gets them all.","skipped"];
   return["ok","All files here","Every file in this project is in this browser."+low,"here"]}
 function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSaved();if($("dlgRoom").open)renderRoomPanel();
-  if(!s){w.hidden=true;closeFiles();for(const k of ["state","media","unshared","k"])delete b.dataset[k];peers=[];renderPresence();return}
+  if(!s){w.hidden=true;closeFiles();for(const k of ["state","media","unshared","k"])delete b.dataset[k];setAtt("");peers=[];renderPresence();return}
   let [k,t,tip]=CST[s]||CST.syncing,media="";
   const m=cmedia(),x=s==="synced"&&m?m.summary():null;
   /* a file this browser couldn't read or hash: it stays here, the others keep the previous one */
@@ -2709,11 +2722,14 @@ function renderCollab(s){const w=$("mstatw"),b=$("mstat");roomSt=s||"";renderSav
   /* the ring: bytes here of the files on their way; unknown (nothing started yet) spins a quarter */
   let p=null;if(k==="ring"){let got=0,all=0;m.files().forEach(f=>{if(f.state==="downloading"||f.state==="queued"){got+=f.got;all+=f.bytes}});p=all&&got?got/all:null}
   b.style.setProperty("--p",k!=="ring"?0:p==null?25:Math.max(4,Math.round(p*100)));if(k==="ring"&&p==null)b.dataset.busy="";else delete b.dataset.busy;
-  b.setAttribute("aria-label","Files: "+t);$("mlabel").textContent=t;
+  b.setAttribute("aria-label","Files: "+t);$("mlabel").textContent=t;setAtt(k==="off"||k==="err"?k:"");
   const h=$("mhead");h.textContent=t;h.dataset.k=k;$("mtip").textContent=tip;
   if(!$("mpanel").hidden)renderFiles();
   if(s!=="synced"&&s!=="syncing"){peers=[];renderPresence();renderMarks()}
   if($("mProj").open)renderProjSheet()}
+/* the indicator's dot ("off": a file missing here, "err": something went wrong), echoed on the phone, where the
+   indicator isn't in the bar: by the project name (it opens the Projects sheet) and on the sheet's Files row */
+function setAtt(k){for(const id of ["proj","mFiles"]){if(k)$(id).dataset.att=k;else delete $(id).dataset.att}}
 const FST={here:"Here",downloading:"Downloading",queued:"Waiting its turn",unavailable:"Nobody online has it",skipped:"Skipped: over the size limit",failed:"Couldn't be verified",paused:"Paused",relay:"Too large to relay: needs a direct connection"};
 /* a per-file action: ghost in the panel's list, secondary in place (it sits on black media, where a ghost reads as text) */
 const mactHTML=(act,hex,ghost=true)=>`<button type="button" class="btn small${ghost?" ghost":""}" data-mact="${act}" data-hex="${esc(hex)}">${act==="retry"?"Retry":"Download"}</button>`;
@@ -2748,7 +2764,7 @@ function placeFiles(){const p=$("mpanel");if(p.hidden||phone())return;p.style.re
 /* from the keyboard focus lands on the first file; from a click on the panel itself, so no ring shows */
 function openFiles(key){if($("mstatw").hidden)return;const p=$("mpanel");fCloseBtn();renderFiles();p.hidden=false;$("mstat").setAttribute("aria-expanded","true");placeFiles();((key&&fileNav()[0])||p).focus()}
 function closeFiles(refocus){const p=$("mpanel");if(p.hidden)return;const inside=p.contains(document.activeElement);
-  p.hidden=true;$("mstat").setAttribute("aria-expanded","false");if(refocus||inside){if(!$("mstatw").hidden)$("mstat").focus();else if(inside)document.activeElement.blur()}}
+  p.hidden=true;$("mstat").setAttribute("aria-expanded","false");if(refocus||inside){if(phone())$("proj").focus();else if(!$("mstatw").hidden)$("mstat").focus();else if(inside)document.activeElement.blur()}}
 const fileNav=()=>[...$("mpanel").querySelectorAll(".mrow,button:not([disabled])")];
 $("mstat").onclick=e=>$("mpanel").hidden?openFiles(e.detail===0):closeFiles(true);
 $("mstat").addEventListener("keydown",e=>{
@@ -3274,7 +3290,8 @@ function renderProjSheet(){
     $("mPeople").innerHTML=[`<li><span class="pchip self" aria-hidden="true">${esc(initialsOf(me))}</span><span class="nm">${esc(me)} <i>(you)</i></span>${on({sel:selId})}</li>`,
       ...l.map(p=>`<li><span class="pchip" aria-hidden="true">${esc(p.initials)}</span><span class="nm">${esc(p.name)}</span>${on(p)}</li>`)].join("");
     $("mState").dataset.k=$("mhead").dataset.k||"";$("mStateT").textContent=$("mhead").textContent;$("mStateTip").textContent=$("mtip").textContent;
-    $("mFilesV").textContent=wifiOnly?"Takes and clips on Wi-Fi only":""}
+    /* the files indicator's own words when it has something to say (it isn't in the phone's bar), else the Wi-Fi note */
+    const fk=$("mstat").dataset.k;$("mFilesV").textContent=/^(ring|off|err)$/.test(fk||"")?$("mlabel").textContent:wifiOnly?"Takes and clips on Wi-Fi only":""}
   $("mInstall").hidden=!(phone()&&!standalone()&&/iPhone|iPad|iPod/.test(navigator.userAgent));
 }
 $("mProjList").onclick=e=>{const b=e.target.closest("[data-pid]");if(!b)return;mProj.close();const p=projects.find(x=>x.id===b.dataset.pid);if(p&&(!cur||p.id!==cur.id)){if(dirty)flush();selectProject(p)}};
@@ -3289,7 +3306,6 @@ $("mJoin").onclick=()=>{mProj.close();collabFlow()};
 /* the room's link, Leave and the owner's actions: the same This room panel as the bar's, here a sheet */
 $("mRoomb").onclick=()=>{mProj.close();openRoom()};
 $("mFiles").onclick=()=>{mProj.close();openFiles(false)};
-$("mSettings").onclick=()=>{mProj.close();openSettings()};
 $("mCopy").onclick=()=>{if(cur)$("copylist").onclick()};
 twoTap($("mDelp"),"Delete project","Tap again to delete",async()=>{mProj.close();await deleteProject()});
 $("mTabs").addEventListener("click",e=>{const b=e.target.closest("[data-side]");if(b)setSide(b.dataset.side)});
@@ -3357,7 +3373,6 @@ $("rCopy").onclick=async()=>{const t=renderReport();try{await navigator.clipboar
 $("rDown").onclick=()=>{const t=renderReport(),a=document.createElement("a"),u=URL.createObjectURL(new Blob([t],{type:"application/json"}));
   a.href=u;a.download="cue-board-report-"+new Date().toISOString().slice(0,19).replace(/[-:]/g,"")+".json";document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(u),2000);$("rDown").textContent="Downloaded"};
-$("mReport").onclick=()=>{mProj.close();openReport()};
 $("reportb").onclick=()=>openReport();
 let rz=0;try{new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(renderTimeline)}).observe(scroller)}catch(e){window.addEventListener("resize",renderTimeline)}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>renderTimeline());

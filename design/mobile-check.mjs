@@ -70,7 +70,8 @@ async function touch(page, pts, { hold = 0, steps = 8 } = {}) {
   await c.detach(); await page.waitForTimeout(250);
 }
 const filesHidden = page => page.evaluate(() => document.getElementById('mpanel').hidden);
-const openFiles = async page => { if (await filesHidden(page)) { await page.tap('#mstat'); await page.waitForTimeout(200); } };
+// the files indicator isn't in the phone's bar: the Projects sheet's "Files and downloads" row opens the panel
+const openFiles = async page => { if (await filesHidden(page)) { await page.tap('#proj'); await page.waitForTimeout(300); await page.tap('#mFiles'); await page.waitForTimeout(200); } };
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
 const app = page => page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(); return { n: s.length, ids: s.map(x => x.id), starts: s.map(x => x.start), img: s.map(x => x.img), sel: document.querySelector('#mPeek .ed-n')?.textContent }; });
 const tl = page => page.evaluate(() => { const r = document.querySelector('.timeline').getBoundingClientRect(), c = document.getElementById('tl').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, band: c.y + window.__CUE_MEDIA_TEST.app.mLayout(c.height).top + 20 }; });
@@ -241,12 +242,20 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   await p2.evaluate(() => { const S = window.__STUB; S.peers = Array.from({ length: 12 }, (_, i) => ({ id: i + 2, name: ['Julia Martínez', 'Nacho', 'Bea'][i % 3] + ' ' + i, initials: 'P' + (i % 9), sel: i ? null : 'sr1' }));
     S.files = [{ hex: 'aa', label: 'Shot 02 · take 1', bytes: 31.5e6, song: false, state: 'skipped', skip: 'video', got: 0, who: ['Julia'] }, { hex: 'bb', label: 'Shot 01 · start frame', bytes: 1.2e6, song: false, state: 'here', skip: '', got: 1.2e6, who: [] }]; S.ping(); });
   await p2.waitForTimeout(300);
-  check(dev, 'many collaborators: you + 2 + "+10", no overflow', await p2.evaluate(() => document.querySelectorAll('#presence .pchip').length === 4 && /\+10/.test(document.querySelector('#presence .more').textContent)) && (await overflow(p2)) <= 0);
+  check(dev, 'many collaborators: no bubbles and no files indicator in the phone bar, flag and gear shown, no overflow', await p2.evaluate(() => !document.getElementById('presence').getClientRects().length && !document.getElementById('mstat').getClientRects().length
+    && ['reportb', 'settingsb'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width && r.right <= innerWidth; })) && (await overflow(p2)) <= 0);
   check(dev, 'Wi-Fi only is on by default on a phone, video held back', await p2.evaluate(() => window.__STUB.app.mediaLimits(window.__STUB.pid).video === false));
   check(dev, 'the indicator says the video waits for Wi-Fi', /Wi-Fi/.test(await p2.getAttribute('#mstat', 'aria-label')));
+  // the indicator's dot (hollow: a file missing here) moves to the project name, from the same state
+  const att = await p2.evaluate(() => { const k = document.getElementById('mstat').dataset.k, p = document.getElementById('proj'), a = getComputedStyle(p, '::after');
+    return { k, att: p.dataset.att || '', shown: a.content !== 'none' && parseFloat(a.width) > 0 }; });
+  check(dev, 'the title carries the indicator\'s dot when it would show one', /^(off|err)$/.test(att.k) ? att.att === att.k && att.shown : !att.att, JSON.stringify(att));
   await p2.screenshot({ path: join(out, `${dev}-room.png`) });
   await p2.tap('#proj'); await p2.waitForTimeout(300);
   check(dev, 'Project sheet lists who is here and the sync state', await p2.evaluate(() => document.querySelectorAll('#mPeople li').length === 13 && /Synced|Wi-Fi/.test(document.getElementById('mStateT').textContent)));
+  check(dev, 'the Files row says the indicator\'s words and has its dot', await p2.evaluate(() => { const f = document.getElementById('mFiles'), k = document.getElementById('mstat').dataset.k;
+    return /Wi-Fi/.test(document.getElementById('mFilesV').textContent) && (f.dataset.att || '') === (/^(off|err)$/.test(k) ? k : '') && (!f.dataset.att || getComputedStyle(document.getElementById('mFilesV'), '::before').content !== 'none'); }));
+  check(dev, 'the sheet has no Settings or Report rows (they are in the bar); Copy shot list stays', await p2.evaluate(() => !document.getElementById('mSettings') && !document.getElementById('mReport') && !!document.getElementById('mCopy')));
   await p2.screenshot({ path: join(out, `${dev}-project-room.png`), fullPage: false });
   // the room drops while the sheet is open
   await p2.evaluate(() => { window.__STUB.status = 'offline'; window.__STUB.ping(); }); await p2.waitForTimeout(200);
@@ -293,6 +302,8 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   // long project name
   await p2.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app; a.cur().title = 'A very long project name that goes on far past what a phone bar can hold'; a.renderAll(); });
   check(dev, 'a long project name truncates in the bar', (await overflow(p2)) <= 0 && await p2.evaluate(() => { const e = document.getElementById('projname'); return e.scrollWidth > e.clientWidth; }));
+  check(dev, 'a long project name leaves the flag and gear on screen, clear of the title', await p2.evaluate(() => { const t = document.getElementById('proj').getBoundingClientRect(), f = document.getElementById('reportb').getBoundingClientRect(), g = document.getElementById('settingsb').getBoundingClientRect();
+    return t.right <= f.left && f.right <= g.left && g.right <= innerWidth; }));
   await p2.screenshot({ path: join(out, `${dev}-long-name.png`) });
   await p2.close();
 
