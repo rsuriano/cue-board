@@ -132,10 +132,10 @@ try {
   // ---- phone ----
   for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 700 }]) {
     const tag = `${vp.width}x${vp.height}`, P = await newPage('P' + tag, { phone: vp });
-    await P.page.tap('#proj'); await sleep(400);
-    check(`phone ${tag}: the Projects sheet has "Report a problem"`, await P.page.isVisible('#mReport'));
-    await P.page.tap('#mReport'); await sleep(400);
-    check(`phone ${tag}: the row opens the dialog as a sheet`, (await mode(P.page)) === 'edit' && !(await P.page.evaluate(() => document.getElementById('mProj').open)));
+    check(`phone ${tag}: the bar has the flag (Report a problem)`, await P.page.isVisible('#reportb'));
+    check(`phone ${tag}: the Projects sheet no longer has a Report row`, await P.page.evaluate(() => !document.getElementById('mReport')));
+    await P.page.tap('#reportb'); await sleep(400);
+    check(`phone ${tag}: the flag opens the dialog as a sheet`, (await mode(P.page)) === 'edit' && !(await P.page.evaluate(() => document.getElementById('mProj').open)));
     const fs = await P.page.evaluate(() => getComputedStyle(document.getElementById('rText')).fontSize);
     check(`phone ${tag}: the text box is 16px (no zoom on focus)`, fs === '16px', fs);
     await P.page.tap('#rText'); await P.page.keyboard.type('Takes tab looks cut off');
