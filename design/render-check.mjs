@@ -192,7 +192,7 @@ try {
         const covers = v.el && v.fit === 'cover' && v.el.every((n, i) => Math.abs(n - v.f[i]) < 1.5);
         check(`3 · ${label} ${ratio} (${tag.toLowerCase()}): the frame is ${ratio}, as large as the monitor allows, on screen, and the media covers it`, Math.abs(a / want - 1) < .012 && inside && fills && covers && v.tag === tag && fw > 60, `frame ${fw.toFixed(1)}×${fh.toFixed(1)} = ${a.toFixed(4)} (want ${want.toFixed(4)}), monitor ${mw.toFixed(0)}×${mh.toFixed(0)}, ${v.tag} ${v.fit} ${v.el && v.el.map(n => n.toFixed(0))}`);
       }
-      if (ratio === '9:16') await shoot(P.page, `monitor-9x16-${label}`);
+      if (ratio === '9:16') await shoot(P.page, `monitor-9x16-${label.replace(/\W+/g, '-')}`);
     }
   };
   await section('3 monitor', async () => {
@@ -240,6 +240,11 @@ try {
     const page = D.page;
     check('11 · no request for the muxer before the render dialog opens', !D.reqs.some(u => /mp4-muxer/.test(u)), D.reqs.filter(u => /mux/.test(u)).join());
     check('3/desktop · Render sits in the bar with its icon and its word', await page.isVisible('#renderb') && await page.$eval('#renderb', b => !!b.querySelector('svg') && /Render/.test(b.innerText) && b.querySelector('.lbl,span').getBoundingClientRect().width > 20));
+    const barAt = async w => { await page.setViewportSize({ width: w, height: 900 }); await sleep(200); return page.evaluate(() => { const b = document.getElementById('renderb'), l = b.querySelector('.lbl').getBoundingClientRect(), t = document.querySelector('.top').getBoundingClientRect(), s = document.querySelector('.sides').getBoundingClientRect();
+      return { word: l.width > 20 && l.height > 8, name: b.textContent.trim(), title: b.title, w: Math.round(b.getBoundingClientRect().width), off: Math.abs(s.left + s.width / 2 - t.left - t.width / 2), over: document.documentElement.scrollWidth - innerWidth, next: b.nextElementSibling.className, group: b.parentNode.className }; }); };
+    const b19 = await barAt(1920), b14 = await barAt(1440), b12 = await barAt(1280), b8 = await barAt(820); await page.setViewportSize({ width: 1440, height: 900 }); await sleep(200);
+    check('bar · Render is one of the project operations (before More), with its word at 1920 and 1440, the side switch still on the centre, no overflow', /projops/.test(b14.group) && b14.next === 'more' && b19.word && b14.word && b19.off <= 2 && b14.off <= 2 && [b19, b14, b12, b8].every(b => b.over <= 0), JSON.stringify([b19, b14]));
+    check('bar · below 1440 Render is its icon alone (32px), still named Render with a tooltip', !b12.word && !b8.word && b12.w === 32 && b8.w === 32 && b12.name === 'Render' && !!b12.title, JSON.stringify([b12, b8]));
     await openDialog(page);
     check('11 · opening the dialog loads the muxer, from this origin', await until(() => D.reqs.some(u => u === origin + '/mp4-muxer.js'), 4000), D.reqs.filter(u => /mux/.test(u)).join());
     check('8 · without an account 1080p is disabled, with the hint', await page.$eval('#dlgRender input[name="rnRes"][value="1080"]', e => e.disabled) && await page.$eval('#dlgRender input[name="rnRes"][value="720"]', e => e.checked && !e.disabled) && /Log in or use your invite code for 1080p without watermark/.test(await page.$eval('#dlgRender', d => d.innerText)));
