@@ -57,15 +57,15 @@ function wav(sec, rate = 8000) { const n = Math.round(sec * rate), b = Buffer.al
 /* ---------- pages ---------- */
 async function newPage(opts = {}, init) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, acceptDownloads: true, ...opts });
-  const reqs = [];
-  await ctx.route('**/*', r => { const u = r.request().url(); if (u.startsWith(origin) || /^(data|blob):/.test(u)) return r.continue(); foreign.push(u); return r.abort(); });
+  const reqs = [], mine = [];
+  await ctx.route('**/*', r => { const u = r.request().url(); if (u.startsWith(origin) || /^(data|blob):/.test(u)) return r.continue(); foreign.push(u); mine.push(u); return r.abort(); });
   await ctx.addInitScript(() => { window.__CUE_MEDIA_TEST = {}; window.__A = () => window.__CUE_MEDIA_TEST.app; });
   if (init) await ctx.addInitScript(init);
   const page = await ctx.newPage();
   page.on('request', q => reqs.push(q.url()));
   page.on('console', m => { const t = m.text(); if (m.type() === 'error' && !/Failed to load resource/.test(t)) errs.push(t); if (m.type() === 'warning' || /VideoFrame/.test(t)) warns.push(t); });
   page.on('pageerror', e => errs.push(e.message));
-  return { ctx, page, reqs };
+  return { ctx, page, reqs, foreign: mine };
 }
 const RED = [208, 32, 32], BLUE = [32, 48, 208], GREEN = [32, 192, 64], BLACK = [0, 0, 0];
 const near = (a, b, tol = 40) => !!a && a.every((v, i) => Math.abs(v - b[i]) <= tol);
@@ -101,7 +101,7 @@ function fixture(media, o = {}) {
   return file;
 }
 async function open(p, url = origin + '/index.html') {
-  await p.page.goto(url); await p.page.waitForSelector('.card', { timeout: 15000 }); await p.page.evaluate(() => document.fonts.ready); await sleep(500);
+  await p.page.goto(url); await p.page.waitForSelector('.card', { timeout: 15000, state: 'attached' }); await p.page.evaluate(() => document.fonts.ready); await sleep(500);
 }
 async function load(p, file) {
   await p.page.setInputFiles('#importf', { name: 'fixture.cueboard.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
@@ -112,7 +112,7 @@ const stored = (page, pid) => page.evaluate(async pid => { const d = await new P
   return new Promise(r => { const g = d.transaction('projects').objectStore('projects').get(pid); g.onsuccess = () => r(g.result || null); g.onerror = () => r(null); }); }, pid);
 const pid = page => page.evaluate(() => __A().cur().id);
 const marks = page => page.evaluate(() => { const m = __A().io(); return [m.in, m.out]; });
-const seekTo = (page, t) => page.evaluate(t => { const a = document.getElementById('audio'); a.currentTime = t; return new Promise(r => { a.addEventListener('seeked', () => r(), { once: true }); setTimeout(r, 800); }); }, t);
+const seekTo = (page, t) => page.evaluate(t => { const a = document.getElementById('audio'), p = new Promise(r => { a.addEventListener('seeked', () => r(), { once: true }); setTimeout(r, 800); }); __A().seek(t); return p; }, t);
 const mode = page => page.$eval('#dlgRender', d => (d.open ? d.dataset.mode : 'closed'));
 const shoot = async (page, name) => { await page.waitForFunction(() => document.getElementById('toast').hidden, null, { timeout: 3000 }).catch(() => {}); await page.screenshot({ path: `${out}/${name}.png` }); };
 const openDialog = async page => { if (await page.isVisible('#renderb')) await page.click('#renderb'); else { await page.click('#proj'); await page.click('#mRender'); } await page.waitForSelector('#dlgRender[open]', { timeout: 4000 }); await sleep(250); };
@@ -127,7 +127,7 @@ async function render(page, o = {}) {
   await page.waitForSelector('#dlgRender[data-mode="done"]', { timeout: 20000 });
   const said = await page.$eval('#dlgRender', el => el.innerText.replace(/\s+/g, ' ').trim()), msg = await page.$eval('#rnMsg', el => el.textContent);
   if (o.shot) await shoot(page, o.shot);
-  if (!o.keep) { await page.click('#rnCancel'); await page.waitForSelector('#dlgRender:not([open])'); }
+  if (!o.keep) { await page.click('#rnCancel'); await page.waitForFunction(() => !document.getElementById('dlgRender').open); }
   return { name: d.suggestedFilename(), buf, said, msg, ms: Date.now() - t0, info: /\.mp4$/.test(d.suggestedFilename()) ? mp4info(buf) : null };
 }
 /* play the produced file in a blank page and read pixels: the centre, and how far the bottom-right corner strays from it */
@@ -178,16 +178,16 @@ try {
 
   /* ======== 3 · the monitor's frame ======== */
   const frameOf = page => page.evaluate(() => { const r = e => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; }, f = document.getElementById('mframe'), m = document.getElementById('monitor');
-    const el = [document.getElementById('mimg'), document.getElementById('mvid')].find(e => !e.hidden); return { f: r(f), m: r(m), el: el ? r(el) : null, fit: el ? getComputedStyle(el).objectFit : '', tag: el ? el.tagName : '' }; });
+    const el = [document.getElementById('mimg'), document.getElementById('mvid')].find(e => !e.hidden); return { vw: innerWidth, f: r(f), m: r(m), el: el ? r(el) : null, fit: el ? getComputedStyle(el).objectFit : '', tag: el ? el.tagName : '' }; });
   const frameChecks = async (P, label, sel) => {
     for (const [ratio, want] of [['16:9', 16 / 9], ['9:16', 9 / 16], ['1:1', 1], ['4:3', 4 / 3]]) {
       await sel(ratio); await sleep(250);
       for (const [sid, tag] of [['s2', 'IMG'], ['s1', 'VIDEO']]) {
-        await P.page.evaluate(sid => { const a = __A(), s = a.S().find(x => x.id === sid); document.getElementById('audio').currentTime = s.start + .3; }, sid); await sleep(350);
+        await P.page.evaluate(sid => { const a = __A(), s = a.S().find(x => x.id === sid); a.seek(s.start + .3); }, sid); await sleep(350);
         const v = await frameOf(P.page), [fx0, fy0, fw, fh] = v.f, [mx, my, mw, mh] = v.m, a = fw / fh;
-        const inside = fx0 >= mx - 1 && fy0 >= my - 1 && fx0 + fw <= mx + mw + 1 && fy0 + fh <= my + mh + 1, fills = Math.abs(fw - mw) < 2 || Math.abs(fh - mh) < 2;
+        const inside = fx0 >= mx - 1 && fy0 >= my - 1 && fx0 + fw <= mx + mw + 1 && fy0 + fh <= my + mh + 1 && mx >= -1 && mx + mw <= v.vw + 1, fills = Math.abs(fw - mw) < 2.5 || Math.abs(fh - mh) < 2.5;   // the monitor's hairline border
         const covers = v.el && v.fit === 'cover' && v.el.every((n, i) => Math.abs(n - v.f[i]) < 1.5);
-        check(`3 · ${label} ${ratio} (${tag.toLowerCase()}): the frame is ${ratio}, as large as the monitor allows, and the media covers it`, Math.abs(a / want - 1) < .012 && inside && fills && covers && v.tag === tag && fw > 60, `frame ${fw.toFixed(1)}×${fh.toFixed(1)} = ${a.toFixed(4)} (want ${want.toFixed(4)}), monitor ${mw.toFixed(0)}×${mh.toFixed(0)}, ${v.tag} ${v.fit} ${v.el && v.el.map(n => n.toFixed(0))}`);
+        check(`3 · ${label} ${ratio} (${tag.toLowerCase()}): the frame is ${ratio}, as large as the monitor allows, on screen, and the media covers it`, Math.abs(a / want - 1) < .012 && inside && fills && covers && v.tag === tag && fw > 60, `frame ${fw.toFixed(1)}×${fh.toFixed(1)} = ${a.toFixed(4)} (want ${want.toFixed(4)}), monitor ${mw.toFixed(0)}×${mh.toFixed(0)}, ${v.tag} ${v.fit} ${v.el && v.el.map(n => n.toFixed(0))}`);
       }
       if (ratio === '9:16') await shoot(P.page, `monitor-9x16-${label}`);
     }
@@ -201,7 +201,7 @@ try {
 
   /* ======== 5 · in/out marks ======== */
   await section('5 marks', async () => {
-    const page = D.page; await page.evaluate(() => scrollTo(0, 0));
+    const page = D.page; await page.evaluate(() => scrollTo(0, 0)); const hist0 = await page.evaluate(() => __A().hist().size());
     await seekTo(page, 1); await page.keyboard.press('i'); await seekTo(page, 3); await page.keyboard.press('o'); await sleep(150);
     let m = await marks(page);
     check('5 · I and O set the marks at the playhead', Math.abs(m[0] - 1) < .05 && Math.abs(m[1] - 3) < .05, JSON.stringify(m));
@@ -213,10 +213,10 @@ try {
     await page.mouse.move(geo.x + m2[0] * P, geo.y + 9); await page.mouse.down(); await page.mouse.move(geo.x + 2.5 * P, geo.y + 9, { steps: 8 }); await page.mouse.up(); await sleep(150);
     m2 = await marks(page);
     check('5 · the in handle drags too, and the playhead and the cuts stay where they were', Math.abs(m2[0] - 2.5) < .06 && Math.abs(m2[1] - 4.5) < .06 && (await page.evaluate(() => __A().S().map(s => s.start).join())) === '0,2,4', JSON.stringify(m2));
-    const hist0 = await page.evaluate(() => __A().hist().size());
+    const hist1 = await page.evaluate(() => __A().hist().size());
     await page.reload(); await page.waitForSelector('.card'); await page.waitForFunction(() => !document.getElementById('play').disabled); await sleep(500);
     m = await marks(page);
-    check('5 · marks survive a reload, and are not in the project or its undo history', Math.abs(m[0] - 2.5) < .06 && Math.abs(m[1] - 4.5) < .06 && !/"(in|out|marks|io)"/.test(JSON.stringify(await stored(page, await pid(page)))) && hist0 === await page.evaluate(() => __A().hist().size()) + 0, JSON.stringify(m));
+    check('5 · marks survive a reload, and are not in the project or its undo history', Math.abs(m[0] - 2.5) < .06 && Math.abs(m[1] - 4.5) < .06 && !/"(in|out|marks|io)"/.test(JSON.stringify(await stored(page, await pid(page)))) && hist0 === hist1, JSON.stringify(m) + ` history ${hist0} → ${hist1}`);
     await seekTo(page, .5); await page.click('#f-title'); await page.keyboard.type('io'); await sleep(100);
     check('5 · typing i and o in a field types, it sets no mark', JSON.stringify(await marks(page)) === JSON.stringify(m) && /io$/.test(await page.$eval('#f-title', e => e.value)), JSON.stringify(await marks(page)));
     await page.keyboard.press('Control+z'); await page.keyboard.press('Control+z'); await page.evaluate(() => document.activeElement.blur());
@@ -347,7 +347,7 @@ try {
     check('4 · a model whose ratios include the project\'s gets it (9:16)', a.model === 'test/ratios' && a.aspect_ratio === '9:16', JSON.stringify(a.aspect_ratio));
     check('4 · a model without a ratios list gets 16:9', b.model === 'test/plain' && b.aspect_ratio === '16:9', JSON.stringify(b.aspect_ratio));
     check('4 · a model whose list lacks the project\'s ratio (4:3) gets 16:9; a 16:9 project sends 16:9', c.aspect_ratio === '16:9' && d.aspect_ratio === '16:9', JSON.stringify([c.aspect_ratio, d.aspect_ratio]));
-    check('4 · no real API call left the page', !foreign.some(u => /openrouter/.test(u)), foreign.join());
+    check('4 · no real API call left the page (every OpenRouter request was answered by the stub)', !G.foreign.length && bodies.length === 4, G.foreign.join());
     await G.ctx.close();
   });
 
@@ -402,7 +402,8 @@ try {
     try {
       await until(() => /localhost/.test(svLog), 5000);
       const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true }), base = `http://127.0.0.1:${port}`, bad = [], perr = [];
-      await ctx.route('**/*', r => { const u = r.request().url(); if (u.startsWith(base) || /^(data|blob):/.test(u)) return r.continue(); bad.push(u); return r.abort(); });
+      /* server.mjs proxies api/openrouter to OpenRouter: answered here, so this check never reaches the network */
+      await ctx.route('**/*', r => { const u = r.request().url(); if (u.startsWith(base + '/api/openrouter/')) return r.fulfill({ status: 503, json: {} }); if (u.startsWith(base) || /^(data|blob):/.test(u)) return r.continue(); bad.push(u); return r.abort(); });
       await ctx.addInitScript(() => { window.__CUE_MEDIA_TEST = {}; window.__A = () => window.__CUE_MEDIA_TEST.app; });
       const page = await ctx.newPage(); page.on('pageerror', e => perr.push(e.message)); page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) perr.push(m.text()); });
       await open({ page }, base + '/'); await load({ page }, fx);
@@ -412,7 +413,9 @@ try {
       await ctx.close();
     } finally { sv.kill('SIGTERM'); }
   });
-  check('11 · no third-party request at any point', !foreign.length, [...new Set(foreign)].join());
+  /* the app asks OpenRouter for its model list when it starts (as before this feature; aborted here): nothing else may leave */
+  const CATALOG = 'https://openrouter.ai/api/v1/videos/models';
+  check('11 · no third-party request at any point: nothing but the app\'s own model-list call at start, none from the render', foreign.every(u => u === CATALOG), [...new Set(foreign.filter(u => u !== CATALOG))].join());
   check('no console errors or page errors in any run', !errs.length, errs.slice(0, 6).join(' | '));
 } catch (e) {
   check('run completed', false, String(e && e.stack || e).split('\n').slice(0, 4).join(' '));

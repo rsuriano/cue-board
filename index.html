@@ -115,7 +115,7 @@ function applyChange(p,c,v){v=clone(v);
   if(c.k==="take"){const i=s.takes.findIndex(x=>x.id===c.id);if(v===null){if(i>=0)s.takes.splice(i,1)}else if(i<0)s.takes.splice(Math.min(c.pos||0,s.takes.length),0,v);return}
   const t=s.takes.find(x=>x.id===c.id);if(!t)return;if(v===undefined)delete t[c.f];else t[c.f]=v}
 /* where a conflict is, for the notice: "shot 03", "a deleted shot", "a take", "the project" */
-function where(p,c){if(c.k==="meta")return c.f==="song"?"the song":c.f==="refs"?"the references":c.f==="title"?"the project name":"the project";
+function where(p,c){if(c.k==="meta")return c.f==="song"?"the song":c.f==="refs"?"the references":c.f==="title"?"the project name":c.f==="ratio"?"the frame":"the project";
   const id=c.k==="shot"||c.k==="sf"?c.id:c.sid,i=(p.sections||[]).findIndex(x=>x.id===id);
   if(i<0)return c.k==="shot"?"the shot":"a deleted shot";return (c.k==="take"||c.k==="tf"?"a take of ":"")+"shot "+String(i+1).padStart(2,"0")}
 /* every media id a step's values point at (both sides), so their files can be kept while the step exists */
@@ -204,7 +204,7 @@ w.cueHistory={create,diff,between,same,clone,mediaOf,current,GONE};
   /* timeline canvas: read by name from script (getComputedStyle), so they stay literal. They mirror ramp steps above. */
   --tl-ruler:#211f1e; --tl-tick:#47433f; --tl-label:#8f8b84;
   --tl-region-a:#151413; --tl-region-b:#1a1918; --tl-region-sel:#2f261b;
-  --tl-text:#c9c5be; --tl-text-sel:#f0a33a; --tl-cut:#8f8b84; --tl-wave:#858179;
+  --tl-text:#c9c5be; --tl-text-sel:#f0a33a; --tl-cut:#8f8b84; --tl-wave:#858179; --tl-mark:#c9c5be; --tl-range:rgba(237,235,231,.16);
   /* type */
   --font-ui:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -418,10 +418,12 @@ input[type="checkbox"]{width:var(--icon-lg);height:var(--icon-lg);margin:0;accen
 .songbar .btn{margin-left:auto}
 .stage{display:grid;grid-template-columns:minmax(0,1fr) var(--inspector-w);grid-template-rows:var(--stage-h);gap:var(--sp-3)}
 
-/* monitor: a program viewer; media is letterboxed, never cropped */
-.monitor{position:relative;height:100%;min-height:var(--monitor-min-h);background:var(--screen);border:var(--hairline) solid var(--border-subtle);border-radius:var(--r-md);overflow:hidden}
-.monitor img,.monitor video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--screen)}
-.slate{position:absolute;inset:0;padding:var(--sp-10);display:grid;grid-template-columns:auto 1fr;align-content:center;align-items:baseline;column-gap:var(--sp-2);row-gap:var(--sp-2)}
+/* monitor: a program viewer. The frame has the project ratio (--fr, width over height), as large as fits; media is
+   cropped to fill it, as the render does. Around it: the app background */
+.monitor{position:relative;display:grid;place-items:center;container-type:size;height:100%;min-height:var(--monitor-min-h);background:var(--bg);border:var(--hairline) solid var(--border-subtle);border-radius:var(--r-md);overflow:hidden}
+.mframe{position:relative;width:min(100cqw,100cqh * var(--fr,1.7778));height:min(100cqh,100cqw / var(--fr,1.7778));overflow:hidden;background:var(--screen);container-type:inline-size}
+.monitor img,.monitor video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--screen)}
+.slate{position:absolute;inset:0;padding:min(var(--sp-10),8cqw);display:grid;grid-template-columns:auto 1fr;align-content:center;align-items:baseline;column-gap:var(--sp-2);row-gap:var(--sp-2)}
 .slate>*{grid-column:1/-1}
 .slate .n{grid-column:1;font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--accent)}
 .slate .shot:first-child{grid-column:1/-1}
@@ -525,6 +527,23 @@ dialog::backdrop{background:var(--backdrop)}
 .dlg .row:has(.field){display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:end;gap:var(--sp-3)}
 /* actions: right-aligned, primary last, a block further down than the content gap */
 .dlg>.row:last-child{margin-top:var(--sp-2)}
+/* frame ratio (the bar, the phone's Projects sheet) and the render dialog */
+.framepick{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--ink-2)}
+#frame{width:auto}
+.rn-opts{display:grid;gap:var(--gap-block)}
+.rn-set{display:grid;min-width:0;margin:0;padding:0;border:0}
+.rn-set legend,.rn-frame>span:first-child{padding:0;font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-medium);color:var(--ink-2)}
+.rn-set input[type="radio"]{flex:none;width:var(--icon-lg);height:var(--icon-lg);margin:0;accent-color:var(--accent);cursor:inherit}
+.rn-set .chk .tc{margin-left:auto;text-align:right}
+.rn-set .chk:has(input:disabled){opacity:var(--o-disabled);cursor:not-allowed}
+.rn-marks{margin-top:var(--sp-1)}
+.rn-frame{display:flex;align-items:center;gap:var(--sp-2)}
+.rn-frame .linkbtn{margin-left:var(--sp-2);font-size:var(--text-sm)}
+.rn-prog{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-2) var(--sp-3)}
+.rn-prog .muted{grid-column:1/-1}
+.rn-done{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-1) var(--sp-3)}
+#rnFile{min-width:0;color:var(--ink-2);overflow-wrap:anywhere}
+#dlgRender .hint:empty{display:none}
 
 /* ---------- side B ---------- */
 .sideB{display:grid;grid-template-columns:var(--list-w) minmax(0,1fr);gap:var(--gap-block);align-items:start}
@@ -785,7 +804,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .brand .lbl{display:none}
   .top{column-gap:var(--sp-4)}
   .saved{width:auto}
-  .saved .lbl,#settingsb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .saved .lbl,#settingsb .lbl,.framepick .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   #settingsb{width:var(--h-md);padding:0}
   #settingsb .ico:first-child{margin:0}
   #settingsb:is(:hover,:focus-visible)::after{display:block;visibility:visible}
@@ -830,7 +849,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
      Settings, icon only. The files indicator and the bubbles live in that sheet; the indicator's dot moves to the name.
      The files panel stays in the DOM (a bottom sheet here, opened from the sheet's Files row): its wrapper has no box */
   .top{display:flex;flex:none;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
-  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,#presence,#mstat,.mlabel,#reportb::after,#settingsb::after{display:none!important}
+  .brand,#renamep,.projops,.outops,.songops,.top .sides,#joinb,#roomb,#status,#presence,#mstat,.mlabel,#reportb::after,#settingsb::after{display:none!important}
   .top .collab,.top .mstat{display:contents}
   .tleft{flex:1;min-width:0}
   .tright{flex:none;gap:var(--sp-1)}
@@ -853,9 +872,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #sideA{display:flex;flex-direction:column;gap:0}
   .sideB{display:grid;align-content:start;overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-3) calc(var(--gutter) + var(--safe-r)) var(--sp-6) calc(var(--gutter) + var(--safe-l))}
   .songbar{flex:none;margin:var(--sp-2) var(--gutter) 0}
-  /* the monitor: full width and all the height the deck leaves (the image is contained: letterboxed when taller than 16:9) */
+  /* the monitor: full width and all the height the deck leaves; the frame sits in it in the project's ratio.
+     aspect-ratio:auto: the stacked layout's 16/9 (above) would make it wider than the screen here */
   .stage{display:block;flex:1 1 0;min-height:0}
-  .monitor{height:100%;min-height:0;border:0;border-radius:0}
+  .monitor{height:100%;min-height:0;aspect-ratio:auto;border:0;border-radius:0}
   .slate{padding:var(--sp-4)}
   .slate.cap{padding:var(--sp-8) var(--sp-4) var(--sp-3)}
   .slate .t{font-size:var(--text-xl);line-height:var(--lh-xl)}
@@ -974,6 +994,12 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit);border-top:var(--hairline) solid var(--border-subtle);cursor:pointer}
   .m-row>span:first-child{flex:1;font-weight:var(--w-medium)}
   .m-row .ico{color:var(--ink-3)}
+  .m-out{display:grid}
+  #mFrame{width:auto;height:var(--h-sm);padding:0 var(--sp-3);background-color:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-input)}
+  .rn-marks .btn,.rn-frame .linkbtn,.rn-done .linkbtn{min-height:var(--hit);min-width:var(--hit)}
+  .rn-frame .linkbtn,.rn-done .linkbtn{display:inline-flex;align-items:center;justify-content:center}
+  /* in/out marks: 44px grips on the ruler row, over the canvas that draws them */
+  .mkgrip{all:unset;position:absolute;top:0;width:var(--hit);height:var(--tl-ruler-h);margin-left:calc(var(--hit) / -2);pointer-events:auto;touch-action:none;cursor:ew-resize}
   .m-del,#mDelsong{justify-self:start}
   .m-del:hover,.m-del[data-armed],#mDelsong[data-armed]{color:var(--error);background:var(--error-subtle);border-color:transparent}
   .mpanel{position:fixed;top:auto;right:0;bottom:0;left:0;width:auto;max-width:none;max-height:calc(100dvh - var(--safe-t) - var(--appbar-h));padding:var(--inset-panel) calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l));border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-overlay)}
@@ -1049,6 +1075,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
           </div>
         </div>
       </div>
+      <!-- what comes out of the project: its frame ratio (monitor, generation, render) and the render itself -->
+      <div class="tgroup outops">
+        <label class="framepick"><span class="lbl">Frame</span><select id="frame" title="Frame ratio of this project: the monitor, new takes and the render use it"></select></label>
+        <button type="button" id="renderb" class="btn ghost" title="Render the video (MP4)"><svg class="ico" aria-hidden="true"><use href="#i-film"/></svg><span class="lbl">Render</span></button>
+      </div>
       <div class="tgroup songops">
         <button type="button" class="btn primary" data-for="song" id="songlbl">Load song</button>
         <input id="song" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac,.ogg" hidden>
@@ -1092,10 +1123,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div id="songbar" class="songbar" hidden></div>
 
   <section class="stage">
-    <div class="monitor" id="monitor">
+    <div class="monitor" id="monitor"><div class="mframe" id="mframe">
       <img id="mimg" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'/%3E" hidden>
       <video id="mvid" muted playsinline preload="auto" hidden></video>
-      <div class="slate" id="slate"></div>
+      <div class="slate" id="slate"></div></div>
       <div class="mprog"><b id="mprog"></b></div>
     </div>
 
@@ -1250,6 +1281,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       <div><dt>Move sideways</dt><dd>scroll over the waveform</dd></div>
       <div><dt>Zoom</dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll</dd></div>
       <div><dt>Move along the shots<small>a mouse wheel works too</small></dt><dd>scroll over the shot cards</dd></div>
+      <div><dt>Mark in / out at the playhead<small>the section to render; drag the marks on the ruler</small></dt><dd><kbd>I</kbd><kbd>O</kbd></dd></div>
+      <div><dt>Clear the marks</dt><dd><kbd>Alt</kbd>+<kbd>X</kbd></dd></div>
     </dl></section>
     <section aria-labelledby="kFiles"><p class="kh" role="heading" aria-level="4" id="kFiles">Files</p><dl class="klist">
       <div><dt>Load the song</dt><dd>drop an mp3</dd></div>
@@ -1269,6 +1302,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div class="m-list" id="mProjList" role="group" aria-label="Projects"></div>
   <div class="m-acts"><button type="button" class="btn" id="mNew">New</button><button type="button" class="btn" id="mRename">Rename</button><button type="button" class="btn" id="mImport">Import</button><button type="button" class="btn" id="mExport">Export</button></div>
   <div class="m-acts"><button type="button" class="btn" id="mSong">Load song</button><button type="button" class="btn ghost" id="mDelsong" hidden><span>Remove song</span></button></div>
+  <div class="m-out"><label class="m-row" for="mFrame"><span>Frame</span><select id="mFrame"></select></label>
+    <button type="button" class="m-row" id="mRender" aria-haspopup="dialog"><span>Render video</span><span class="muted">MP4</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button></div>
   <section class="m-room" id="mRoom" hidden>
     <div class="m-rh"><h3>Collaboration</h3><span class="muted" id="mRoomN"></span></div>
     <ul class="m-people" id="mPeople"></ul>
@@ -1308,6 +1343,28 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <label class="chk"><input type="checkbox" id="expSong"> Include the song (leave it out if you'll share the file)</label>
   <div class="row"><span class="grow"></span><button type="button" id="expCancel" class="btn ghost">Cancel</button><button type="button" id="expGo" class="btn primary">Download</button></div>
 </div></dialog>
+<!-- render (docs/specs/export-render.md): the range, the size, then progress and the file. Closing it cancels -->
+<dialog id="dlgRender" aria-labelledby="rnTitle" data-mode="idle"><form class="dlg" id="rnForm">
+  <h3 id="rnTitle" tabindex="-1">Render video</h3>
+  <div class="rn-opts" id="rnOpts">
+    <fieldset class="rn-set"><legend>Range</legend>
+      <label class="chk"><input type="radio" name="rnRange" value="all" checked><span>Whole song</span><span class="tc" id="rnAllT"></span></label>
+      <label class="chk" id="rnSelRow" hidden><input type="radio" name="rnRange" value="sel"><span>Selection</span><span class="tc" id="rnSelT"></span></label>
+      <div class="row rn-marks"><button type="button" class="btn small" id="rnIn">Set in</button><button type="button" class="btn small" id="rnOut">Set out</button><button type="button" class="btn small ghost" id="rnClear" hidden>Clear</button><span class="hint">at the playhead, <span class="tc" id="rnNow"></span></span></div>
+    </fieldset>
+    <fieldset class="rn-set"><legend>Resolution</legend>
+      <label class="chk"><input type="radio" name="rnRes" value="720" checked><span>720p</span><span class="tc" id="rn720"></span></label>
+      <label class="chk"><input type="radio" name="rnRes" value="1080" aria-describedby="rnResHint"><span>1080p</span><span class="tc" id="rn1080"></span></label>
+      <p class="hint" id="rnResHint"></p>
+    </fieldset>
+    <p class="rn-frame"><span>Frame</span><span class="tc" id="rnFrameT"></span><button type="button" class="linkbtn" id="rnFrame">Change</button></p>
+    <p class="hint" id="rnNote"></p>
+  </div>
+  <div class="rn-prog" id="rnProg" hidden><span class="mbar"><b id="rnBar"></b></span><span class="tc" id="rnPct">0%</span><span class="muted" id="rnWhat"></span></div>
+  <div class="rn-done" id="rnDone" hidden><b>Done</b><span id="rnFile"></span><button type="button" class="linkbtn" id="rnAgain">Download again</button></div>
+  <p class="hint" id="rnMsg" role="status"></p>
+  <div class="row"><span class="grow"></span><button type="button" id="rnCancel" class="btn ghost">Cancel</button><button type="submit" id="rnGo" class="btn primary">Render</button></div>
+</form></dialog>
 <dialog id="dlgJoin"><form class="dlg" id="joinForm" novalidate>
   <h3 id="jTitle">Collaborate</h3>
   <p class="muted" id="jLead"></p>
@@ -1377,7 +1434,7 @@ const fmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=t-m*60;return m+":"+
 const fmtS=t=>{const m=Math.floor(t/60),s=Math.round(t-m*60);return m+":"+pad(s)};
 function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
 function tok(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
-const T={};["--tl-ruler","--tl-tick","--tl-label","--tl-text","--tl-text-sel","--tl-cut","--tl-wave","--tl-region-a","--tl-region-b","--tl-region-sel"].forEach(n=>T[n]=tok(n));
+const T={};["--tl-mark","--tl-range","--tl-ruler","--tl-tick","--tl-label","--tl-text","--tl-text-sel","--tl-cut","--tl-wave","--tl-region-a","--tl-region-b","--tl-region-sel"].forEach(n=>T[n]=tok(n));
 
 /* ---------- local storage: everything lives in this browser's IndexedDB ----------
    songs    : projectId → {blob, name}        (the mp3)
@@ -1576,9 +1633,43 @@ document.addEventListener("keydown",e=>{
   e.preventDefault();if(e.repeat&&performance.now()-undoAt<150)return;undoAt=performance.now();
   doUndo(u?"undo":"redo")});
 
+/* ---------- frame ratio: a project field (absent = 16:9), saved, synced and undone like the title ---------- */
+const RATIOS={"16:9":[16,9],"9:16":[9,16],"1:1":[1,1],"4:3":[4,3]};
+const ratioOf=p=>p&&RATIOS.hasOwnProperty(p.ratio)?p.ratio:"16:9";
+/* what a generation request asks for: the project's ratio where the model lists it, else 16:9 (the render crops) */
+const genRatio=m=>{const r=ratioOf(cur);return m&&(m.ratios||[]).includes(r)?r:"16:9"};
+function renderFrame(){const r=ratioOf(cur),[w,h]=RATIOS[r];$("monitor").style.setProperty("--fr",(w/h).toFixed(4));
+  for(const id of ["frame","mFrame"]){const s=$(id);if(!s.options.length)s.innerHTML=Object.keys(RATIOS).map(k=>`<option>${k}</option>`).join("");s.value=r;s.disabled=!cur}
+  $("renderb").disabled=!cur;rnDraw()}
+function setRatio(v){if(!cur||!RATIOS.hasOwnProperty(v)||v===ratioOf(cur))return;hRec("frame "+v,()=>{cur.ratio=v});scheduleSave();renderFrame();if(side==="b")renderFrames()}
+$("frame").onchange=$("mFrame").onchange=e=>setRatio(e.target.value);
+
+/* ---------- in/out marks: the section to render. This tab's view of the project, kept per project in localStorage:
+   not in the project itself, so never synced and never part of undo (like the playhead) ---------- */
+let io={in:null,out:null},ioDrag="";
+const IO_KEY="cueboard-io:";
+function ioLoad(){io={in:null,out:null};try{const o=JSON.parse(ls(IO_KEY+cur.id)||"null");for(const k of ["in","out"])if(o&&typeof o[k]==="number"&&isFinite(o[k])&&o[k]>=0)io[k]=o[k]}catch(e){}}
+/* the marked range, clamped to the song; a side without a mark runs to that end. null with no marks, or nothing between them */
+function ioRange(){if(!cur||(io.in==null&&io.out==null))return null;const d=dur(),a=Math.min(d,io.in??0),b=Math.min(d,io.out??d);return b-a>=.04?[a,b]:null}
+/* k "in" or "out" at time t; no k clears both. A mark set past the other one takes it out; a dragged one (hold) stops short of it */
+function ioSet(k,t,hold){if(!cur)return;
+  if(k){const o=k==="in"?"out":"in";t=Math.max(0,Math.min(dur(),t));
+    if(io[o]!=null&&(k==="in"?t>io[o]-.1:t<io[o]+.1)){if(hold)t=Math.max(0,k==="in"?io[o]-.1:io[o]+.1);else io[o]=null}
+    io[k]=r2(t)}
+  else io={in:null,out:null};
+  try{if(io.in==null&&io.out==null)localStorage.removeItem(IO_KEY+cur.id);else ls(IO_KEY+cur.id,JSON.stringify(io))}catch(e){}
+  renderTimeline();rnDraw()}
+/* on a ruler RU tall: the range shaded, a bracket at each mark. X maps a time to a canvas x */
+function ioDraw(g,X,RU){if(io.in==null&&io.out==null)return;const a=Math.round(X(io.in??0)),b=Math.round(X(io.out??dur()));
+  g.fillStyle=T["--tl-range"];g.fillRect(a,0,Math.max(0,b-a),RU);g.fillStyle=T["--tl-mark"];
+  if(io.in!=null){g.fillRect(a-1,0,2,RU);g.fillRect(a,0,6,2);g.fillRect(a,RU-2,6,2)}
+  if(io.out!=null){g.fillRect(b-1,0,2,RU);g.fillRect(b-6,0,6,2);g.fillRect(b-6,RU-2,6,2)}}
+/* the mark under the pointer, on the desktop ruler */
+const ioAt=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left;if(e.clientY-r.top>20)return"";return["out","in"].find(k=>io[k]!=null&&Math.abs(x-io[k]*P)<=7)||""};
+
 /* ---------- projects ---------- */
 function selectProject(p){
-  if(renaming)endRename(true);stop();hist.clear();cur=clone(p);selId=cur.sections[0]&&cur.sections[0].id;ls(KEY_LAST,cur.id);vt=0;pps=null;lastKey="";
+  if(renaming)endRename(true);stop();hist.clear();cur=clone(p);ioLoad();selId=cur.sections[0]&&cur.sections[0].id;ls(KEY_LAST,cur.id);vt=0;pps=null;lastKey="";
   loadAudio();renderAll();
   const pid=cur.id;loadProjectMedia(cur).then(()=>{if(!cur||cur.id!==pid)return;lastKey="";renderAll();renderB();ensurePolling();refreshCredits()});
   collabFor(cur);
@@ -1641,7 +1732,7 @@ function renderAll(){renderProjSelect();renderSongbar();renderTransport();render
 function renderProjSelect(){
   const b=$("proj"),name=cur?cur.title||"Untitled project":"No projects";
   $("projname").textContent=name;b.title=cur?name:"";b.setAttribute("aria-label","Project: "+name);
-  $("delp").disabled=!cur;renderRenameBtn();renderCollabBtns();renderSaved();
+  $("delp").disabled=!cur;renderRenameBtn();renderCollabBtns();renderSaved();renderFrame();
   if(!$("projmenu").hidden)renderProjMenu();
 }
 /* the room, at the top level: Collaborate while the open project isn't in one (also with no project), This room
@@ -1682,6 +1773,7 @@ function renderTimeline(){
   const st=[1,2,5,10,15,30,60,120].find(s=>s*P>=64)||120;
   g.font="500 11px 'JetBrains Mono', monospace";g.textBaseline="middle";g.textAlign="left";g.lineWidth=1;
   for(let t=0;t<=d+1e-6;t+=st){const x=Math.round(t*P)+.5;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
+  if(cur)ioDraw(g,t=>t*P,RU);
   const top=40,h=H-top-8,mid=top+h/2;
   if(!cur){g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(0,mid+.5);g.lineTo(W,mid+.5);g.stroke();placePlayhead();return}
   const s=S();
@@ -1813,15 +1905,17 @@ function scrubTo(e){
 }
 cv.addEventListener("pointerdown",e=>{if(!cur||e.button>0||phone())return;const x=cx(e),hit=boundaryAt(x);
   cv.setPointerCapture(e.pointerId);
+  if((ioDrag=ioAt(e)))return;
   if(hit>0){drag=hit;dragH=hCut(S()[hit]);return}
   scrub=true;cv.style.cursor="grabbing";scrubTo(e)});
 let dragH=null;
 cv.addEventListener("pointermove",e=>{if(!cur||phone())return;
+  if(ioDrag){ioSet(ioDrag,cx(e)/P,true);return}
   if(drag){const s=S(),i=dragH?s.findIndex(x=>x.id===dragH.id):drag;if(i<1)return;drag=i;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
     s[i].start=Math.round(Math.min(hi,Math.max(lo,cx(e)/P))*100)/100;renderTimeline();renderStrip();renderEdHead();renderMonitor()}
   else if(scrub)scrubTo(e);
-  else cv.style.cursor=boundaryAt(cx(e))>0?"ew-resize":"pointer"});
-const endDrag=()=>{if(drag){drag=null;hCutEnd(dragH);dragH=null;scheduleSave();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
+  else cv.style.cursor=ioAt(e)||boundaryAt(cx(e))>0?"ew-resize":"pointer"});
+const endDrag=()=>{ioDrag="";if(drag){drag=null;hCutEnd(dragH);dragH=null;scheduleSave();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
 cv.addEventListener("pointerup",endDrag);cv.addEventListener("pointercancel",endDrag);
 /* wheel over the song: scroll sideways; Ctrl/⌘ + wheel zooms around the pointer */
 scroller.addEventListener("wheel",e=>{
@@ -1929,7 +2023,7 @@ const deleteProject=async()=>{
   closeMore(true);if(!cur||!store)return;const id=cur.id,imgs=projectMediaIds(cur);
   clearTimeout(timer);timer=null;dirty=false;stop();
   try{await store.del(id)}catch(e){toast("Couldn't delete");return}
-  idbDo("readwrite",st=>st.delete(id));if(assets)imgs.forEach(x=>{if(!mediaInUse(x,id))assets.delete(x).catch(()=>{})});
+  idbDo("readwrite",st=>st.delete(id));try{localStorage.removeItem(IO_KEY+id)}catch(e){}if(assets)imgs.forEach(x=>{if(!mediaInUse(x,id))assets.delete(x).catch(()=>{})});
   if(cset.rooms[id])leaveRoom(id,true);
   projects=projects.filter(p=>p.id!==id);cur=null;selId=null;hasAudio=false;lastKey="";hist.clear();
   if(projects.length)selectProject(projects[0]);else renderAll();toast("Project deleted");
@@ -2102,8 +2196,11 @@ document.addEventListener("keydown",e=>{
   /* a dialog or sheet is open: its buttons and summaries keep Space, and nothing edits the project behind it */
   if(side!=="a"||document.querySelector("dialog[open]"))return;
   const tg=e.target;if(tg&&(/INPUT|TEXTAREA|SELECT/.test(tg.tagName)||tg.isContentEditable)){if(e.key==="Escape")tg.blur();return}
+  /* in/out marks: I and O at the playhead, Alt+X clears them (by key position: Alt changes the letter on a Mac); never on a repeat */
+  if(e.altKey&&!e.ctrlKey&&!e.metaKey&&e.code==="KeyX"){e.preventDefault();if(!e.repeat&&cur&&(io.in!=null||io.out!=null)){ioSet();toast("Marks cleared")}return}
   if(e.metaKey||e.ctrlKey||e.altKey)return;const k=e.key.toLowerCase();
   if(e.code==="Space"){e.preventDefault();toggle()}
+  else if(k==="i"||k==="o"){if(!e.repeat&&cur){ioSet(k==="i"?"in":"out",now());toast((k==="i"?"In at ":"Out at ")+fmt(now()))}}
   else if(k==="m"){addMarker()}
   else if(k==="l"){setLoop(!loop)}
   else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();seek(now()+(e.key==="ArrowLeft"?-1:1)*(e.shiftKey?5:1))}
@@ -2186,7 +2283,9 @@ const gen={model:"alibaba/wan-3.0",res:"480p",audio:false,seed:"",count:1};
 const FAV=["alibaba/wan-3.0","alibaba/wan-3.0-prime","bytedance/seedance-2.5","bytedance/seedance-2.0-fast"];
 const rng=(a,b)=>Array.from({length:b-a+1},(_,i)=>a+i);
 const FR=["first_frame","last_frame"];
-/* fallback catalog (OpenRouter /videos/models, Oct 2026); refreshed live on start */
+/* fallback catalog (OpenRouter /videos/models, Oct 2026); refreshed live on start. `ratios` (next to `res`): the frame
+   ratios a model takes, from the live catalog's supported_aspect_ratios. Not listed here, where it isn't confirmed: a
+   model without the project's ratio is asked for 16:9 (genRatio) */
 const BUILTIN=[
   {id:"alibaba/wan-3.0",name:"Wan 3.0",durations:rng(2,30),res:["480p","720p","1080p"],frames:FR,audio:true,seed:true,pricing:{duration_seconds_480p:"0.05",duration_seconds_720p:"0.1",duration_seconds_1080p:"0.2"}},
   {id:"alibaba/wan-3.0-prime",name:"Wan 3.0 Prime",durations:rng(2,30),res:["480p","720p","1080p"],frames:FR,audio:true,seed:true,pricing:{duration_seconds_480p:"0.068",duration_seconds_720p:"0.14",duration_seconds_1080p:"0.28"}},
@@ -2194,7 +2293,7 @@ const BUILTIN=[
   {id:"bytedance/seedance-2.0-fast",name:"Seedance 2.0 Fast",durations:rng(4,15),res:["480p","720p"],frames:FR,audio:true,seed:true,pricing:{video_tokens:"0.0000042",video_tokens_without_audio:"0.0000042"}}
 ];
 let catalog=BUILTIN.slice();
-const normModel=m=>({id:m.id,name:String(m.name||m.id).replace(/^[^:]+:\s*/,""),durations:m.supported_durations||[],res:m.supported_resolutions||[],frames:m.supported_frame_images||[],audio:!!m.generate_audio,seed:!!m.seed,pricing:m.pricing_skus||{}});
+const normModel=m=>({id:m.id,name:String(m.name||m.id).replace(/^[^:]+:\s*/,""),durations:m.supported_durations||[],res:m.supported_resolutions||[],ratios:m.supported_aspect_ratios||[],frames:m.supported_frame_images||[],audio:!!m.generate_audio,seed:!!m.seed,pricing:m.pricing_skus||{}});
 const modelById=id=>catalog.find(m=>m.id===id)||BUILTIN.find(m=>m.id===id)||catalog[0]||BUILTIN[0];
 function visibleModels(){const fav=FAV.map(id=>catalog.find(m=>m.id===id)||BUILTIN.find(m=>m.id===id)).filter(Boolean);
   return showAll?[...fav,...catalog.filter(m=>!FAV.includes(m.id))]:fav}
@@ -2270,7 +2369,7 @@ function fillFrame(pre,id,note,enabled,clearLabel){
   const box=$(pre),img=$(pre+"Img");box.classList.toggle("has",!!id);box.classList.toggle("off",!enabled);
   img.innerHTML=id&&mediaURL(id)?`<img src="${mediaURL(id)}" alt="">`:isMissing(id)?missHTML("span","",id,"Not on this device yet"):`<span>${enabled?"Drop an image here":"This model can't take an end frame"}</span>`;missSoon();
   $(pre+"Note").textContent=note;$(pre+"Clr").hidden=!id;$(pre+"Clr").textContent=clearLabel||"Clear";$(pre+"Warn").textContent="";
-  const im=img.querySelector("img");if(im)im.onload=()=>{const r=im.naturalWidth/im.naturalHeight;$(pre+"Warn").textContent=Math.abs(r-16/9)>.06?`${im.naturalWidth}×${im.naturalHeight}, not 16:9: it may get cropped`:""};
+  const im=img.querySelector("img");if(im)im.onload=()=>{const r=im.naturalWidth/im.naturalHeight;const k=ratioOf(cur),[w,h]=RATIOS[k];$(pre+"Warn").textContent=Math.abs(r/(w/h)-1)>.034?`${im.naturalWidth}×${im.naturalHeight}, not ${k}: it may get cropped`:""};
 }
 function renderFrames(){
   const s=selSec();if(!s)return;const m=modelById(gen.model),st=startFrameId(s),fromA=!s.key&&!!st;
@@ -2371,7 +2470,7 @@ async function frameDataURL(id){const b=await mediaBlob(id);if(!b)throw new Erro
 const corsHint=e=>"Couldn't reach OpenRouter from this page"+(viaProxy?"":". If it keeps happening, start the app with node server.mjs (see README)")+(e&&e.message?` (${e.message})`:"");
 async function submitTake(s,o){
   const pid=cur&&cur.id,m=modelById(o.model);
-  const body={model:m.id,prompt:o.prompt,duration:o.dur,resolution:o.res,aspect_ratio:"16:9"};
+  const body={model:m.id,prompt:o.prompt,duration:o.dur,resolution:o.res,aspect_ratio:genRatio(m)};
   if(m.audio)body.generate_audio=!!o.audio;
   if(o.seed!==""&&o.seed!=null&&m.seed)body.seed=+o.seed;
   const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:"",dev:deviceId};
@@ -2532,7 +2631,7 @@ $("refIn").onchange=async e=>{
 $("bRefs").addEventListener("click",e=>{const b=e.target.closest("[data-ref]");if(!b||!cur)return;const id=b.dataset.ref;hRec("references",()=>{cur.refs=(cur.refs||[]).filter(x=>x!==id)});scheduleSave();releaseMedia(id);renderRefs()});
 
 async function genImage(prompt,refURLs){
-  const m=imgModel(),body={model:m.id,prompt,n:1,aspect_ratio:"16:9"};
+  const m=imgModel(),body={model:m.id,prompt,n:1,aspect_ratio:genRatio(m)};
   if(m.res.length)body.resolution=m.res.includes(imgSet.res)?imgSet.res:m.res[0];
   if(refURLs.length)body.input_references=refURLs.map(url=>({type:"image_url",image_url:{url}}));
   let r;try{r=await apiFetch("/images",{method:"POST",body})}catch(e){throw new Error(corsHint(e))}
@@ -2554,7 +2653,7 @@ async function runPanel(){
   const hasRefs=(cur.refs||[]).some(id=>mediaURL(id));
   const prompt=p.mode==="from"
     ?`Edit the first image. Keep it exactly identical: same camera position, same framing, same landscape, same light and colors. The only change: ${text.replace(/\.*$/,"")}.`+(hasRefs?" The other images only show what the characters look like.":"")
-    :text+(hasRefs?"\n\nUse the reference images only for what the characters and the horse look like (faces, outfits, coat). Ignore their style and framing. 16:9 widescreen.":"\n\n16:9 widescreen.");
+    :text+(hasRefs?"\n\nUse the reference images only for what the characters and the horse look like (faces, outfits, coat). Ignore their style and framing. ":"\n\n")+(genRatio(imgModel())==="16:9"?"16:9 widescreen.":genRatio(imgModel())+" frame.");
   const slots=Array.from({length:imgSet.n===1?1:2},()=>({state:"busy"}));p.vars.push(...slots);renderPanels();
   const pid=cur.id;
   await Promise.all(slots.map(async v=>{
@@ -2825,7 +2924,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,doUndo,pollTake,polling:()=>!!pollTimer,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,io:()=>io,seek,rendering:()=>!!rjob,doUndo,pollTake,polling:()=>!!pollTimer,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -3107,7 +3206,7 @@ function renderTimelineM(){
 function mSync(){if(!phone()||mTouch||mLift||performance.now()-mScrollAt<200)return;const x=Math.round(now()*P);
   if(Math.abs(scroller.scrollLeft-x)>1){mProg=x;scroller.scrollLeft=x}}
 /* the rows, as --tl-h in the CSS: a 44px ruler that holds the zoom, the shot strip, the waveform */
-const MRU=44,mBand=H=>{const top=MRU+4,h=Math.max(44,Math.min(56,H-top-8-72-8));return{top,h,wave:top+h+8,waveH:H-8-(top+h+8)}};
+const tlBox=document.querySelector(".timeline"),MRU=44,mBand=H=>{const top=MRU+4,h=Math.max(44,Math.min(56,H-top-8-72-8));return{top,h,wave:top+h+8,waveH:H-8-(top+h+8)}};
 function mDraw(){
   if(!phone()||!cv.width)return;const cw=cv.clientWidth,H=cv.clientHeight,dpr=window.devicePixelRatio||1,g=cv.getContext("2d");
   g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,cw,H);
@@ -3117,6 +3216,11 @@ function mDraw(){
   const st=[1,2,5,10,15,30,60,120].find(s=>s*P>=64)||120;
   g.font="500 11px 'JetBrains Mono', monospace";g.textBaseline="middle";g.textAlign="left";g.lineWidth=1;
   for(let t=Math.floor(t0/st)*st;t<=t1+1e-6;t+=st){const x=Math.round(X(t))+.5;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
+  if(cur)ioDraw(g,X,RU);
+  /* the marks' grips: 44px buttons on the ruler row (the cuts' grips are in #mGrips, on the strip) */
+  for(const k of ["in","out"]){let b=tlBox.querySelector(`[data-mk="${k}"]`);
+    if(!b){b=document.createElement("button");b.type="button";b.className="mkgrip m-only";b.dataset.mk=k;b.setAttribute("aria-label",k==="in"?"In mark":"Out mark");tlBox.appendChild(b)}
+    b.hidden=!cur||io[k]==null;if(!b.hidden)b.style.left=X(io[k])+"px"}
   const grips=[];
   if(cur){const s=S(),mid=b.wave+(H-8-b.wave)/2,wh=(H-8-b.wave)/2;
     s.forEach((x,i)=>{const a=X(x.start),e=X(secEnd(i));if(e<0||a>cw)return;const sel=x.id===selId,lift=mLift&&mLift.id===x.id;
@@ -3203,6 +3307,10 @@ mGrips.addEventListener("keydown",e=>{const b=e.target.closest(".grip");if(!b||(
 function mNudge(dt){const s=S(),i=mCutI();if(i<1||!s[i])return;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
   /* taps on −/+ in a row are one step */
   hRec("move cut",()=>{s[i].start=r2(Math.min(hi,Math.max(lo,s[i].start+dt)))},{merge:"nudge:"+s[i].id,within:1500});scheduleSave();renderStrip();renderEdHead();renderPeek();renderMonitor(true);renderMTool();mDraw()}
+/* in/out marks: drag a grip along the ruler */
+tlBox.addEventListener("pointerdown",e=>{const b=e.target.closest(".mkgrip");if(!b||!cur)return;try{b.setPointerCapture(e.pointerId)}catch(_){}ioDrag=b.dataset.mk});
+tlBox.addEventListener("pointermove",e=>{if(ioDrag&&e.target.closest(".mkgrip"))ioSet(ioDrag,mTimeAt(e.clientX),true)});
+["pointerup","pointercancel"].forEach(n=>tlBox.addEventListener(n,e=>{if(e.target.closest(".mkgrip"))ioDrag=""}));
 /* Fit means the whole song; the zoom buttons sit on the timeline's corner */
 {const zf=$("zfit").onclick,zo=$("zout").onclick,zi=$("zin").onclick;
   $("zfit").onclick=()=>{mFit=true;zf()};$("zout").onclick=()=>{mFit=true;zo()};$("zin").onclick=()=>{mFit=false;zi()}}
@@ -3281,7 +3389,7 @@ function renderProjSheet(){
   $("mProjList").innerHTML=list.map(p=>`<button type="button" class="m-pi" data-pid="${esc(p.id)}" aria-current="${p===cur}">${ico("check")}<span>${esc(p.title||"Untitled project")}</span>${SYNC_URL&&cset.rooms[p.id]?'<span class="muted">in a room</span>':""}</button>`).join("")
     +(list.some(p=>p.id==="p-example")?"":`<button type="button" class="m-pi" data-example>${ico("plus")}<span>Example project</span></button>`);
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
-  ["mRename","mExport","mCopy","mDelp"].forEach(id=>$(id).disabled=!cur);$("mSong").textContent=has?"Replace song":"Load song";$("mDelsong").hidden=!has;
+  ["mRename","mExport","mCopy","mDelp","mRender"].forEach(id=>$(id).disabled=!cur);$("mSong").textContent=has?"Replace song":"Load song";$("mDelsong").hidden=!has;
   const inRoom=!!(SYNC_URL&&cur&&cset.rooms[cur.id]);$("mRoom").hidden=!SYNC_URL;
   ["mPeople","mState","mFiles","mRoomN","mRoomb"].forEach(id=>$(id).hidden=!inRoom);$("mJoin").hidden=inRoom;
   if(inRoom){const b=cset.rooms[cur.id],me=b.name||cset.name||"You",l=csess&&csessPid===cur.id?peers:[];
@@ -3318,6 +3426,153 @@ phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close(
   /* videos wait for Wi-Fi in the phone layout only: re-evaluate them, then the chip */
   const m=cmedia();if(m)m.refresh();if(csess)renderCollab(csess.status())});
 window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"))mSheetTop()});
+
+/* ================= RENDER (docs/specs/export-render.md) =================
+   The timeline, or its marked section, as an MP4 in the project's frame ratio, made in this browser and downloaded.
+   Fast path: WebCodecs (H.264; AAC, or Opus where the browser has no AAC encoder) into mp4-muxer.js, a vendored file
+   loaded when the dialog opens. Without those: the canvas and the song recorded in real time by MediaRecorder.
+   One render at a time; Cancel or closing the dialog stops it and frees everything. Nothing is held whole in the
+   page's memory: frames are closed as they're encoded and the file grows as Blob parts. */
+const rnDlg=$("dlgRender"),RN_FPS=30,RN_CANCEL={};
+let rjob=null,rnFast=null,rnFrom=null,rnFile=null,muxP=null;
+const rnSize=res=>{const[w,h]=RATIOS[ratioOf(cur)],k=res/Math.min(w,h);return[Math.round(w*k/2)*2,Math.round(h*k/2)*2]};
+const rnName=t=>(t||"").replace(/[\\/:*?"<>|\u0000-\u001f]+/g," ").replace(/\s+/g," ").trim().slice(0,80)||"Untitled project";
+const rnBytes=b=>b<1e6?Math.max(1,Math.round(b/1e3))+" KB":(b/1e6).toFixed(1)+" MB";
+const loadMuxer=()=>muxP||(muxP=new Promise(r=>{if(window.Mp4Muxer)return r(true);const s=document.createElement("script");s.src="mp4-muxer.js";s.onload=()=>r(!!window.Mp4Muxer);s.onerror=()=>{muxP=null;r(false)};document.head.appendChild(s)}));
+/* the codecs for the fast path at this size, or null: then it's real time */
+async function rnProbe(w,h,audio){try{if(typeof VideoEncoder!=="function"||(audio&&typeof AudioEncoder!=="function")||!(await loadMuxer()))return null;
+  const ok=async(E,c)=>{for(const x of c)if((await E.isConfigSupported(x)).supported)return x.codec;return""};
+  const v=await ok(VideoEncoder,["avc1.640028","avc1.4d0028","avc1.42001f"].map(codec=>({codec,width:w,height:h,bitrate:4e6,framerate:RN_FPS})));
+  const a=audio?await ok(AudioEncoder,["mp4a.40.2","opus"].map(codec=>({codec,sampleRate:48000,numberOfChannels:2,bitrate:128000}))):"-";
+  return v&&a?{v,a}:null}catch(e){return null}}
+const rnWait=(el,name,ms)=>new Promise((ok,no)=>{const t=setTimeout(()=>no(new Error("timeout")),ms),end=f=>()=>{clearTimeout(t);el.removeEventListener(name,y);el.removeEventListener("error",n);f()},y=end(ok),n=end(()=>no(new Error("media")));el.addEventListener(name,y);el.addEventListener("error",n)});
+/* a turn of the event loop that a background tab doesn't slow down: the dialog stays alive and Cancel gets through */
+const rnTick=()=>new Promise(r=>{const c=new MessageChannel();c.port1.onmessage=()=>r();c.port2.postMessage(0)});
+const rnDrain=async enc=>{while(enc.state==="configured"&&enc.encodeQueueSize>4)await new Promise(r=>{enc.addEventListener("dequeue",r,{once:true});setTimeout(r,40)})};
+
+function rnMode(m){rnDlg.dataset.mode=m;const run=m==="run",done=m==="done";$("rnOpts").hidden=run||done;$("rnProg").hidden=!run;$("rnDone").hidden=!done;$("rnGo").hidden=run||done;
+  $("rnCancel").textContent=done?"Close":"Cancel";if(!done)$("rnMsg").textContent=""}
+/* the idle dialog: what there is to choose, from the project as it is now (marks, ratio, account) */
+function rnDraw(){if(!rnDlg.open||rnDlg.dataset.mode!=="idle"||!cur)return;const F=$("rnForm").elements,r=ioRange(),d=dur(),acct=!!account.get();
+  if(!r&&F.rnRange.value==="sel")F.rnRange.value="all";
+  $("rnSelRow").hidden=!r;$("rnClear").hidden=io.in==null&&io.out==null;$("rnAllT").textContent=fmt(d);$("rnSelT").textContent=r?`${fmt(r[0])} to ${fmt(r[1])} · ${fmt(r[1]-r[0])}`:"";$("rnNow").textContent=fmt(now());
+  F.rnRes[1].disabled=!acct;if(!acct)F.rnRes.value="720";$("rnResHint").textContent=acct?"":"Log in or use your invite code for 1080p without watermark";
+  [720,1080].forEach(v=>$("rn"+v).textContent=rnSize(v).join("×"));$("rnFrameT").textContent=ratioOf(cur);
+  const len=F.rnRange.value==="sel"&&r?r[1]-r[0]:d;
+  $("rnNote").textContent=rnFast===false?`This browser renders in real time: about ${fmtS(len)}. Keep this tab in front until it's done.`:""}
+async function openRender(){if(!cur||rnDlg.open)return;rnFrom=document.activeElement;rnMode("idle");$("rnForm").elements.rnRange.value=ioRange()?"sel":"all";
+  rnDlg.showModal();rnDraw();(phone()?$("rnTitle"):$("rnGo")).focus();
+  const pid=cur.id,[w,h]=rnSize(720),p=await rnProbe(w,h,true);if(cur&&cur.id===pid){rnFast=!!p;rnDraw()}}
+const rnSave=()=>{if(!rnFile)return;const a=document.createElement("a");a.href=rnFile.url;a.download=rnFile.name;document.body.appendChild(a);a.click();a.remove()};
+const rnRelease=()=>{if(rnFile){URL.revokeObjectURL(rnFile.url);rnFile=null}};
+$("renderb").onclick=openRender;$("mRender").onclick=()=>{mProj.close();openRender()};
+$("rnForm").addEventListener("change",rnDraw);
+$("rnIn").onclick=()=>{ioSet("in",now());if(ioRange())$("rnForm").elements.rnRange.value="sel";rnDraw()};
+$("rnOut").onclick=()=>{ioSet("out",now());if(ioRange())$("rnForm").elements.rnRange.value="sel";rnDraw()};
+$("rnClear").onclick=()=>ioSet();
+$("rnFrame").onclick=()=>{rnFrom=null;rnDlg.close();if(phone())openProjSheet();$(phone()?"mFrame":"frame").focus()};
+$("rnAgain").onclick=rnSave;
+$("rnCancel").onclick=()=>{if(rjob)rjob.abort();else rnDlg.close()};
+$("rnForm").onsubmit=e=>{e.preventDefault();rnStart()};
+rnDlg.addEventListener("close",()=>{if(rjob)rjob.abort();rnRelease();if(rnFrom&&rnFrom.isConnected&&rnFrom.getClientRects().length)rnFrom.focus();rnFrom=null});
+
+/* what a frame shows: the playhead shot's clip (the one the monitor plays; held on its last frame once it runs out),
+   else its image, else black; cropped to fill the frame, centred, then the watermark. A file that can't be read is
+   black, with one note naming the shot. Only the current shot's media is open. exact: seek the clip frame by frame
+   (fast path); otherwise it plays along (real time) */
+function rnSource(job,o,g){const W=o.w,H=o.h;let cs=null;
+  const cover=sh=>{const k=Math.max(W/sh.w,H/sh.h),dw=sh.w*k,dh=sh.h*k;g.drawImage(sh.el,(W-dw)/2,(H-dh)/2,dw,dh)};
+  const mark=()=>{if(!o.wm)return;const fs=Math.round(H*.03);g.save();g.globalAlpha=.55;g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=fs/3;
+    g.font=`600 ${fs}px "Instrument Sans",system-ui,sans-serif`;g.textAlign="right";g.textBaseline="alphabetic";g.fillText("Cue Board",W-fs,H-fs);g.restore()};
+  const black=()=>{g.fillStyle="#000";g.fillRect(0,0,W,H);mark()};
+  const free=sh=>{if(!sh||!sh.el)return;try{if(sh.video){sh.el.pause();sh.el.removeAttribute("src");sh.el.load();URL.revokeObjectURL(sh.url)}else sh.el.close()}catch(e){}sh.el=null};
+  const bad=sh=>{free(sh);job.notes.push(`Shot ${pad(sh.n)}'s ${sh.video?(sh.take?"take":"clip"):"image"} could not be read; it rendered black`)};
+  async function load(sh){if(!sh.id)return;
+    try{const b=await mediaBlob(sh.id);if(!b)throw 0;
+      if(sh.video){const v=sh.el=document.createElement("video");sh.url=URL.createObjectURL(b);v.muted=true;v.playsInline=true;v.preload="auto";v.src=sh.url;
+        if(v.readyState<2)await rnWait(v,"loadeddata",10000);sh.w=v.videoWidth;sh.h=v.videoHeight;sh.at=-1}
+      else{sh.el=await createImageBitmap(b);sh.w=sh.el.width;sh.h=sh.el.height}
+      if(!sh.w||!sh.h)throw 0}catch(e){bad(sh)}}
+  job.clean.push(()=>free(cs));
+  return async(t,exact)=>{let sh=o.shots[0];for(const x of o.shots)if(x.a<=t+1e-6)sh=x;
+    const first=sh!==cs;if(first){free(cs);cs=sh;await load(sh);if(job.cancel)return}
+    if(!sh.el){if(first||!exact)black();return}
+    if(!sh.video){if(first||!exact){cover(sh);mark()}return}
+    const v=sh.el,end=isFinite(v.duration)?Math.max(0,v.duration-.04):1e9,want=Math.max(0,Math.min(t-sh.a,end));
+    try{if(exact){if(want===sh.at)return;if(Math.abs(v.currentTime-want)>1e-4){v.currentTime=want;await rnWait(v,"seeked",5000)}sh.at=want}
+      else if(first){v.currentTime=want;if(want<end)v.play().catch(()=>{})}
+      if(job.cancel||!sh.el)return;cover(sh);mark()}catch(e){bad(sh);black()}}}
+
+/* faster than real time: every frame drawn, encoded and closed; the song's range encoded first, so the decoded song
+   can go before the frames start (the muxer keeps the small encoded audio and interleaves it) */
+async function rnFastPath(job,o){const M=window.Mp4Muxer,n=Math.max(1,Math.round((o.t1-o.t0)*RN_FPS)),parts=[],patches=[];let size=0,fail=null;
+  const s0=Math.round(o.t0*48000),s1=o.ab?Math.min(o.ab.length,s0+Math.round(n/RN_FPS*48000)):0,sound=s1-s0>480;
+  /* the file as it's written: in order as Blob parts (the browser may keep those on disk); the few late writes to
+     an earlier position (box sizes) are laid over at the end */
+  const target=new M.StreamTarget({chunked:true,chunkSize:1<<22,onData:(d,pos)=>{if(pos===size){parts.push(new Blob([d]));size+=d.byteLength}else patches.push([pos,d.slice()])}});
+  const mux=new M.Muxer({target,video:{codec:"avc",width:o.w,height:o.h,frameRate:RN_FPS},audio:sound?{codec:o.codecs.a==="opus"?"opus":"aac",numberOfChannels:2,sampleRate:48000}:undefined,fastStart:false,firstTimestampBehavior:"offset"});
+  const onErr=e=>{fail=fail||e||new Error("encoder")},shut=e=>()=>{if(e.state!=="closed")e.close()};
+  if(sound){const ae=new AudioEncoder({output:(c,m)=>mux.addAudioChunk(c,m),error:onErr});job.clean.push(shut(ae));
+    ae.configure({codec:o.codecs.a,sampleRate:48000,numberOfChannels:2,bitrate:128000});
+    const L=o.ab.getChannelData(0),R=o.ab.numberOfChannels>1?o.ab.getChannelData(1):L;
+    for(let s=s0;s<s1;s+=48000){if(job.cancel)throw RN_CANCEL;if(fail)throw fail;
+      const len=Math.min(48000,s1-s),buf=new Float32Array(len*2);buf.set(L.subarray(s,s+len),0);buf.set(R.subarray(s,s+len),len);
+      const ad=new AudioData({format:"f32-planar",sampleRate:48000,numberOfFrames:len,numberOfChannels:2,timestamp:Math.round((s-s0)/48000*1e6),data:buf});
+      try{ae.encode(ad)}finally{ad.close()}await rnDrain(ae);o.progress(.04*(s-s0)/(s1-s0))}
+    await ae.flush();ae.close()}
+  o.ab=null;
+  const ve=new VideoEncoder({output:(c,m)=>mux.addVideoChunk(c,m),error:onErr});job.clean.push(shut(ve));
+  ve.configure({codec:o.codecs.v,width:o.w,height:o.h,bitrate:Math.round(o.w*o.h*RN_FPS*.18),framerate:RN_FPS});
+  const c=document.createElement("canvas");c.width=o.w;c.height=o.h;const draw=rnSource(job,o,c.getContext("2d",{alpha:false}));
+  for(let f=0;f<n;f++){if(job.cancel)throw RN_CANCEL;if(fail)throw fail;
+    await draw(o.t0+f/RN_FPS,true);if(job.cancel)throw RN_CANCEL;
+    const vf=new VideoFrame(c,{timestamp:Math.round(f*1e6/RN_FPS),duration:Math.round(1e6/RN_FPS)});
+    try{ve.encode(vf,{keyFrame:f%60===0})}finally{vf.close()}
+    await rnDrain(ve);
+    /* every 10 s (the next frame is a key frame): everything encoded so far is out of the encoder and in the file */
+    if(f%300===299)await ve.flush();
+    if(f%4===0){o.progress(.04+.95*f/n);await rnTick()}}
+  await ve.flush();if(fail)throw fail;ve.close();mux.finalize();
+  let blob=new Blob(parts,{type:"video/mp4"});for(const[p,d]of patches)blob=new Blob([blob.slice(0,p),d,blob.slice(p+d.byteLength)],{type:"video/mp4"});
+  return{blob,ext:"mp4"}}
+/* real time: the canvas and the song's range into MediaRecorder, as MP4 where the browser records it, else WebM */
+async function rnRealTime(job,o){const c=document.createElement("canvas");c.width=o.w;c.height=o.h;const draw=rnSource(job,o,c.getContext("2d",{alpha:false}));
+  const stream=c.captureStream(RN_FPS),ac=new(window.AudioContext||window.webkitAudioContext)(),len=o.t1-o.t0,parts=[];
+  job.clean.push(()=>{stream.getTracks().forEach(t=>t.stop());ac.close().catch(()=>{})});
+  let node=null;if(o.ab){const dest=ac.createMediaStreamDestination();node=ac.createBufferSource();node.buffer=o.ab;node.connect(dest);dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t))}
+  const type=["video/mp4;codecs=avc1.640028,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm"].find(t=>MediaRecorder.isTypeSupported(t))||"";
+  const rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:Math.round(o.w*o.h*RN_FPS*.18),audioBitsPerSecond:128000});
+  rec.ondataavailable=e=>{if(e.data&&e.data.size)parts.push(e.data)};
+  const ended=new Promise((ok,no)=>{rec.onstop=ok;rec.onerror=e=>no(e.error||new Error("recorder"))});job.clean.push(()=>{if(rec.state!=="inactive")rec.stop()});
+  await draw(o.t0);await ac.resume().catch(()=>{});
+  const start=performance.now();rec.start(1000);if(node)node.start(0,o.t0,len);
+  for(;;){if(job.cancel)throw RN_CANCEL;const el=(performance.now()-start)/1000;if(el>=len)break;await draw(o.t0+el);o.progress(el/len);await new Promise(r=>setTimeout(r,16))}
+  rec.stop();await ended;const mime=rec.mimeType||type||"video/webm";
+  return{blob:new Blob(parts,{type:mime.split(";")[0]}),ext:/mp4/.test(mime)?"mp4":"webm"}}
+/* one render: everything it needs is read from the project now, so what happens to the project while it runs (a
+   collaborator deleting a take, a replaced song) can't change it halfway; a file that's gone by its turn is a note */
+async function rnStart(){if(rjob||!cur||rnDlg.dataset.mode!=="idle")return;
+  const F=$("rnForm").elements,sel=F.rnRange.value==="sel"?ioRange():null,t0=sel?sel[0]:0,t1=sel?sel[1]:dur(),acct=!!account.get(),[w,h]=rnSize(acct&&F.rnRes.value==="1080"?1080:720),pid=cur.id;
+  const shots=S().map((x,i)=>({n:i+1,a:x.start,id:x.img,video:x.kind==="video",take:(x.takes||[]).some(t=>t.media&&t.media===x.img)}));
+  const name=`${rnName(cur.title)} - ${ratioOf(cur).replace(":","x")} - ${sel?t0.toFixed(1)+"s-"+t1.toFixed(1)+"s":"full"}`,named=!!(cur.song&&cur.song.name);
+  const job=rjob={cancel:false,notes:[],clean:[]},clean=()=>job.clean.splice(0).forEach(f=>{try{f()}catch(e){}});
+  const gone=new Promise((_,no)=>{job.abort=()=>{job.cancel=true;clean();no(RN_CANCEL)}});
+  const progress=(p,t)=>{if(rjob!==job)return;const v=Math.max(0,Math.min(99,Math.floor(p*100)));$("rnBar").style.setProperty("--w",v+"%");$("rnPct").textContent=v+"%";if(t)$("rnWhat").textContent=t};
+  rnRelease();rnMode("run");progress(0,"Reading the song…");
+  const work=(async()=>{const rec=await idbDo("readonly",st=>st.get(pid));let ab=null;
+    if(rec&&rec.blob){try{ab=await new OfflineAudioContext(2,1,48000).decodeAudioData(await rec.blob.arrayBuffer())}catch(e){job.notes.push("The song could not be read; the video has no sound")}}
+    else if(named)job.notes.push("The song isn't on this device; the video has no sound");
+    if(job.cancel)throw RN_CANCEL;
+    const codecs=await rnProbe(w,h,!!ab);progress(0,codecs?"Rendering…":"Rendering in real time. Keep this tab in front.");
+    const o={w,h,t0,t1,shots,ab,codecs,wm:!acct,progress};ab=null;
+    return codecs?rnFastPath(job,o):rnRealTime(job,o)})();
+  work.catch(()=>{}).finally(clean);
+  try{const out=await Promise.race([work,gone]);if(job.cancel)throw RN_CANCEL;
+    rnFile={url:URL.createObjectURL(out.blob),name:name+"."+out.ext};rnSave();rnMode("done");
+    $("rnFile").textContent=`${rnFile.name} · ${rnBytes(out.blob.size)}`;$("rnMsg").textContent=job.notes.join(". ");$("rnCancel").focus()}
+  catch(e){if(rnDlg.open&&rjob===job){rnMode("idle");rnDraw();
+    if(e!==RN_CANCEL)$("rnMsg").textContent=/quota|space|memory/i.test(String(e&&e.name)+String(e&&e.message))?"The render stopped: this device ran out of space for the file.":"The render stopped: the browser could not encode the video. Try again, or pick 720p."}}
+  finally{if(rjob===job)rjob=null}}
 
 /* ---------- toast / boot ---------- */
 let tt=null;function toast(t,ms=1800){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,ms)}
