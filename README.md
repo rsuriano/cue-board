@@ -55,6 +55,15 @@ The first time you open Cue Board it loads **The Mountain King (example)**: a 13
 
 The recording is by the Musopen Symphony Orchestra and, like the composition, is in the public domain ([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Grieg_-_Peer_Gynt_Suite_No._1,_Op._46_-_IV._In_the_Hall_of_the_Mountain_King_(Musopen_Symphony).flac), [Musopen](https://musopen.org/music/777-peer-gynt-suite-no-1-op-46/)).
 
+## Render
+
+**Render** (in the bar; **Render video** in the phone's Projects sheet) makes an MP4 of the cut: each shot's clip or take, or its image held for the shot, or black, against the song. All of it happens in your browser; the file is a download, nothing is uploaded.
+
+- **Frame**: every project has a frame ratio, 16:9 unless you change it (**⋯ → Frame**, or the Projects sheet on a phone): 16:9, 9:16, 1:1 or 4:3. The monitor shows that frame and crops media to fill it, new takes are requested in it when the model offers it, and the render uses it.
+- **A section**: press **I** and **O** at the playhead to mark in and out (drag the marks on the ruler, **Alt+X** clears them), then choose **Selection** in the dialog. On a phone, **Set in** and **Set out** are in the dialog.
+- **Size**: 720p with a small "Cue Board" watermark for everyone; 1080p without it once you're logged in.
+- **Speed**: Chrome, Edge and Safari render faster than real time (H.264 with AAC; Opus where the browser can't encode AAC, as on Linux). A browser without WebCodecs still makes a file, in real time, as MP4 or WebM.
+
 ## Projects
 
 **Export** saves a project as one `.cueboard.json` file (cuts, notes, prompts, keyframes, takes; optionally the song). **Import** loads it on any computer, or drop the file on the page. Leave the song out if you share the file.
@@ -70,6 +79,7 @@ Side B shows an estimate before each generation, computed from OpenRouter's live
 | `index.html` | The whole app. No build step. |
 | `server.mjs` | Optional local server + OpenRouter relay. |
 | `example/example.js` | The example project and its song, loaded only when needed. |
+| `mp4-muxer.js` | [mp4-muxer](https://github.com/Vanilagy/mp4-muxer) 5.2.2 (MIT), vendored. Loaded only when the render dialog opens. |
 | `collab.js` | The collaboration client, built from `packages/collab-client`. Loaded only when a project is in a room. |
 
 ## License

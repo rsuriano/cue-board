@@ -101,7 +101,7 @@ try {
   await page.keyboard.press('Escape');
   await page.click('#moreb'); await sleep(150); await page.mouse.move(700, 600);
   const more = await page.evaluate(() => [...document.querySelectorAll('#moremenu .mi')].filter(e => e.getClientRects().length).map(e => e.textContent));
-  check('More at 1440: Replace song, Remove song, Delete project (Import/Export are in the bar; Report a problem is next to Settings)', more.join('|') === 'Replace song…|Remove song|Delete project', more.join(' | '));
+  check('More at 1440: Replace song, Remove song, the four Frame ratios, Delete project (Import/Export are in the bar; Report a problem is next to Settings)', more.join('|') === 'Replace song…|Remove song|16:9|9:16|1:1|4:3|Delete project', more.join(' | '));
   await bar('05-more-menu-1440', 140); await page.keyboard.press('Escape');
 
   // ---------- in a room: you and others ----------

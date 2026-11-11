@@ -528,12 +528,15 @@ dialog::backdrop{background:var(--backdrop)}
 /* actions: right-aligned, primary last, a block further down than the content gap */
 .dlg>.row:last-child{margin-top:var(--sp-2)}
 /* frame ratio (the bar, the phone's Projects sheet) and the render dialog */
-.framepick{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--ink-2)}
-#frame{width:auto}
+.mgroup{display:grid}
+.mlbl{padding:var(--sp-1) var(--sp-2);font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-medium);color:var(--ink-3)}
+#moremenu .mi[data-ratio]:not([aria-checked="true"]) .ico{visibility:hidden}
+#moremenu .mi[data-ratio] span{font-variant-numeric:tabular-nums}
+.mi[data-ratio]:disabled{opacity:var(--o-disabled);cursor:not-allowed}
 .rn-opts{display:grid;gap:var(--gap-block)}
 .rn-set{display:grid;min-width:0;margin:0;padding:0;border:0}
 .rn-set legend,.rn-frame>span:first-child{padding:0;font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-medium);color:var(--ink-2)}
-.rn-set input[type="radio"]{flex:none;width:var(--icon-lg);height:var(--icon-lg);margin:0;accent-color:var(--accent);cursor:inherit}
+.rn-set input[type="radio"]{flex:none;font-size:var(--text-input);width:var(--icon-lg);height:var(--icon-lg);margin:0;accent-color:var(--accent);cursor:inherit}
 .rn-set .chk .tc{margin-left:auto;text-align:right}
 .rn-set .chk:has(input:disabled){opacity:var(--o-disabled);cursor:not-allowed}
 .rn-marks{margin-top:var(--sp-1)}
@@ -787,12 +790,17 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 /* the app bar never wraps: as it narrows, labels step back to their icons (still the accessible name, the title on
    hover), then whole actions move into More. A Leave waiting for its second tap shows its words at any width: an
    icon-only one in the bubbles' label right under it, so the bar doesn't move */
+/* Render keeps its word down to 1440 (New, Import and Export to 1800); the picker gives up the width for it */
 @media (max-width:1799px){
-  .projops .btn:not(.icon){width:var(--h-md);padding:0}
-  .projops .btn .ico:first-child{margin:0}
-  .projops .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  :root{--w-project-min:140px}
+  .projops .btn:not(.icon,#renderb){width:var(--h-md);padding:0}
+  .projops .btn:not(#renderb) .ico:first-child{margin:0}
+  .projops .btn:not(#renderb) .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 }
 @media (max-width:1439px){
+  #renderb{width:var(--h-md);padding:0}
+  #renderb .ico:first-child{margin:0}
+  #renderb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   #importb,#exportb{display:none}
   #moremenu .mi.narrow{display:flex}
   .more:has(.mi.narrow:not(:disabled,[hidden])){display:block}
@@ -804,7 +812,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .brand .lbl{display:none}
   .top{column-gap:var(--sp-4)}
   .saved{width:auto}
-  .saved .lbl,#settingsb .lbl,.framepick .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .saved .lbl,#settingsb .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   #settingsb{width:var(--h-md);padding:0}
   #settingsb .ico:first-child{margin:0}
   #settingsb:is(:hover,:focus-visible)::after{display:block;visibility:visible}
@@ -849,7 +857,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
      Settings, icon only. The files indicator and the bubbles live in that sheet; the indicator's dot moves to the name.
      The files panel stays in the DOM (a bottom sheet here, opened from the sheet's Files row): its wrapper has no box */
   .top{display:flex;flex:none;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
-  .brand,#renamep,.projops,.outops,.songops,.top .sides,#joinb,#roomb,#status,#presence,#mstat,.mlabel,#reportb::after,#settingsb::after{display:none!important}
+  .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,#presence,#mstat,.mlabel,#reportb::after,#settingsb::after{display:none!important}
   .top .collab,.top .mstat{display:contents}
   .tleft{flex:1;min-width:0}
   .tright{flex:none;gap:var(--sp-1)}
@@ -1062,6 +1070,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
         <button type="button" id="newp" class="btn ghost" title="New project"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span class="lbl">New</span></button>
         <button type="button" id="importb" class="btn ghost" data-for="importf" title="Import a project file (.cueboard.json)"><svg class="ico" aria-hidden="true"><use href="#i-import"/></svg><span class="lbl">Import</span></button><input id="importf" type="file" accept=".json,application/json" hidden>
         <button type="button" id="exportb" class="btn ghost" title="Export this project"><svg class="ico" aria-hidden="true"><use href="#i-export"/></svg><span class="lbl">Export</span></button>
+        <button type="button" id="renderb" class="btn ghost" title="Render the video (MP4)"><svg class="ico" aria-hidden="true"><use href="#i-film"/></svg><span class="lbl">Render</span></button>
         <div class="more">
           <button type="button" id="moreb" class="btn ghost icon" aria-haspopup="menu" aria-expanded="false" aria-controls="moremenu" aria-label="More project actions" title="More project actions"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg></button>
           <div id="moremenu" class="menu" role="menu" aria-label="More project actions" hidden>
@@ -1071,14 +1080,12 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
             <button type="button" class="mi" role="menuitem" tabindex="-1" data-for="song" id="mReplace" hidden><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span>Replace song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delsong" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Remove song</span></button>
             <hr role="separator">
+            <!-- the project's frame ratio: the monitor, new takes and the render use it -->
+            <div class="mgroup" id="frameItems" role="group" aria-labelledby="frameLbl"><span class="mlbl" id="frameLbl">Frame</span></div>
+            <hr role="separator">
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delp"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Delete project</span></button>
           </div>
         </div>
-      </div>
-      <!-- what comes out of the project: its frame ratio (monitor, generation, render) and the render itself -->
-      <div class="tgroup outops">
-        <label class="framepick"><span class="lbl">Frame</span><select id="frame" title="Frame ratio of this project: the monitor, new takes and the render use it"></select></label>
-        <button type="button" id="renderb" class="btn ghost" title="Render the video (MP4)"><svg class="ico" aria-hidden="true"><use href="#i-film"/></svg><span class="lbl">Render</span></button>
       </div>
       <div class="tgroup songops">
         <button type="button" class="btn primary" data-for="song" id="songlbl">Load song</button>
@@ -1360,7 +1367,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <p class="rn-frame"><span>Frame</span><span class="tc" id="rnFrameT"></span><button type="button" class="linkbtn" id="rnFrame">Change</button></p>
     <p class="hint" id="rnNote"></p>
   </div>
-  <div class="rn-prog" id="rnProg" hidden><span class="mbar"><b id="rnBar"></b></span><span class="tc" id="rnPct">0%</span><span class="muted" id="rnWhat"></span></div>
+  <div class="rn-prog" id="rnProg" hidden><span class="mbar" id="rnMeter" role="progressbar" aria-label="Render progress" aria-valuemin="0" aria-valuemax="100"><b id="rnBar"></b></span><span class="tc" id="rnPct">0%</span><span class="muted" id="rnWhat"></span></div>
   <div class="rn-done" id="rnDone" hidden><b>Done</b><span id="rnFile"></span><button type="button" class="linkbtn" id="rnAgain">Download again</button></div>
   <p class="hint" id="rnMsg" role="status"></p>
   <div class="row"><span class="grow"></span><button type="button" id="rnCancel" class="btn ghost">Cancel</button><button type="submit" id="rnGo" class="btn primary">Render</button></div>
@@ -1639,10 +1646,13 @@ const ratioOf=p=>p&&RATIOS.hasOwnProperty(p.ratio)?p.ratio:"16:9";
 /* what a generation request asks for: the project's ratio where the model lists it, else 16:9 (the render crops) */
 const genRatio=m=>{const r=ratioOf(cur);return m&&(m.ratios||[]).includes(r)?r:"16:9"};
 function renderFrame(){const r=ratioOf(cur),[w,h]=RATIOS[r];$("monitor").style.setProperty("--fr",(w/h).toFixed(4));
-  for(const id of ["frame","mFrame"]){const s=$(id);if(!s.options.length)s.innerHTML=Object.keys(RATIOS).map(k=>`<option>${k}</option>`).join("");s.value=r;s.disabled=!cur}
+  /* the same choice in two places: radio items under Frame in More (desktop), a select in the phone's Projects sheet */
+  const box=$("frameItems"),s=$("mFrame"),ks=Object.keys(RATIOS);
+  if(!s.options.length){s.innerHTML=ks.map(k=>`<option>${k}</option>`).join("");box.insertAdjacentHTML("beforeend",ks.map(k=>`<button type="button" class="mi" role="menuitemradio" tabindex="-1" data-ratio="${k}">${ico("check")}<span>${k}</span></button>`).join(""))}
+  s.value=r;s.disabled=!cur;box.querySelectorAll("[data-ratio]").forEach(b=>{b.setAttribute("aria-checked",String(b.dataset.ratio===r));b.disabled=!cur});
   $("renderb").disabled=!cur;rnDraw()}
 function setRatio(v){if(!cur||!RATIOS.hasOwnProperty(v)||v===ratioOf(cur))return;hRec("frame "+v,()=>{cur.ratio=v});scheduleSave();renderFrame();if(side==="b")renderFrames()}
-$("frame").onchange=$("mFrame").onchange=e=>setRatio(e.target.value);
+$("mFrame").onchange=e=>setRatio(e.target.value);
 
 /* ---------- in/out marks: the section to render. This tab's view of the project, kept per project in localStorage:
    not in the project itself, so never synced and never part of undo (like the playhead) ---------- */
@@ -1944,7 +1954,7 @@ function openMenu(btn,m,focus){
   if(m.id==="projmenu")renderProjMenu();m.hidden=false;btn.setAttribute("aria-expanded","true");
   /* a separator only between two visible parts */
   const hr=m.querySelector("hr");if(hr&&m.id==="moremenu"){hr.hidden=false;hr.hidden=!menuItems(m).some(x=>hr.compareDocumentPosition(x)&Node.DOCUMENT_POSITION_PRECEDING)}
-  const it=menuItems(m);(focus==="last"?it[it.length-1]:it.find(x=>x.getAttribute("aria-checked")==="true")||it[0])?.focus();
+  const it=menuItems(m);(focus==="last"?it[it.length-1]:it.find(x=>x.getAttribute("aria-checked")==="true"&&(m.id==="projmenu"||focus==="frame"))||it[0])?.focus();
 }
 function closeMenu(btn,m,refocus){if(m.hidden)return;m.hidden=true;btn.setAttribute("aria-expanded","false");if(m.id==="moremenu")disarmMore();if(refocus)btn.focus()}
 const closeProjMenu=refocus=>closeMenu($("proj"),$("projmenu"),refocus),closeMore=refocus=>closeMenu($("moreb"),$("moremenu"),refocus);
@@ -1986,7 +1996,7 @@ $("projmenu").onclick=e=>{
    stands in for its bar button (data-for); the two destructive ones confirm with a second tap and keep the menu open */
 $("moremenu").onclick=e=>{
   const b=e.target.closest(".mi");if(!b||b.disabled||b.id==="delp"||b.id==="delsong")return;
-  closeMore(true);$(b.dataset.for).click();
+  closeMore(true);if(b.dataset.ratio)setRatio(b.dataset.ratio);else $(b.dataset.for).click();
 };
 /* Space and Enter on a button in the bar press it (side A's Space-to-play is for the rest of the page) */
 document.querySelector(".top").addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&e.target.closest("button"))e.stopPropagation()});
@@ -3470,7 +3480,8 @@ $("rnForm").addEventListener("change",rnDraw);
 $("rnIn").onclick=()=>{ioSet("in",now());if(ioRange())$("rnForm").elements.rnRange.value="sel";rnDraw()};
 $("rnOut").onclick=()=>{ioSet("out",now());if(ioRange())$("rnForm").elements.rnRange.value="sel";rnDraw()};
 $("rnClear").onclick=()=>ioSet();
-$("rnFrame").onclick=()=>{rnFrom=null;rnDlg.close();if(phone())openProjSheet();$(phone()?"mFrame":"frame").focus()};
+/* Change: to where the frame is set, the Projects sheet on a phone, More's Frame group on the desktop */
+$("rnFrame").onclick=()=>{rnFrom=null;rnDlg.close();if(phone()){openProjSheet();$("mFrame").focus()}else openMenu($("moreb"),$("moremenu"),"frame")};
 $("rnAgain").onclick=rnSave;
 $("rnCancel").onclick=()=>{if(rjob)rjob.abort();else rnDlg.close()};
 $("rnForm").onsubmit=e=>{e.preventDefault();rnStart()};
@@ -3544,7 +3555,8 @@ async function rnRealTime(job,o){const c=document.createElement("canvas");c.widt
   const rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:Math.round(o.w*o.h*RN_FPS*.18),audioBitsPerSecond:128000});
   rec.ondataavailable=e=>{if(e.data&&e.data.size)parts.push(e.data)};
   const ended=new Promise((ok,no)=>{rec.onstop=ok;rec.onerror=e=>no(e.error||new Error("recorder"))});job.clean.push(()=>{if(rec.state!=="inactive")rec.stop()});
-  await draw(o.t0);await ac.resume().catch(()=>{});
+  /* a browser may keep the audio clock waiting for a tap that came too long ago: the picture doesn't wait for it */
+  await draw(o.t0);await Promise.race([ac.resume().catch(()=>{}),new Promise(r=>setTimeout(r,500))]);
   const start=performance.now();rec.start(1000);if(node)node.start(0,o.t0,len);
   for(;;){if(job.cancel)throw RN_CANCEL;const el=(performance.now()-start)/1000;if(el>=len)break;await draw(o.t0+el);o.progress(el/len);await new Promise(r=>setTimeout(r,16))}
   rec.stop();await ended;const mime=rec.mimeType||type||"video/webm";
@@ -3554,14 +3566,15 @@ async function rnRealTime(job,o){const c=document.createElement("canvas");c.widt
 async function rnStart(){if(rjob||!cur||rnDlg.dataset.mode!=="idle")return;
   const F=$("rnForm").elements,sel=F.rnRange.value==="sel"?ioRange():null,t0=sel?sel[0]:0,t1=sel?sel[1]:dur(),acct=!!account.get(),[w,h]=rnSize(acct&&F.rnRes.value==="1080"?1080:720),pid=cur.id;
   const shots=S().map((x,i)=>({n:i+1,a:x.start,id:x.img,video:x.kind==="video",take:(x.takes||[]).some(t=>t.media&&t.media===x.img)}));
-  const name=`${rnName(cur.title)} - ${ratioOf(cur).replace(":","x")} - ${sel?t0.toFixed(1)+"s-"+t1.toFixed(1)+"s":"full"}`,named=!!(cur.song&&cur.song.name);
+  const name=`${rnName(cur.title)} - ${ratioOf(cur).replace(":","x")} - ${sel?t0.toFixed(1)+"s-"+t1.toFixed(1)+"s":"full"}`,named=!!(cur.song&&cur.song.name),stale=songStale;
   const job=rjob={cancel:false,notes:[],clean:[]},clean=()=>job.clean.splice(0).forEach(f=>{try{f()}catch(e){}});
   const gone=new Promise((_,no)=>{job.abort=()=>{job.cancel=true;clean();no(RN_CANCEL)}});
-  const progress=(p,t)=>{if(rjob!==job)return;const v=Math.max(0,Math.min(99,Math.floor(p*100)));$("rnBar").style.setProperty("--w",v+"%");$("rnPct").textContent=v+"%";if(t)$("rnWhat").textContent=t};
+  const progress=(p,t)=>{if(rjob!==job)return;const v=Math.max(0,Math.min(99,Math.floor(p*100)));$("rnBar").style.setProperty("--w",v+"%");$("rnMeter").setAttribute("aria-valuenow",v);$("rnPct").textContent=v+"%";if(t)$("rnWhat").textContent=t};
   rnRelease();rnMode("run");progress(0,"Reading the song…");
   const work=(async()=>{const rec=await idbDo("readonly",st=>st.get(pid));let ab=null;
     if(rec&&rec.blob){try{ab=await new OfflineAudioContext(2,1,48000).decodeAudioData(await rec.blob.arrayBuffer())}catch(e){job.notes.push("The song could not be read; the video has no sound")}}
     else if(named)job.notes.push("The song isn't on this device; the video has no sound");
+    if(ab&&stale)job.notes.push("The song was replaced and the new one hasn't arrived yet; this render has the previous one");
     if(job.cancel)throw RN_CANCEL;
     const codecs=await rnProbe(w,h,!!ab);progress(0,codecs?"Rendering…":"Rendering in real time. Keep this tab in front.");
     const o={w,h,t0,t1,shots,ab,codecs,wm:!acct,progress};ab=null;
@@ -3571,7 +3584,7 @@ async function rnStart(){if(rjob||!cur||rnDlg.dataset.mode!=="idle")return;
     rnFile={url:URL.createObjectURL(out.blob),name:name+"."+out.ext};rnSave();rnMode("done");
     $("rnFile").textContent=`${rnFile.name} · ${rnBytes(out.blob.size)}`;$("rnMsg").textContent=job.notes.join(". ");$("rnCancel").focus()}
   catch(e){if(rnDlg.open&&rjob===job){rnMode("idle");rnDraw();
-    if(e!==RN_CANCEL)$("rnMsg").textContent=/quota|space|memory/i.test(String(e&&e.name)+String(e&&e.message))?"The render stopped: this device ran out of space for the file.":"The render stopped: the browser could not encode the video. Try again, or pick 720p."}}
+    if(e!==RN_CANCEL)$("rnMsg").textContent=/quota|space|memory/i.test(String(e&&e.name)+String(e&&e.message))?"The render stopped: this device ran out of space for the file.":"The render stopped: the browser could not encode the video. Try again"+(Math.min(w,h)>720?", or at 720p.":".")}}
   finally{if(rjob===job)rjob=null}}
 
 /* ---------- toast / boot ---------- */

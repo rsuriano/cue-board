@@ -108,6 +108,9 @@ async function load(p, file) {
   await p.page.waitForFunction(n => { const a = __A(); return a.cur() && a.S().length === n && !document.getElementById('play').disabled; }, file.project.sections.length, { timeout: 15000 });
   await sleep(400); await p.page.evaluate(() => document.activeElement && document.activeElement.blur());
 }
+/* the project's frame ratio: radio items under Frame in the More menu (the bar has no room for a selector) */
+const setFrame = async (page, r) => { await page.click('#moreb'); await page.click(`#moremenu [data-ratio="${r}"]`); await sleep(120); };
+const shown = page => page.evaluate(() => { const c = [...document.querySelectorAll('#moremenu [data-ratio][aria-checked="true"]')]; return c.length === 1 ? c[0].dataset.ratio : 'none or several'; });
 const stored = (page, pid) => page.evaluate(async pid => { const d = await new Promise(r => { const q = indexedDB.open('cueboard-local', 1); q.onsuccess = () => r(q.result); });
   return new Promise(r => { const g = d.transaction('projects').objectStore('projects').get(pid); g.onsuccess = () => r(g.result || null); g.onerror = () => r(null); }); }, pid);
 const pid = page => page.evaluate(() => __A().cur().id);
@@ -163,17 +166,17 @@ try {
   const D = await newPage(); await open(D);
   await section('1 ratio', async () => {
     const page = D.page;
-    check('1 · the example (no `ratio`) opens as 16:9', await page.$eval('#frame', s => s.value) === '16:9' && !('ratio' in await page.evaluate(() => __A().cur())), await page.$eval('#frame', s => s.value).catch(() => 'no #frame'));
+    check('1 · the example (no `ratio`) opens as 16:9', await shown(page) === '16:9' && !('ratio' in await page.evaluate(() => __A().cur())), await shown(page));
     await load(D, fx); await page.evaluate(() => __A().flushNow()); await sleep(500);
     const id = await pid(page), st = await stored(page, id);
-    check('1 · an old .cueboard.json imports unchanged: no `ratio` added, same shots, shown as 16:9', st && !('ratio' in st) && st.sections.map(s => s.title).join() === 'Clip,Still,Empty' && await page.$eval('#frame', s => s.value) === '16:9', st && Object.keys(st).join());
-    await page.selectOption('#frame', '9:16'); await page.evaluate(() => __A().flushNow()); await sleep(600);
+    check('1 · an old .cueboard.json imports unchanged: no `ratio` added, same shots, shown as 16:9', st && !('ratio' in st) && st.sections.map(s => s.title).join() === 'Clip,Still,Empty' && await shown(page) === '16:9', st && Object.keys(st).join());
+    await setFrame(page, '9:16'); await page.evaluate(() => __A().flushNow()); await sleep(600);
     check('1 · setting 9:16 saves it in the project', (await stored(page, id))?.ratio === '9:16', JSON.stringify((await stored(page, id))?.ratio));
     await page.reload(); await page.waitForSelector('.card'); await sleep(700);
-    check('1 · after a reload the project is still 9:16', await page.$eval('#frame', s => s.value) === '9:16' && (await page.evaluate(() => __A().cur().ratio)) === '9:16');
-    await page.selectOption('#frame', '1:1'); await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press('Control+z'); await sleep(250);
-    check('2 · in the app: Ctrl+Z after changing the ratio puts the previous one back', await page.$eval('#frame', s => s.value) === '9:16', await page.$eval('#frame', s => s.value));
-    await page.selectOption('#frame', '16:9'); await sleep(200);
+    check('1 · after a reload the project is still 9:16', await shown(page) === '9:16' && (await page.evaluate(() => __A().cur().ratio)) === '9:16');
+    await setFrame(page, '1:1'); await page.evaluate(() => document.activeElement.blur()); await page.keyboard.press('Control+z'); await sleep(250);
+    check('2 · in the app: Ctrl+Z after changing the ratio puts the previous one back', await shown(page) === '9:16', await shown(page));
+    await setFrame(page, '16:9'); await sleep(200);
   });
 
   /* ======== 3 · the monitor's frame ======== */
@@ -193,9 +196,12 @@ try {
     }
   };
   await section('3 monitor', async () => {
-    await frameChecks(D, 'desktop 1440×900', r => D.page.selectOption('#frame', r));
-    await D.page.selectOption('#frame', '16:9');
-    await D.page.evaluate(() => document.getElementById('frame').scrollIntoView()); await D.page.focus('#frame'); await shoot(D.page, 'frame-selector-desktop-1440x900');
+    await frameChecks(D, 'desktop 1440×900', r => setFrame(D.page, r));
+    await setFrame(D.page, '16:9');
+    await D.page.click('#moreb'); await sleep(200);
+    const fr = await D.page.evaluate(() => ({ label: (document.querySelector('#moremenu .mlbl') || {}).textContent, items: [...document.querySelectorAll('#moremenu [data-ratio]')].filter(e => e.getClientRects().length).map(e => e.textContent.trim() + (e.getAttribute('aria-checked') === 'true' ? '*' : '') + '/' + e.getAttribute('role')).join(' '), inSettings: !!document.querySelector('#dlgSettings [data-ratio], #dlgSettings #mFrame') }));
+    check('1 · desktop: Frame is with the project, in More: a labelled group of the four ratios, the current one checked; not in Settings', fr.label === 'Frame' && fr.items === '16:9*/menuitemradio 9:16/menuitemradio 1:1/menuitemradio 4:3/menuitemradio' && !fr.inSettings, JSON.stringify(fr));
+    await shoot(D.page, 'frame-selector-desktop-1440x900'); await D.page.keyboard.press('Escape');
     await D.page.evaluate(() => document.activeElement.blur());
   });
 
@@ -243,7 +249,7 @@ try {
     await shoot(page, 'dialog-idle-desktop-1440x900');
     await page.click('#rnCancel');
     for (const ratio of Object.keys(DIMS)) {
-      await page.selectOption('#frame', ratio); await sleep(150);
+      await setFrame(page, ratio); await sleep(150);
       const r = await render(page, ratio === '16:9' ? { shot: 'dialog-done-desktop-1440x900', onStart: async () => { await page.waitForSelector('#dlgRender[data-mode="run"]', { timeout: 3000 }).catch(() => {}); await shoot(page, 'dialog-progress-desktop-1440x900'); } } : {}), i = r.info || { tracks: [] }, [w, h] = DIMS[ratio][0];
       check(`6 · ${ratio}: an MP4 as long as the song (6 s ± 0.1), ${w}×${h} H.264, with an audio track`, i.video && Math.abs(i.duration - 6) <= .1 && Math.abs(i.video.duration - 6) <= .1 && i.video.width === w && i.video.height === h && i.video.codec === 'avc1' && i.audio && Math.abs(i.audio.duration - 6) <= .1, JSON.stringify(i) + ` in ${r.ms} ms`);
       check(`6 · ${ratio}: the file is named after the project, the ratio and the range`, r.name === `Fixture a b - ${ratio.replace(':', 'x')} - full.mp4` && r.said.includes(r.name) && /Done/.test(r.said) && /\d(\.\d)? (KB|MB)/.test(r.said), r.name + ' | ' + r.said);
@@ -256,7 +262,7 @@ try {
         check('6 · audio is decodable', p.audio > 0, String(p.audio));
       }
     }
-    await page.selectOption('#frame', '16:9');
+    await setFrame(page, '16:9');
     check('no VideoFrame is left open (no leak warning after a forced collection)', await (async () => { await page.evaluate(() => { gc(); gc(); }); await sleep(600); return !warns.some(w => /VideoFrame/.test(w)); })(), warns.filter(w => /VideoFrame/.test(w)).join(' | '));
   });
 
@@ -326,7 +332,7 @@ try {
       const r = await render(page, { res }), i = r.info || {}, p = await probe(r.buf, r.name, [.2, 2.5]), f = p.frames || [];
       check(`8 · account, ${res}p: ${res === '720' ? '1280×720' : '1920×1080'}, no watermark`, i.video && i.video.height === +res && i.video.width === +res * 16 / 9 && p.ok && f[0].stray < 30 && f[1].stray < 30 && near(f[1].centre, GREEN), `${i.video && i.video.width}×${i.video && i.video.height}, stray ${f.map(x => x.stray)}`);
     }
-    await page.selectOption('#frame', '9:16'); const r = await render(page, { res: '1080' });
+    await setFrame(page, '9:16'); const r = await render(page, { res: '1080' });
     check('8 · account, 9:16 at 1080p is 1080×1920', r.info.video && r.info.video.width === 1080 && r.info.video.height === 1920, JSON.stringify(r.info.video));
     await A.ctx.close();
   });
@@ -342,7 +348,7 @@ try {
     await open(G); await load(G, fx); const page = G.page;
     await page.click('#settingsb'); await page.fill('#setKey', 'sk-or-test'); await page.check('#setAll'); await page.click('#setForm button[type=submit]'); await sleep(600);
     await page.click('.sidetab[data-side="b"]'); await sleep(300); await page.fill('#bPrompt', 'the camera holds');
-    const send = async (ratio, m) => { await page.click('.sidetab[data-side="a"]'); await page.selectOption('#frame', ratio); await page.click('.sidetab[data-side="b"]'); await sleep(150); await page.selectOption('#gModel', m); const n = bodies.length; await page.click('#gGo'); await until(() => bodies.length > n, 4000); return bodies[bodies.length - 1] || {}; };
+    const send = async (ratio, m) => { await page.click('.sidetab[data-side="a"]'); await setFrame(page, ratio); await page.click('.sidetab[data-side="b"]'); await sleep(150); await page.selectOption('#gModel', m); const n = bodies.length; await page.click('#gGo'); await until(() => bodies.length > n, 4000); return bodies[bodies.length - 1] || {}; };
     const a = await send('9:16', 'test/ratios'), b = await send('9:16', 'test/plain'), c = await send('4:3', 'test/ratios'), d = await send('16:9', 'test/ratios');
     check('4 · a model whose ratios include the project\'s gets it (9:16)', a.model === 'test/ratios' && a.aspect_ratio === '9:16', JSON.stringify(a.aspect_ratio));
     check('4 · a model without a ratios list gets 16:9', b.model === 'test/plain' && b.aspect_ratio === '16:9', JSON.stringify(b.aspect_ratio));

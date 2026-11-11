@@ -46,8 +46,11 @@ async function newPage(name) {
   page.on('pageerror', e => errs.push(`${name}: ${e.message}`));
   return { ctx, page };
 }
+/* the project's frame ratio: radio items under Frame in the More menu (the bar has no room for a selector) */
+const setFrame = async (page, r) => { await page.click('#moreb'); await page.click(`#moremenu [data-ratio="${r}"]`); await sleep(120); };
+const shown = page => page.evaluate(() => { const c = [...document.querySelectorAll('#moremenu [data-ratio][aria-checked="true"]')]; return c.length === 1 ? c[0].dataset.ratio : 'none or several'; });
 const chip = page => page.evaluate(() => (document.getElementById('mstatw').hidden ? '' : document.getElementById('mhead').textContent));
-const frame = page => page.evaluate(() => ({ sel: document.getElementById('frame').value, ratio: __A().cur().ratio, a: (r => r.width / r.height)(document.getElementById('mframe').getBoundingClientRect()) }));
+const frame = page => page.evaluate(() => ({ sel: (document.querySelector('#moremenu [data-ratio][aria-checked="true"]') || { dataset: {} }).dataset.ratio, ratio: __A().cur().ratio, a: (r => r.width / r.height)(document.getElementById('mframe').getBoundingClientRect()) }));
 const marks = page => page.evaluate(() => { const m = __A().io(); return [m.in, m.out]; });
 const synced = page => until(async () => (await chip(page)) === 'Synced');
 
@@ -62,7 +65,7 @@ try {
   let a = await frame(A.page), b = await frame(B.page);
   check('1 · a room project without `ratio` is 16:9 in both tabs', a.sel === '16:9' && b.sel === '16:9' && a.ratio === undefined && b.ratio === undefined, JSON.stringify([a, b]));
 
-  await A.page.selectOption('#frame', '9:16');
+  await setFrame(A.page, '9:16');
   b = await until(async () => { const v = await frame(B.page); return v.sel === '9:16' ? v : null; });
   check('1 · A sets 9:16: it travels to B (selector, project, the monitor\'s frame)', b && b.ratio === '9:16' && Math.abs(b.a - 9 / 16) < .01, JSON.stringify(b || await frame(B.page)));
   await A.page.evaluate(() => __A().flushNow()); await sleep(700); await A.page.reload(); await A.page.waitForSelector('.card'); await synced(A.page);
@@ -70,12 +73,12 @@ try {
   check('1 · A reloads: still 9:16 (saved here and in the room)', a.sel === '9:16' && a.ratio === '9:16', JSON.stringify(a));
 
   /* undo against a collaborator's later change */
-  await A.page.selectOption('#frame', '1:1'); await until(async () => (await frame(B.page)).sel === '1:1');
-  await B.page.selectOption('#frame', '4:3'); await until(async () => (await frame(A.page)).sel === '4:3');
+  await setFrame(A.page, '1:1'); await until(async () => (await frame(B.page)).sel === '1:1');
+  await setFrame(B.page, '4:3'); await until(async () => (await frame(A.page)).sel === '4:3');
   await A.page.evaluate(() => document.activeElement.blur()); await A.page.keyboard.press('Control+z'); await sleep(900);
   a = await frame(A.page); b = await frame(B.page);
   check('2 · A\'s undo does not overwrite B\'s later ratio: both stay on 4:3, with a notice', a.sel === '4:3' && b.sel === '4:3' && /Can't undo frame 1:1: the frame changed since/.test(await A.page.$eval('#toast', t => t.textContent)), JSON.stringify([a.sel, b.sel, await A.page.$eval('#toast', t => t.textContent)]));
-  await B.page.selectOption('#frame', '16:9'); await until(async () => (await frame(A.page)).sel === '16:9'); await sleep(300);
+  await setFrame(B.page, '16:9'); await until(async () => (await frame(A.page)).sel === '16:9'); await sleep(300);
   await B.page.evaluate(() => document.activeElement.blur()); await B.page.keyboard.press('Control+z'); await sleep(300);
   a = await until(async () => { const v = await frame(A.page); return v.sel === '4:3' ? v : null; });
   check('2 · B\'s own undo restores its previous ratio, here and for A', a && (await frame(B.page)).sel === '4:3', JSON.stringify([a, await frame(B.page)]));
