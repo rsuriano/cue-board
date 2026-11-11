@@ -206,3 +206,22 @@ test('memory: 100 steps on a large project store diffs, not snapshots', () => {
   let steps = 0; for (let i = 0; i < 100; i++) steps += JSON.stringify(h.peek()).length, h.undo(p);
   assert.ok(steps < whole / 10, `100 steps weigh ${steps} bytes, the project ${whole}`);
 });
+
+// docs/specs/export-render.md, criterion 2: the project's frame ratio is a meta field like the title
+test('frame ratio: undo puts the previous one back (absent = 16:9), and never overwrites a collaborator\'s later change', () => {
+  const h = H.create(), p = project();
+  rec(h, p, 'frame 9:16', q => { q.ratio = '9:16'; });
+  assert.equal(h.undo(p).ok, true); assert.equal('ratio' in p, false, 'back to no ratio at all: an old project stays an old project');
+  assert.equal(h.redo(p).ok, true); assert.equal(p.ratio, '9:16');
+  rec(h, p, 'frame 1:1', q => { q.ratio = '1:1'; });
+  assert.equal(h.undo(p).ok, true); assert.equal(p.ratio, '9:16');
+  assert.equal(h.redo(p).ok, true); assert.equal(p.ratio, '1:1');
+  p.ratio = '4:3';   // a collaborator changed it since
+  const r = h.undo(p);
+  assert.equal(r.ok, false); assert.equal(r.where, 'the frame'); assert.equal(p.ratio, '4:3', 'their ratio stays');
+  assert.equal(h.undo(p).ok, false, 'the older step no longer matches either'); assert.equal(p.ratio, '4:3');
+  // the other fields of the same step are untouched by a ratio conflict elsewhere
+  const h2 = H.create(), q = project();
+  rec(h2, q, 'frame 9:16', x => { x.ratio = '9:16'; }); q.title = 'renamed by B';
+  assert.equal(h2.undo(q).ok, true); assert.equal('ratio' in q, false); assert.equal(q.title, 'renamed by B');
+});
