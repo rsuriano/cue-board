@@ -462,6 +462,28 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 #tc{min-width:var(--w-tc);font-size:var(--text-xl);line-height:var(--lh-xl);color:var(--ink)}
 .transport select{width:auto}
 #zfit{padding:0 var(--sp-3)}
+/* Selection: [set In | In | Out | set Out] joined like .seg, the length dim, Clear. Narrow desktop gives up the
+   length, then the key hints, then the speed select's spare width; never zoom */
+.iojoin{display:flex}
+.iojoin>*{border-radius:0;margin-left:calc(-1 * var(--hairline))}
+.iojoin>:first-child{margin-left:0;border-radius:var(--r-sm) 0 0 var(--r-sm)}
+.iojoin>:last-child{border-radius:0 var(--r-sm) var(--r-sm) 0}
+.iojoin>:hover,.iojoin>:focus-visible,.iot[aria-invalid="true"]{z-index:1}
+.iojoin .btn{padding:0 var(--sp-2)}
+#mCopyl{display:none}
+.iot{width:calc(7ch + 2 * var(--sp-2) + 2 * var(--hairline));height:var(--h-md);padding:0 var(--sp-2);background:var(--inset);border:var(--hairline) solid var(--border-control);color:var(--ink);font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;text-align:center}
+.iot::placeholder{color:var(--ink-3);font-family:var(--font-ui)}
+.iot[aria-invalid="true"]{border-color:var(--error)}
+.iolen{font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-3)}
+.iolen:empty{display:none}
+@media (min-width:820px){
+  @media (max-width:1199px){.iolen{display:none}}
+  @media (max-width:1099px){.transport .btn kbd{display:none}.iojoin .btn{width:var(--h-md);padding:0}
+    #copylist,.transport>.grow{display:none}.transport>.seg{margin-left:auto}#moremenu #mCopyl:not(:disabled){display:flex}}
+  @media (max-width:899px){.transport{column-gap:var(--sp-3)}.iosel{gap:var(--gap-tight)}.transport select{padding-left:var(--sp-2);padding-right:var(--sp-6)!important;background-position:calc(100% - var(--sp-3)) 50%,calc(100% - var(--sp-2)) 50%!important}}
+}
+/* the phone has its own handles (no group); its inputs stay 16px all the same, against iOS's zoom on focus */
+@media not all and (min-width:820px){#iosel{display:none!important}.iot{font-size:var(--text-input)}}
 .timeline{position:relative;background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md);overflow:hidden}
 #tl-scroll{position:relative;overflow-x:auto;overflow-y:hidden}
 #tl{display:block;touch-action:none;cursor:pointer}
@@ -1037,6 +1059,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-pause" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"/></symbol>
   <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></symbol>
   <symbol id="i-minus" viewBox="0 0 16 16"><path d="M3.5 8h9"/></symbol>
+  <symbol id="i-in" viewBox="0 0 16 16"><path d="M9.5 3H5.5v10h4"/></symbol>
+  <symbol id="i-out" viewBox="0 0 16 16"><path d="M6.5 3h4v10h-4"/></symbol>
   <symbol id="i-arrow-right" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
   <symbol id="i-swap" viewBox="0 0 16 16"><path d="M3 5.5h10M10 2.5l3 3-3 3M13 10.5H3M6 7.5l-3 3 3 3"/></symbol>
   <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
@@ -1084,6 +1108,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
           <div id="moremenu" class="menu" role="menu" aria-label="More project actions" hidden>
             <button type="button" class="mi narrow" role="menuitem" tabindex="-1" data-for="importf"><svg class="ico" aria-hidden="true"><use href="#i-import"/></svg><span>Import…</span></button>
             <button type="button" class="mi narrow" role="menuitem" tabindex="-1" data-for="exportb"><svg class="ico" aria-hidden="true"><use href="#i-export"/></svg><span>Export…</span></button>
+            <button type="button" class="mi" role="menuitem" tabindex="-1" data-for="copylist" id="mCopyl"><svg class="ico" aria-hidden="true"><use href="#i-lines"/></svg><span>Copy shot list</span></button>
             <button type="button" class="mi narrowest" role="menuitem" tabindex="-1" data-for="song" id="mLoad"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>Load song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" data-for="song" id="mReplace" hidden><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span>Replace song…</span></button>
             <button type="button" class="mi" role="menuitem" tabindex="-1" id="delsong" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Remove song</span></button>
@@ -1183,13 +1208,18 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       <button type="button" id="loop" class="btn" aria-pressed="false">Loop shot <kbd>L</kbd></button>
       <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="0.75">0.75×</option><option value="0.5">0.5×</option></select>
     </div>
+    <div class="tgroup iosel" id="iosel" role="group" aria-label="Selection">
+      <span class="iojoin"><button type="button" id="ioInB" class="btn" aria-label="Set In at the playhead" title="Set In at the playhead"><svg class="ico" aria-hidden="true"><use href="#i-in"/></svg><kbd>I</kbd></button><input id="ioIn" class="iot" placeholder="In" aria-label="In" autocomplete="off" autocapitalize="off" spellcheck="false"><input id="ioOut" class="iot" placeholder="Out" aria-label="Out" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" id="ioOutB" class="btn" aria-label="Set Out at the playhead" title="Set Out at the playhead"><svg class="ico" aria-hidden="true"><use href="#i-out"/></svg><kbd>O</kbd></button></span>
+      <span id="ioLen" class="iolen"></span>
+      <button type="button" id="ioClr" class="btn icon" aria-label="Clear selection" title="Clear selection (Alt+X)" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <span class="grow"></span>
+    <button type="button" id="copylist" class="btn ghost">Copy shot list</button>
     <div class="seg" role="group" aria-label="Timeline zoom">
       <button type="button" id="zout" class="btn icon" aria-label="Zoom out"><svg class="ico" aria-hidden="true"><use href="#i-minus"/></svg></button>
       <button type="button" id="zfit" class="btn">Fit</button>
       <button type="button" id="zin" class="btn icon" aria-label="Zoom in"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
     </div>
-    <span class="grow"></span>
-    <button type="button" id="copylist" class="btn ghost">Copy shot list</button>
   </div>
 
   <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="mSpace" class="m-only"></div><div id="ph" class="ph"></div></div><div id="mGrips" class="m-only"></div><button type="button" id="mkClear" class="btn small m-only" aria-label="Clear selection" hidden>Clear</button></div>
@@ -1677,20 +1707,44 @@ function ioLoad(){io={in:null,out:null};try{const o=JSON.parse(ls(IO_KEY+cur.id)
 function ioRange(){if(!cur||(io.in==null&&io.out==null))return null;const d=dur(),a=Math.min(d,io.in??0),b=Math.min(d,io.out??d);return b-a>=.04?[a,b]:null}
 /* k "in" or "out" at time t; no k clears both. A mark set past the other one takes it out; a dragged one (hold) stops short of it */
 function ioSet(k,t,hold){if(!cur)return;
-  if(k){const o=k==="in"?"out":"in",d=dur(),ot=io[o]??(k==="in"?d:0);t=Math.max(0,Math.min(d,t));
+  if(k&&t==null)io[k]=null;else if(k){const o=k==="in"?"out":"in",d=dur(),ot=io[o]??(k==="in"?d:0);t=Math.max(0,Math.min(d,t));
     /* a dragged handle stops short of the other one (resting at its end if unset); dragged back to its own end, it's unset */
     if(hold){t=k==="in"?Math.min(t,ot-.1):Math.max(t,ot+.1);io[k]=(k==="in"?t<=.05:t>=d-.05)?null:r2(t)}
     else{if(io[o]!=null&&(k==="in"?t>io[o]-.1:t<io[o]+.1))io[o]=null;io[k]=r2(t)}}
   else io={in:null,out:null};
   try{if(io.in==null&&io.out==null)localStorage.removeItem(IO_KEY+cur.id);else ls(IO_KEY+cur.id,JSON.stringify(io))}catch(e){}
   renderTimeline();rnDraw()}
-/* on a ruler RU tall: the range shaded, a bracket at each mark. X maps a time to a canvas x */
-function ioDraw(g,X,RU){if(io.in==null&&io.out==null)return;const a=Math.round(X(io.in??0)),b=Math.round(X(io.out??dur()));
-  g.fillStyle=T["--tl-range"];g.fillRect(a,0,Math.max(0,b-a),RU);g.fillStyle=T["--tl-mark"];
-  if(io.in!=null){g.fillRect(a-1,0,2,RU);g.fillRect(a,0,6,2);g.fillRect(a,RU-2,6,2)}
-  if(io.out!=null){g.fillRect(b-1,0,2,RU);g.fillRect(b-6,0,6,2);g.fillRect(b-6,RU-2,6,2)}}
-/* the mark under the pointer, on the desktop ruler */
-const ioAt=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left;if(e.clientY-r.top>20)return"";return["out","in"].find(k=>io[k]!=null&&Math.abs(x-io[k]*P)<=7)||""};
+/* on a ruler RU tall: the range shaded, a bracket with a grip at each mark. On the desktop an unset side's bracket
+   rests, dim, at its end of the song, to be dragged in. X maps a time to a canvas x */
+function ioDraw(g,X,RU){const a=Math.round(X(io.in??0)),b=Math.round(X(io.out??dur())),e=Math.round(X(dur()));
+  if(io.in!=null||io.out!=null){g.fillStyle=T["--tl-range"];g.fillRect(a,0,Math.max(0,b-a),RU)}
+  const dk=!phone();for(const[k,x,s]of[["in",dk?Math.max(a,1):a,1],["out",dk?Math.min(b,e-1):b,-1]]){const set=io[k]!=null;if(!set&&!dk)continue;
+    g.fillStyle=T[set?"--tl-mark":"--tl-label"];g.fillRect(x-1,0,2,RU);g.fillRect(s>0?x:x-6,0,6,2);g.fillRect(s>0?x:x-6,RU-2,6,2);if(dk)g.fillRect(s>0?x+1:x-3,RU/2-4,2,8)}}
+/* the handle under the pointer, on the desktop ruler: 14px wide, a resting one kept inside the ruler's ends */
+const ioAt=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left;if(e.clientY-r.top>20)return"";return["out","in"].find(k=>Math.abs(x-Math.min(W-6,Math.max(6,(io[k]??(k==="in"?0:dur()))*P)))<=7)||""};
+
+/* the transport's Selection group (desktop): the marks as two fields, set buttons (I / O), Clear (Alt+X), the length.
+   A field being edited is left alone; a shorter song shows the marks clamped to it, as the render reads them */
+function ioShown(k){return io[k]==null?"":fmt(Math.min(dur(),io[k]))}
+function ioBad(f,msg){f.setAttribute("aria-invalid",String(!!msg));f.title=msg;if(msg)toast(msg)}
+function ioFields(){const r=ioRange();
+  for(const k of["in","out"]){const f=$(k==="in"?"ioIn":"ioOut");f.disabled=$(k==="in"?"ioInB":"ioOutB").disabled=!cur;if(f!==document.activeElement){f.value=ioShown(k);f._dirty=false;ioBad(f,"")}}
+  $("ioLen").textContent=r&&io.in!=null&&io.out!=null?(r[1]-r[0]).toFixed(1)+"s":"";$("ioClr").hidden=io.in==null&&io.out==null}
+/* a typed time (the render dialog's parser): empty clears that mark; garbage, past the song's end or on the wrong side
+   of the other mark is refused and changes nothing */
+function ioCommit(k,f){const v=f.value.trim(),t=rnParse(v),d=dur(),o=io[k==="in"?"out":"in"];
+  const err=!v?"":!(t>=0)?"Type a time like 1:15 or 75":t>d+.05?`The song ends at ${fmt(d)}`:o!=null&&(k==="in"?t>o-.1:t<o+.1)?(k==="in"?"In must be before Out":"Out must be after In"):"";
+  if(err){ioBad(f,err);return false}
+  f._dirty=false;ioBad(f,"");ioSet(k,v?Math.min(t,d):null);return true}
+function ioNow(k){if(!cur)return;ioSet(k,now());toast((k==="in"?"In at ":"Out at ")+fmt(now()))}
+["in","out"].forEach(k=>{const f=$(k==="in"?"ioIn":"ioOut");
+  $(k==="in"?"ioInB":"ioOutB").onclick=()=>ioNow(k);
+  f.addEventListener("input",()=>{f._dirty=true});
+  f.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();if(ioCommit(k,f))f.blur()}
+    else if(e.key==="Escape"){f.value=ioShown(k);f._dirty=false;ioBad(f,"")}});
+  /* leaving with a bad time: back to the field while focus stays in the row, else the old value comes back */
+  f.addEventListener("blur",e=>{if(f._dirty&&cur&&!ioCommit(k,f)){if(!e.relatedTarget||e.relatedTarget.closest(".transport"))setTimeout(()=>f.focus());else{f._dirty=false;ioFields()}}else ioFields()})});
+$("ioClr").onclick=()=>{ioSet();toast("Marks cleared")};
 
 /* ---------- projects ---------- */
 function selectProject(p){
@@ -1783,7 +1837,7 @@ function renderSongbar(){
 function renderTransport(){
   const pl=$("play"),pi=playing?"pause":"play";$("play").disabled=!hasAudio;
   if(pl.dataset.ico!==pi){pl.dataset.ico=pi;pl.innerHTML=ico(pi)+(playing?"Pause":"Play")}
-  $("mark").disabled=!cur;$("loop").setAttribute("aria-pressed",String(loop));$("copylist").disabled=!cur;
+  $("mark").disabled=!cur;$("loop").setAttribute("aria-pressed",String(loop));$("copylist").disabled=$("mCopyl").disabled=!cur;
 }
 function renderTimeline(){
   if(phone()){renderTimelineM();return}
@@ -1799,6 +1853,7 @@ function renderTimeline(){
   g.font="500 11px 'JetBrains Mono', monospace";g.textBaseline="middle";g.textAlign="left";g.lineWidth=1;
   for(let t=0;t<=d+1e-6;t+=st){const x=Math.round(t*P)+.5;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
   if(cur)ioDraw(g,t=>t*P,RU);
+  ioFields();
   const top=40,h=H-top-8,mid=top+h/2;
   if(!cur){g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(0,mid+.5);g.lineTo(W,mid+.5);g.stroke();placePlayhead();return}
   const s=S();
@@ -2217,6 +2272,14 @@ document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.file
 /* Delete shot armed by the key: any other key, or focus going into a dialog or panel, disarms (selection, side and project changes re-render the editor, which disarms too) */
 document.addEventListener("keydown",e=>{if(delByKey&&e.key!=="Delete"&&e.key!=="Backspace")resetDel()},true);
 document.addEventListener("focusin",e=>{if(delByKey&&e.target.closest&&e.target.closest("dialog,[role=dialog]"))resetDel()});
+/* Space plays or pauses wherever focus is on side A (a button just clicked, a summary, a closed select, a menu button)
+   and never also presses that control (its keyup is swallowed too). Not while typing, with a dialog open or a menu
+   open, and not on a key repeat. Enter still presses the focused control */
+let spaceOwn=false;
+document.addEventListener("keydown",e=>{if(e.code!=="Space")return;spaceOwn=false;if(e.ctrlKey||e.metaKey||e.altKey||side!=="a"||document.querySelector("dialog[open],[aria-expanded=true]"))return;
+  const tg=e.target;if(tg&&(/INPUT|TEXTAREA/.test(tg.tagName)||tg.isContentEditable))return;
+  e.preventDefault();e.stopPropagation();spaceOwn=true;if(!e.repeat)toggle()},true);
+document.addEventListener("keyup",e=>{if(e.code==="Space"&&spaceOwn){spaceOwn=false;e.preventDefault();e.stopPropagation()}},true);
 document.addEventListener("keydown",e=>{
   /* a dialog or sheet is open: its buttons and summaries keep Space, and nothing edits the project behind it */
   if(side!=="a"||document.querySelector("dialog[open]"))return;
@@ -2224,8 +2287,7 @@ document.addEventListener("keydown",e=>{
   /* in/out marks: I and O at the playhead, Alt+X clears them (by key position: Alt changes the letter on a Mac); never on a repeat */
   if(e.altKey&&!e.ctrlKey&&!e.metaKey&&e.code==="KeyX"){e.preventDefault();if(!e.repeat&&cur&&(io.in!=null||io.out!=null)){ioSet();toast("Marks cleared")}return}
   if(e.metaKey||e.ctrlKey||e.altKey)return;const k=e.key.toLowerCase();
-  if(e.code==="Space"){e.preventDefault();toggle()}
-  else if(k==="i"||k==="o"){if(!e.repeat&&cur){ioSet(k==="i"?"in":"out",now());toast((k==="i"?"In at ":"Out at ")+fmt(now()))}}
+  if(k==="i"||k==="o"){if(!e.repeat)ioNow(k==="i"?"in":"out")}
   else if(k==="m"){addMarker()}
   else if(k==="l"){setLoop(!loop)}
   else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();seek(now()+(e.key==="ArrowLeft"?-1:1)*(e.shiftKey?5:1))}
@@ -3493,7 +3555,7 @@ function rnRange(){const F=$("rnForm").elements,d=dur(),v=F.rnRange.value;if(v==
   if(b<=a)return{err:"End must be after Start",f:"rnEnd"};const e=Math.min(b,d);return e-a<.2?{err:"Make it at least 0.2 s long",f:"rnEnd"}:[a,e]}
 function rnDraw(){if(!rnDlg.open||rnDlg.dataset.mode!=="idle"||!cur)return;const F=$("rnForm").elements,r=ioRange(),d=dur(),acct=!!account.get();
   if(!r&&F.rnRange.value==="sel")F.rnRange.value="all";
-  F.rnRange[1].disabled=!r;$("rnSelHint").hidden=!!r;$("rnAllT").textContent=fmt(d);$("rnSelT").textContent=r?rnSpan(r):"";
+  F.rnRange[1].disabled=!r;$("rnSelHint").hidden=!!r;$("rnSelHint").textContent=phone()?"Drag the two handles on the timeline's ruler":"Set In and Out in the bar above the timeline, or press I and O";$("rnAllT").textContent=fmt(d);$("rnSelT").textContent=r?rnSpan(r):"";
   const cus=F.rnRange.value==="custom",rg=rnRange(),bad=!Array.isArray(rg);$("rnCus").hidden=!cus;
   $("rnCusT").textContent=cus&&!bad?rnSpan(rg):"";$("rnCusMsg").textContent=bad?rg.err:"";$("rnGo").disabled=bad;
   for(const f of["rnStart","rnEnd"])$(f).setAttribute("aria-invalid",String(bad&&rg.f===f));
