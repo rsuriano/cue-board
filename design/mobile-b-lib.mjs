@@ -39,6 +39,7 @@ export async function start(root) {
     await ctx.route('**/*', r => (r.request().url().startsWith(new URL(url).origin) ? r.continue() : r.abort()));
     await ctx.addInitScript(() => { window.__CUE_MEDIA_TEST = {}; });
     const page = await ctx.newPage(), errs = [];
+    page.setDefaultTimeout(5000);
     page.on('pageerror', e => errs.push(String(e)));
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
     await page.goto(url);
@@ -74,5 +75,7 @@ export const state = page => page.evaluate(() => {
 export const toShot = async (page, i) => { await page.evaluate(i => { const s = window.__CUE_MEDIA_TEST.app.S(), sc = document.getElementById('tl-scroll'), d = document.getElementById('audio').duration, P = (sc.scrollWidth - sc.clientWidth) / d;
   sc.scrollLeft = Math.round(((s[i].start + (s[i + 1] ? s[i + 1].start : d)) / 2) * P); }, i); await sleep(350); };
 // tap the tile under the playhead: selects that shot (or deselects it when it was the selected one)
-export const tapTile = async page => { const s = await state(page); await page.touchscreen.tap(s.cv.x + s.cv.w / 2, s.band); await sleep(250); };
+// (at the playhead when it is clear of both cuts' 44px grips, else in the middle of the shot)
+export const tapTile = async page => { const s = await state(page), a = s.starts[s.at], e = s.starts[s.at + 1] ?? s.d, m = Math.min(28 / s.P, (e - a) / 2), t = Math.min(e - m, Math.max(a + m, s.t));
+  await page.touchscreen.tap(s.cv.x + s.cv.w / 2 + (t - s.t) * s.P, s.band); await sleep(250); };
 export const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);

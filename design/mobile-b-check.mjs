@@ -14,7 +14,8 @@ const H = await start(root);
 const results = [];
 const check = (name, ok, ev = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ev ? ' · ' + ev : ''}`); };
 const guard = async (name, fn) => { try { await fn(); } catch (e) { check(`${name}: ran to the end`, false, String(e).split('\n')[0]); } };
-const SIZES = [[390, 844], [390, 667], [430, 932], [360, 640]];
+const ONLY = process.argv[4] || '';   // a part to run alone: a size ("390x844"), "land", "desk" or "server"
+const SIZES = [[390, 844], [390, 667], [430, 932], [360, 640]].filter(s => !ONLY || ONLY === s.join('x'));
 const BAR = { none: 'mtUndo|mtCut|mtTip', shot: 'mtUndo|mtCut|mtDet|mtImg|mtMove|mtMore', cut: 'mtMinus|mtRead|mtPlus|mtDone' };
 const bar = async page => (await state(page)).bar.join('|');
 
@@ -24,12 +25,12 @@ const controls = page => page.evaluate(() => {
   return [...document.querySelectorAll(q)].filter(e => { if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden' || e.disabled && !e.id) return false;
     const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2; if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
     const top = document.elementFromPoint(x, y); return !!top && (e.contains(top) || top.contains(e)); })
-    .map(e => { const r = e.getBoundingClientRect(); return { id: e.id || (e.dataset.side ? 'tab-' + e.dataset.side : e.dataset.mk ? 'mk-' + e.dataset.mk : e.className || e.tagName), tl: !!e.closest('.timeline'), w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top), b: Math.round(r.bottom) }; });
+    .map(e => { const r = e.getBoundingClientRect(), af = getComputedStyle(e, '::after'), hit = af.content !== 'none' && af.position === 'absolute' ? parseFloat(af.height) || 0 : 0; return { id: e.id || (e.dataset.side ? 'tab-' + e.dataset.side : e.dataset.mk ? 'mk-' + e.dataset.mk : e.className || e.tagName), tl: !!e.closest('.timeline'), w: Math.round(r.width), h: Math.round(Math.max(r.height, hit)), x: Math.round(r.left), y: Math.round(r.top), b: Math.round(r.bottom) }; });
 });
 const shown = (page, sel) => page.evaluate(sel => [...document.querySelectorAll(sel)].some(e => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden'), sel);
 const rect = (page, sel) => page.evaluate(sel => { const e = document.querySelector(sel); if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, r: r.right, b: r.bottom }; }, sel);
 // text blocks that must not touch each other: [selector…] → the pairs that intersect
-const hits = (page, sels) => page.evaluate(sels => { const rs = sels.flatMap(s => [...document.querySelectorAll(s)].filter(e => e.getClientRects().length && e.textContent.trim()).map(e => { const g = document.createRange(); g.selectNodeContents(e); const r = g.getBoundingClientRect(); return { s, x: r.left, y: r.top, r: Math.min(r.right, e.getBoundingClientRect().right), b: r.bottom }; }));
+const hits = (page, sels) => page.evaluate(sels => { const rs = sels.flatMap(s => [...document.querySelectorAll(s)].filter(e => e.getClientRects().length && e.textContent.trim()).map(e => { const g = document.createRange(); g.selectNodeContents(e); const r = g.getBoundingClientRect(); const b = e.getBoundingClientRect(); return { s, x: Math.max(r.left, b.left), y: Math.max(r.top, b.top), r: Math.min(r.right, b.right), b: Math.min(r.bottom, b.bottom) }; }));
   const o = []; for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const A = rs[i], B = rs[j]; if (A.x < B.r - .5 && B.x < A.r - .5 && A.y < B.b - .5 && B.y < A.b - .5) o.push(A.s + ' × ' + B.s); } return o; }, sels);
 const setRatio = (page, r) => page.evaluate(r => { const s = document.getElementById('mFrame'); s.value = r; s.dispatchEvent(new Event('change', { bubbles: true })); }, r);
 
@@ -91,7 +92,7 @@ for (const [w, h] of SIZES) await guard(`${w}x${h}`, async () => {
   check(`3 · ${tag}: +0.1 s moves that cut by 0.1 s`, Math.abs(b.starts[grip.i] - a.starts[grip.i] - .1) < .011, `${a.starts[grip.i]} → ${b.starts[grip.i]}`);
   await page.tap('#mtDone'); await sleep(150);
   check(`3 · ${tag}: Done goes back to the shot's tools`, await bar(page) === BAR.shot, await bar(page));
-  await tapTile(page);
+  await toShot(page, 2); await tapTile(page);
   check(`3 · ${tag}: tapping the selected shot again deselects: Undo and Cut here`, await bar(page) === BAR.none, await bar(page));
   await tapTile(page); a = await state(page);
   await page.touchscreen.tap(a.cv.x + a.cv.w * .5 + 6, a.wave); await sleep(250);
@@ -106,7 +107,8 @@ for (const [w, h] of SIZES) await guard(`${w}x${h}`, async () => {
   await toShot(page, 2);
   const lit = () => page.evaluate(() => { const c = document.getElementById('tl'), g = c.getContext('2d'), d = devicePixelRatio, b = c.getBoundingClientRect(), k = document.getElementById('mkClear'), was = k.hidden; k.hidden = false; const r = k.getBoundingClientRect(); k.hidden = was;
     const px = g.getImageData(Math.round((r.left - b.left) * d), 0, Math.round(r.width * d), Math.round(r.height * d)).data; let n = 0; for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - px[0]) + Math.abs(px[i + 1] - px[1]) + Math.abs(px[i + 2] - px[2]) > 40) n++; return { n, right: Math.round(innerWidth - r.right), y: Math.round(r.top - b.top), h: Math.round(r.height), w: Math.round(r.width) }; });
-  const l0 = await lit();
+  let l0 = await lit();
+  for (let k = 0; k < 12 && !l0.n; k++) { await page.evaluate(() => { document.getElementById('tl-scroll').scrollLeft += 9; }); await sleep(120); l0 = await lit(); }
   await page.evaluate(() => { const A = window.__CUE_MEDIA_TEST.app, t = document.getElementById('audio').currentTime; A.ioSet('in', t - 4); A.ioSet('out', t - 1); }); await sleep(250);
   const l1 = await lit(), clr = await rect(page, '#mkClear'); gr = await grabbable();
   check(`6 · ${tag}: Clear appears only with a selection, at the ruler's right end, in the ruler row, 44px`, clr && l1.right <= 12 && l1.y === 0 && l1.h >= 44 && l1.w >= 44 && /Clear/.test(await page.textContent('#mkClear')), JSON.stringify(l1));
@@ -269,7 +271,7 @@ for (const [w, h] of SIZES) await guard(`${w}x${h}`, async () => {
 });
 
 /* ---- 10 · the landscape viewer ---- */
-for (const [lw, lh] of [[844, 390], [667, 375]]) await guard(`landscape ${lw}x${lh}`, async () => {
+for (const [lw, lh] of ONLY && ONLY !== 'land' ? [] : [[844, 390], [667, 375]]) await guard(`landscape ${lw}x${lh}`, async () => {
   const tag = `${lw}x${lh}`, { ctx, page, errs } = await H.open([lh, lw]);
   await toShot(page, 3); await tapTile(page);
   const before = await state(page);
@@ -299,7 +301,7 @@ for (const [lw, lh] of [[844, 390], [667, 375]]) await guard(`landscape ${lw}x${
   await page.evaluate(t => window.__CUE_MEDIA_TEST.app.seek(t), before.t); await sleep(300);
   await page.setViewportSize({ width: lh, height: lw }); await sleep(500);
   const after = await state(page);
-  check(`10 · ${tag}: turning back restores the portrait screen: same position, same selected shot, its tools in the bar`, Math.abs(after.t - before.t) < .15 && after.at === before.at && after.bar.join('|') === BAR.shot && Math.abs(after.left - before.left) <= 2 && await shown(page, '.top') && await shown(page, '.timeline'), `${before.t.toFixed(2)} → ${after.t.toFixed(2)}, bar ${after.bar.join('|')}`);
+  check(`10 · ${tag}: turning back restores the portrait screen: same position, same selected shot, its tools in the bar`, Math.abs(after.t - before.t) < .15 && after.at === before.at && after.bar.join('|') === BAR.shot && Math.abs(after.left - before.left) <= 2 && await shown(page, '.top') && await shown(page, '.timeline'), `${before.t.toFixed(2)} → ${after.t.toFixed(2)}, shot ${before.at} → ${after.at}, scroll ${before.left} → ${after.left}, bar ${after.bar.join('|')}`);
   // mid-drag: a cut's grip held while the phone turns: the drag ends, nothing stays stuck
   const dragged = await page.evaluate(() => { const g = [...document.querySelectorAll('#mGrips .grip:not([hidden])')].find(b => b.getBoundingClientRect().left > 30 && b.getBoundingClientRect().right < innerWidth - 60); if (!g) return null;
     const r = g.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2; for (const [t, dx] of [['pointerdown', 0], ['pointermove', 12], ['pointermove', 24]]) g.dispatchEvent(new PointerEvent(t, { pointerId: 9, clientX: x + dx, clientY: y, bubbles: true, isPrimary: true, pointerType: 'touch' })); return true; });
@@ -315,7 +317,7 @@ for (const [lw, lh] of [[844, 390], [667, 375]]) await guard(`landscape ${lw}x${
 });
 
 /* ---- 12 (sanity) · 820px and up: none of the phone pieces show; the existing desktop checks do the rest ---- */
-for (const [w, h] of [[820, 900], [1280, 800]]) await guard(`desktop ${w}`, async () => {
+for (const [w, h] of ONLY && ONLY !== 'desk' ? [] : [[820, 900], [1280, 800]]) await guard(`desktop ${w}`, async () => {
   const { ctx, page, errs } = await H.open([w, h], { phone: false });
   const d = await page.evaluate(() => { const vis = s => [...document.querySelectorAll(s)].some(e => e.getClientRects().length > 0); return { phone: ['#mTabs', '#mTool', '#mPlayG', '#mTime', '#mScrub', '#mRot', '#mPeek', '#mGrips', '#mkClear', '.mkgrip'].filter(vis), desk: ['.transport', '#play', '#zfit', '.sides', '#strip', '#tc'].filter(s => !vis(s)) }; });
   check(`12 · ${w}px: no phone piece shows (tabs, bar, glyph, time, scrub, hint); transport, zoom, side switch and strip are there`, !d.phone.length && !d.desk.length, JSON.stringify(d));
@@ -326,7 +328,7 @@ for (const [w, h] of [[820, 900], [1280, 800]]) await guard(`desktop ${w}`, asyn
 });
 
 /* ---- 15 · smoke from server.mjs ---- */
-await guard('server.mjs', async () => {
+if (!ONLY || ONLY === 'server') await guard('server.mjs', async () => {
   const port = 5700 + Math.floor(Math.random() * 200), sv = spawn(process.execPath, [join(root, 'server.mjs')], { env: { ...process.env, PORT: String(port), OPENROUTER_API_KEY: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     await new Promise((ok, no) => { sv.stdout.on('data', d => /localhost/.test(String(d)) && ok()); sv.on('exit', () => no(new Error('server.mjs exited'))); setTimeout(() => no(new Error('server.mjs did not start')), 8000); });
