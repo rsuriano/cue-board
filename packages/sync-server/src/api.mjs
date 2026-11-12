@@ -25,6 +25,7 @@
 import { canCreateRoom, createBurstLimiter } from './access.mjs';
 import { ROOM_ID } from './store.mjs';
 import { ReportStore, cleanReport } from './reports.mjs';
+import { isIPv6 } from 'node:net';
 
 const MAX_BODY = 16 * 1024, NAME_MAX = 120;
 const ERRORS = {
@@ -36,6 +37,17 @@ const ERRORS = {
   report_limit: [429, 'Too many reports right now. Try again later.'], too_large: [413, 'That report is too big.'],
   origin: [403, 'Origin not allowed'], not_found: [404, 'Not found'], server: [500, 'Something went wrong on the server.'],
 };
+
+/** The key the per-IP report limits count on: an IPv4 address as it is, an IPv6 address by its /64 (one home or one
+    server usually holds a whole /64, so a key per address would let it send without end). @param {string} ip */
+export function netKey(ip) {
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (v4) return v4[1];
+  if (!isIPv6(ip)) return ip;
+  const [head, tail = ''] = ip.split('::'), h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const all = ip.includes('::') ? [...h, ...Array(8 - h.length - t.length).fill('0'), ...t] : h;
+  return all.slice(0, 4).map(x => (parseInt(x, 16) || 0).toString(16)).join(':') + '::/64';
+}
 
 /**
  * @param {{ store: import('./store.mjs').ProjectStore, log: ReturnType<typeof import('./log.mjs').createLogger>, dataDir: string,
@@ -149,7 +161,7 @@ export function createApi(o) {
       from using up the shared one: with the defaults that takes 200 addresses, not 40.
       @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {any} b */
   function report(req, res, b) {
-    const ip = o.clientIp(req);
+    const ip = netKey(o.clientIp(req));
     if (big.has(req)) { log.warn('report refused: too large', { ip }); fail(res, 'too_large'); return true; }
     if (!b || typeof b !== 'object' || Array.isArray(b)) { fail(res, 'bad_request'); return true; }
     if (reportAll.full('all')) { log.warn('report refused: daily limit (everyone)', { ip }); fail(res, 'report_limit'); return true; }

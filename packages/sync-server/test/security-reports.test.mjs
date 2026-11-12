@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpDir, server } from './helpers.mjs';
+import { netKey } from '../src/api.mjs';
 
 const post = (srv, ip) => fetch(srv.httpUrl + '/reports', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: '{"text":"flood"}' }).then(r => r.status);
 
@@ -14,6 +15,20 @@ test('40 addresses sending as much as they can do not use up the reports for eve
     for (let ip = 0; ip < 40; ip++) for (let k = 0; k < 6; k++) if ((await post(srv, '203.0.113.' + ip)) === 201) stored++;
     assert.equal(stored, 200, '5 an hour from each');
     assert.equal(await post(srv, '198.51.100.1'), 201, 'a real user still gets through');
+  } finally { await srv.close(); }
+});
+
+test('IPv6: every address of one /64 shares the per-IP limits', async () => {
+  const dir = tmpDir(), srv = await server(dir, 0, { trustProxy: true, maxReports: 50 });
+  try {
+    let ok = 0;
+    for (let i = 1; i <= 8; i++) if ((await post(srv, `2001:db8:1:2::${i.toString(16)}`)) === 201) ok++;
+    assert.equal(ok, 5, 'one /64, one hourly limit');
+    assert.equal(await post(srv, '2001:db8:1:3::1'), 201, 'another /64 is another key');
+    assert.equal(netKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), netKey('2001:0db8:0001:0002::9'));
+    assert.equal(netKey('::ffff:198.51.100.7'), '198.51.100.7');
+    assert.equal(netKey('198.51.100.7'), '198.51.100.7');
+    assert.equal(netKey('::1'), '0:0:0:0::/64');
   } finally { await srv.close(); }
 });
 
