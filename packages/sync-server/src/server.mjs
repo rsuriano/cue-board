@@ -6,7 +6,8 @@
    HTTP:   api.mjs (rooms created from the app with a session from auth, owner actions), /health
    Close codes: 4400 malformed message · 4401 bad token (also sent to everyone in a room whose invite link the owner
                 replaced) · 4404 unknown room · 4410 room deleted by its owner · 4413 room full: an update would take
-                the room's log past MAX_ROOM_BYTES, so it was not applied · 4429 too many connections from this IP
+                the room's log past MAX_ROOM_BYTES, so it was not applied (updates held back for a missing
+                dependency count too; past MAX_PENDING_BYTES of those the sender gets 4400) · 4429 too many connections from this IP
                 4500 room unavailable (unreadable project.json or updates.bin, or the room is degraded: an append to its log
                 failed and it refuses joins until a compaction gets its state on disk; see the error log)
                 Message type 10 is media signaling and relay (media-relay.mjs, docs/media-p2p.md); a type-10 frame the
@@ -38,7 +39,7 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
- *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, createPerHour?: number,
+ *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, maxPendingBytes?: number, createPerHour?: number,
  *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
@@ -47,7 +48,7 @@ export async function startServer(opts = {}) {
     port: 3300, host: '127.0.0.1', dataDir: './data', maxMessageBytes: 2 * 1024 * 1024, maxConnsPerIp: 16,
     compactEvery: 500, compactIntervalMs: 60_000, unloadAfterMs: 30_000, pingMs: 30_000, maxBufferedBytes: 8 * 1024 * 1024,
     trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info',
-    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, createPerHour: 30, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
+    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, maxPendingBytes: 4 * 1024 * 1024, createPerHour: 30, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
   };
   const log = o.log || createLogger(o.logLevel), store = new ProjectStore(o.dataDir, log);
   /** @type {Map<string, Room>} */ const rooms = new Map();
@@ -59,8 +60,9 @@ export async function startServer(opts = {}) {
       doc (maybe with a torn tail); nothing more is appended until a compaction rewrites it, and new joins get 4500.
       bytes: the update log's size on disk (the room-size cap, MAX_ROOM_BYTES, is checked against it before an update is
       applied). deleted: the owner deleted the room while it was loaded: nothing is appended, broadcast or compacted anymore.
+      pendingBy: the connection whose message last grew the doc's pending updates (see dropPending).
       @typedef {{ id: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness, conns: Map<import('ws').WebSocket, Set<number>>, records: number, bytes: number, unloadTimer: NodeJS.Timeout | null,
-        failing: boolean, degraded: boolean, deleted: boolean }} Room */
+        failing: boolean, degraded: boolean, deleted: boolean, pendingBy: import('ws').WebSocket | null }} Room */
 
   /** @param {string} id */
   function getRoom(id) {
@@ -70,7 +72,7 @@ export async function startServer(opts = {}) {
     if (torn) log.warn('dropped torn tail of update log (original kept as updates.bin.torn-*)', { room: id, bytes: torn });
     const awareness = new awarenessProtocol.Awareness(doc);
     awareness.setLocalState(null);
-    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, bytes, unloadTimer: null, failing: false, degraded: false, deleted: false });
+    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, bytes, unloadTimer: null, failing: false, degraded: false, deleted: false, pendingBy: null });
     rooms.set(id, r);
     doc.on('update', (/** @type {Uint8Array} */ update, /** @type {any} */ origin) => {
       // on disk before anyone hears about it. Nothing may throw from here: it would escape the Yjs transaction mid-cleanup.
@@ -100,6 +102,15 @@ export async function startServer(opts = {}) {
     log.info('room loaded', { room: id, records, bytes, ms: +(performance.now() - t0).toFixed(1) });
     return r;
   }
+
+  /** Bytes of updates Yjs holds in memory because something they depend on hasn't arrived (pending structs and deletes).
+      They aren't in room.bytes (nothing is appended until they apply), so the room-size cap adds them. @param {Room} r */
+  const pendingBytes = r => (r.doc.store.pendingStructs?.update.length || 0) + (r.doc.store.pendingDs?.length || 0);
+
+  /** Forget the pending updates. A normal client has some only for a moment (an edit sent just before its sync step 2
+      fills the gap); once the connection that sent them is gone, or they pass maxPendingBytes, they won't apply. The
+      sender keeps its own copy and sends it again on its next sync. @param {Room} r */
+  function dropPending(r) { r.doc.store.pendingStructs = null; r.doc.store.pendingDs = null; r.pendingBy = null; }
 
   /** @param {unknown} err */
   function fsErr(err) { const e = /** @type {NodeJS.ErrnoException} */ (err); return { code: e.code, err: e.message }; }
@@ -268,14 +279,25 @@ export async function startServer(opts = {}) {
         if (type === MSG_SYNC) {
           // the room-size cap: an update (or a step-2 answer carrying one) that would take the log past the cap is not
           // applied, and the sender is told plainly (4413). Nothing is lost on the server; the client keeps its copy.
-          if (decoding.peekVarUint(dec) !== SYNC_STEP1 && room.bytes + (dec.arr.length - dec.pos) > o.maxRoomBytes) {
-            log.warn('closing: room full (MAX_ROOM_BYTES)', { room: id, ip, bytes: room.bytes, update: dec.arr.length - dec.pos, max: o.maxRoomBytes });
+          // Updates held back for a missing dependency count: they would all be appended at once when it arrives.
+          const held = pendingBytes(room);
+          if (decoding.peekVarUint(dec) !== SYNC_STEP1 && room.bytes + held + (dec.arr.length - dec.pos) > o.maxRoomBytes) {
+            log.warn('closing: room full (MAX_ROOM_BYTES)', { room: id, ip, bytes: room.bytes, pending: held, update: dec.arr.length - dec.pos, max: o.maxRoomBytes });
             ws.close(4413, 'room full');
             return;
           }
           const enc = encoding.createEncoder();
           encoding.writeVarUint(enc, MSG_SYNC);
           syncProtocol.readSyncMessage(dec, enc, room.doc, ws);
+          const pending = pendingBytes(room);
+          if (pending > held) room.pendingBy = ws;
+          if (pending > o.maxPendingBytes) {
+            // kept in memory and re-merged on every message: past the bound it's abuse, not a client catching up
+            log.warn('closing: too many updates with missing dependencies (MAX_PENDING_BYTES)', { room: id, ip, pending, max: o.maxPendingBytes });
+            dropPending(room);
+            ws.close(4400, 'malformed message');
+            return;
+          }
           if (encoding.length(enc) > 1) send(ws, encoding.toUint8Array(enc));
         } else if (type === MSG_AWARENESS) {
           awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(dec), ws);
@@ -297,6 +319,7 @@ export async function startServer(opts = {}) {
       const left = (perIp.get(ip) || 1) - 1;
       if (left) perIp.set(ip, left); else perIp.delete(ip);
       if (room.deleted) { log.debug('left', { room: id, ip, code, deleted: true }); return; }   // the doc and awareness are gone
+      if (room.pendingBy === ws) dropPending(room);
       if (ids && ids.size) awarenessProtocol.removeAwarenessStates(room.awareness, [...ids], null);
       if (code === 1009) log.warn('closed: message too big', { room: id, ip });
       log.debug('left', { room: id, ip, code, conns: room.conns.size });

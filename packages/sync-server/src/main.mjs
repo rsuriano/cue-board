@@ -8,6 +8,7 @@
    CORS_ORIGINS (comma-separated app origins allowed to call the HTTP API, e.g. https://cue.bedrocklabs.dev; empty: no
      browser origin is allowed, so rooms can't be created from the app) · MAX_ROOMS (10000: rooms on disk, then 507)
    MAX_ROOM_BYTES (64 MiB: a room's update log; an update that would pass it is refused with 4413)
+   MAX_PENDING_BYTES (4 MiB: updates waiting for a missing dependency, per room, held in memory; past it the sender gets 4400)
    CREATE_PER_HOUR (30: rooms one account may create per hour, a safety net)
    AUTH_PUBLIC_KEY_FILE (auth's session public key, <SESSION_KEY_FILE>.pub from packages/auth; unset: nobody can create
      rooms from the app, everything else works)
@@ -35,7 +36,8 @@ srv = await startServer({
   maxBufferedBytes: num(env.MAX_BUFFERED_BYTES, 8 * 1024 * 1024),
   trustProxy: env.TRUST_PROXY === '1', trustedProxyHops: num(env.TRUSTED_PROXY_HOPS, 1), serveDemo: env.SERVE_DEMO === '1', logLevel: env.LOG_LEVEL,
   corsOrigins: (env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
-  maxRooms: num(env.MAX_ROOMS, 10_000), maxRoomBytes: num(env.MAX_ROOM_BYTES, 64 * 1024 * 1024), createPerHour: num(env.CREATE_PER_HOUR, 30), authPublicKey,
+  maxRooms: num(env.MAX_ROOMS, 10_000), maxRoomBytes: num(env.MAX_ROOM_BYTES, 64 * 1024 * 1024),
+  maxPendingBytes: num(env.MAX_PENDING_BYTES, 4 * 1024 * 1024), createPerHour: num(env.CREATE_PER_HOUR, 30), authPublicKey,
   reportsPerHour: num(env.REPORTS_PER_HOUR, 5), reportsPerDay: num(env.REPORTS_PER_DAY, 200), maxReports: num(env.MAX_REPORTS, 500),
   media: {
     relayRoomBytesPerSec: num(env.RELAY_ROOM_BYTES_PER_SEC, 8 * 1024 * 1024), relayIpBytesPerSec: num(env.RELAY_IP_BYTES_PER_SEC, 4 * 1024 * 1024),
