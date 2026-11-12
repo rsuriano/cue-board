@@ -436,6 +436,8 @@ input[type="checkbox"]{width:var(--icon-lg);height:var(--icon-lg);margin:0;accen
 .mprog{position:absolute;left:0;right:0;bottom:0;height:var(--sp-0-5);background:var(--border-subtle)}
 .mprog b{display:block;height:100%;width:0;background:var(--accent)}
 .mplay,.mtime,.mscrub,.mrot{display:none}
+/* a slate with its own action (Download or Retry for a file that isn't here): the play glyph moves up, clear of it */
+.mframe:has(.slate [data-mact]) .mplay{top:var(--sp-4);margin-top:0}
 
 /* inspector */
 .editor{display:grid;align-content:start;gap:var(--sp-3);min-width:0;min-height:0;overflow:auto;padding:var(--inset-panel);background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
@@ -1054,9 +1056,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .toast{bottom:calc(var(--toolbar-h) + var(--sp-3) + var(--safe-b));max-width:calc(100vw - 2 * var(--gutter));white-space:normal;text-align:center}
   /* on the picture: the time (current / total) on a scrim at the lower edge; a play glyph while paused */
   .mtime{display:block;position:absolute;right:var(--sp-2);bottom:var(--sp-2);z-index:1;padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--scrim);color:var(--ink);font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
-  .mplay{display:grid;place-items:center;position:absolute;left:50%;top:50%;z-index:1;width:var(--hit);height:var(--hit);margin:calc(var(--hit) / -2) 0 0 calc(var(--hit) / -2);border-radius:var(--r-round);background:var(--scrim);color:var(--ink);pointer-events:none}
+  .mplay{display:grid;place-items:center;position:absolute;left:50%;top:50%;z-index:1;width:var(--hit);height:var(--hit);margin:calc(var(--hit) / -2) 0 0 calc(var(--hit) / -2);padding:0;border:0;border-radius:var(--r-round);background:var(--scrim);color:var(--ink);cursor:pointer}
   .mplay .ico{width:var(--icon-tool);height:var(--icon-tool)}
-  .monitor[data-playing] .mplay{opacity:0}
+  .mplay:focus-visible{outline:var(--ring) solid var(--accent)}
+  .monitor[data-playing] .mplay:not(:focus-visible){opacity:0}
 }
 /* a very short window that is not a phone on its side: no layout of its own, the page just scrolls */
 @media not all and (min-width:820px){@media (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.deck{flex:none}.timeline{flex:none;height:200px}.monitor{max-height:34dvh}}}
@@ -1071,8 +1074,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #sideA{display:block!important}
   .monitor,#sideA[hidden] .monitor{position:fixed;inset:0;z-index:var(--z-menu);--hit:44px;width:auto;height:auto;max-height:none;min-height:0;aspect-ratio:auto;border:0;border-radius:0;background:var(--screen);cursor:pointer}
   .mtime{display:block;position:absolute;right:calc(var(--sp-3) + env(safe-area-inset-right,0px));bottom:calc(var(--sp-6) + env(safe-area-inset-bottom,0px));padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--scrim);color:var(--ink);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;pointer-events:none}
-  .mplay{display:grid;place-items:center;position:absolute;left:50%;top:50%;width:var(--hit);height:var(--hit);margin:calc(var(--hit) / -2) 0 0 calc(var(--hit) / -2);border-radius:var(--r-round);background:var(--scrim);color:var(--ink);pointer-events:none}
-  .monitor[data-playing] .mplay{opacity:0}
+  .mplay{display:grid;place-items:center;position:absolute;left:50%;top:50%;width:var(--hit);height:var(--hit);margin:calc(var(--hit) / -2) 0 0 calc(var(--hit) / -2);padding:0;border:0;border-radius:var(--r-round);background:var(--scrim);color:var(--ink);cursor:pointer}
+  .monitor[data-playing] .mplay:not(:focus-visible){opacity:0}
   .mscrub{display:block;position:absolute;left:0;right:0;bottom:0;z-index:2;height:calc(var(--hit) + env(safe-area-inset-bottom,0px));touch-action:none;cursor:ew-resize}
   .mscrub::before,.mscrub b{content:"";position:absolute;left:0;bottom:env(safe-area-inset-bottom,0px);height:var(--sp-1);background:var(--border-strong)}
   .mscrub::before{right:0}
@@ -1200,8 +1203,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       <img id="mimg" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'/%3E" hidden>
       <video id="mvid" muted playsinline preload="auto" hidden></video>
       <div class="slate" id="slate"></div>
-      <!-- phone and the landscape viewer: the picture is the play button, the time sits on it -->
-      <span class="mplay" id="mPlayG" aria-hidden="true"><svg class="ico"><use href="#i-play"/></svg></span><span class="mtime" id="mTime"></span></div>
+      <!-- phone and the landscape viewer: the whole picture plays and pauses (its glyph is the button a screen reader finds), the time sits on it -->
+      <button type="button" class="mplay" id="mPlayG" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg></button><span class="mtime" id="mTime"></span></div>
       <div class="mprog"><b id="mprog"></b></div>
       <div class="mscrub" id="mScrub" role="slider" aria-label="Position in the song" aria-valuemin="0"><b></b></div><span class="mrot" id="mRot" hidden>Rotate to edit</span>
     </div>
@@ -1882,7 +1885,7 @@ function renderSongbar(){
   renderPeek();
 }
 function renderTransport(){
-  const pl=$("play"),pi=playing?"pause":"play";$("play").disabled=!hasAudio;$("monitor").toggleAttribute("data-playing",playing);
+  const pl=$("play"),pi=playing?"pause":"play";$("play").disabled=!hasAudio;$("monitor").toggleAttribute("data-playing",playing);$("mPlayG").setAttribute("aria-label",playing?"Pause":"Play");
   if(pl.dataset.ico!==pi){pl.dataset.ico=pi;pl.innerHTML=ico(pi)+(playing?"Pause":"Play")}
   $("mark").disabled=!cur;$("loop").setAttribute("aria-pressed",String(loop));$("copylist").disabled=$("mCopyl").disabled=!cur;
 }
@@ -3312,7 +3315,7 @@ async function joinFlow(inv){
    A phone on its side gets the viewer only (landMQ): the picture, the time, a scrub bar; nothing to edit with. */
 const phoneMQ=matchMedia("not all and (min-width:820px)"),landMQ=matchMedia("(pointer:coarse) and (orientation:landscape) and (max-height:499.98px)");
 /* a phone on its side can be 820px wide or more: it is still the phone (its state, its Wi-Fi rule), showing the viewer */
-const land=()=>landMQ.matches,phone=()=>phoneMQ.matches||land(),mOnB=()=>side==="b"&&phone();
+const land=()=>landMQ.matches,phone=()=>phoneMQ.matches||land(),mOnB=()=>side==="b"&&phone()&&!land();
 /* Takes side: the monitor shows the picked shot (the take in the cut, its picture, or its slate); the rail keeps it in view */
 function mBSeek(){const s=selSec();if(!mOnB()||!s)return;if(S()[secAt(now())]!==s)seek(s.start);
   const r=$("bList"),c=r.querySelector(".bitem.sel"),l=c?c.offsetLeft-r.offsetLeft:0;if(c&&(l<r.scrollLeft||l+c.offsetWidth>r.scrollLeft+r.clientWidth))r.scrollLeft=l-16}
@@ -3408,17 +3411,20 @@ scroller.addEventListener("scroll",()=>{if(!phone()||land())return;const x=scrol
   if(!editing()&&!mLift&&!mGrip&&!loop){const i=secAt(t);if(S()[i]&&S()[i].id!==selId){selId=S()[i].id;renderStrip();renderEditor()}}
   renderMonitor();mDraw()},{passive:true});
 scroller.addEventListener("touchstart",()=>{mTouch=true},{passive:true});
-["touchend","touchcancel"].forEach(n=>scroller.addEventListener(n,e=>{mTouch=e.touches.length>0;if(e.touches.length<2)mPinch=null;mScrollAt=performance.now()},{passive:true}));
+["touchend","touchcancel"].forEach(n=>scroller.addEventListener(n,e=>{mTouch=e.targetTouches.length>0;if(e.targetTouches.length<2)mPinch=null;mScrollAt=performance.now()},{passive:true}));
 /* pinch: two fingers zoom around their centre (the time under them stays under them; the playhead stays in the middle,
    so the position follows, as with any scroll). Touch events: pointer events stop once the browser pans. Between the
    whole song (Fit) and 400 px/s; taking the gesture here also keeps the page from scrolling or zooming with it */
-const tGap=e=>Math.abs(e.touches[0].clientX-e.touches[1].clientX),tMid=e=>(e.touches[0].clientX+e.touches[1].clientX)/2;
-scroller.addEventListener("touchstart",e=>{if(e.touches.length!==2||!cur||mLift||mGrip)return;if(mPress){clearTimeout(mPress.timer);mPress=null}
-  if(e.cancelable)e.preventDefault();mPinch={gap:Math.max(8,tGap(e)),p:P,t:mTimeAt(tMid(e))}},{passive:false});
+/* targetTouches: both fingers on the timeline (one resting on the picture or the bar is not a pinch) */
+const tGap=e=>Math.abs(e.targetTouches[0].clientX-e.targetTouches[1].clientX),tMid=e=>(e.targetTouches[0].clientX+e.targetTouches[1].clientX)/2;
+scroller.addEventListener("touchstart",e=>{if(e.targetTouches.length!==2||!cur||mLift||mGrip)return;if(mPress){clearTimeout(mPress.timer);mPress=null}
+  if(e.cancelable)e.preventDefault();mPinch={gap:Math.max(8,tGap(e)),p:P,t:playing?null:mTimeAt(tMid(e))}},{passive:false});
+scroller.addEventListener("gesturestart",e=>e.preventDefault());
 /* a lifted shot moves with the finger, not the timeline */
-scroller.addEventListener("touchmove",e=>{if((mLift||mPinch)&&e.cancelable)e.preventDefault();if(!mPinch||e.touches.length!==2)return;
+scroller.addEventListener("touchmove",e=>{if((mLift||mPinch)&&e.cancelable)e.preventDefault();if(!mPinch||e.targetTouches.length!==2)return;
   const cw=scroller.clientWidth,fit=cw/dur(),v=Math.min(400,mPinch.p*tGap(e)/mPinch.gap);mFit=v<=fit;pps=mFit?null:v;renderTimeline();
-  scroller.scrollLeft=Math.round(mPinch.t*P-(tMid(e)-cv.getBoundingClientRect().left)+cw/2)},{passive:false});
+  /* while it plays the song keeps its place: the zoom is around the playhead */
+  if(mPinch.t==null)scroller.scrollLeft=mProg=Math.round(now()*P);else scroller.scrollLeft=Math.round(mPinch.t*P-(tMid(e)-cv.getBoundingClientRect().left)+cw/2)},{passive:false});
 const mTimeAt=clientX=>(scroller.scrollLeft-cv.clientWidth/2+(clientX-cv.getBoundingClientRect().left))/P;
 const mInBand=clientY=>{const y=clientY-cv.getBoundingClientRect().top,b=mBand(cv.clientHeight);return y>=b.top&&y<=b.top+b.h};
 cv.addEventListener("pointerdown",e=>{if(!phone()||!cur||e.button>0||mPinch)return;
@@ -3441,7 +3447,7 @@ cv.addEventListener("pointerup",e=>{if(!phone())return;
 /* the picture: a tap plays or pauses, except on a control in it (the slate's Download / Retry, a link, the viewer's
    scrub bar) and while a cut, a shot or a range handle is being dragged (a second finger must not start the song);
    Enter or Space on a focused button also arrives here as a click */
-$("monitor").addEventListener("click",e=>{if(phone()&&!mBusy()&&!ioDrag&&!e.target.closest("button,a,input,select,textarea,label,[data-mact],#mScrub"))toggle()});
+$("monitor").addEventListener("click",e=>{if(phone()&&!mBusy()&&!ioDrag&&!e.target.closest("button:not(#mPlayG),a,input,select,textarea,label,[data-mact],#mScrub"))toggle()});
 cv.addEventListener("pointercancel",()=>{if(mPress){clearTimeout(mPress.timer);mPress=null}if(mLift)mLiftEnd(false)});
 function mLiftStart(e){const p=mPress;if(!p||!cur)return;const s=S()[secAt(p.t)];if(!s)return;
   mPress=null;try{cv.setPointerCapture(p.pid)}catch(_){}

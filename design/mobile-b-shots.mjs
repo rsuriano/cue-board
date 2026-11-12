@@ -33,7 +33,7 @@ for (const [w, h] of [[390, 844], [390, 667], [430, 932]]) {
   const tag = `${w}x${h}`, { ctx, page, errs } = await H.open([w, h]);
   const shot = async n => { await quiet(page); await sleep(150); await page.screenshot({ path: join(out, `${tag}-${n}.png`) }); };
   await pictures(page);
-  await toShot(page, 6); await shot('1-cut-nothing-selected');
+  await toShot(page, 6); if (await page.isVisible('#mtMore')) await tapTile(page); await shot('1-cut-nothing-selected');
   await tapTile(page); await shot('2-cut-shot-selected');
   await page.tap('#mtMore'); await sleep(350); await shot('3-more-sheet');
   await page.evaluate(() => document.getElementById('mMore').close()); await sleep(200);
@@ -51,7 +51,7 @@ for (const [w, h] of [[390, 844], [390, 667], [430, 932]]) {
   await page.evaluate(() => { const d = document.getElementById('mProj'); d.scrollTop = d.scrollHeight; }); await sleep(200); await shot('8-project-sheet-end');
   await page.tap('#mSong'); await sleep(250); await page.$eval('#mSongOps', e => e.scrollIntoView({ block: 'center' })); await sleep(200); await shot('8-project-sheet-song');
   await page.evaluate(() => { document.getElementById('mProj').close(); const s = document.getElementById('mFrame'); s.value = '9:16'; s.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(400);
-  await toShot(page, 6); await shot('9-vertical-9x16'); await tapTile(page); await shot('9-vertical-9x16-shot-selected');
+  await toShot(page, 6); if (await page.isVisible('#mtMore')) await tapTile(page); await shot('9-vertical-9x16'); await tapTile(page); await shot('9-vertical-9x16-shot-selected');
   await page.tap('#mTabs [data-side="b"]'); await sleep(400); await shot('9-vertical-9x16-takes'); await page.tap('#mTabs [data-side="a"]'); await sleep(300);
   await page.evaluate(() => { const s = document.getElementById('mFrame'); s.value = '16:9'; s.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(300);
   if (w === 390 && h === 844) {
@@ -66,7 +66,9 @@ for (const [w, h] of [[390, 844], [390, 667], [430, 932]]) {
   await page.setInputFiles('#importf', { name: 'many.cueboard.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(many)) });
   await page.waitForFunction(() => /Forty/.test(document.getElementById('projname').textContent), null, { timeout: 15000 }); await sleep(500);
   await page.evaluate(() => { const sc = document.getElementById('tl-scroll'); sc.scrollLeft = Math.round((sc.scrollWidth - sc.clientWidth) * .4); }); await sleep(400);
-  await shot('10-many-shots'); await tapTile(page); await shot('10-many-shots-selected');
+  await shot('10-many-shots');
+  const b = await page.evaluate(() => { const c = document.getElementById('tl').getBoundingClientRect(); return [c.x + c.width / 2 + 30, c.y + window.__CUE_MEDIA_TEST.app.mLayout(c.height).top + 20]; });
+  await page.touchscreen.tap(b[0], b[1]); await sleep(300); await shot('10-many-shots-selected');
   await page.tap('#mTabs [data-side="b"]'); await sleep(400); await shot('10-many-shots-takes');
   await page.tap('#proj'); await sleep(400); await shot('10-many-shots-project-sheet');
   console.log(`${tag}: done${errs.length ? ' · page errors: ' + errs.join(' | ') : ''}`);

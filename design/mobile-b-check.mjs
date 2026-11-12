@@ -40,7 +40,7 @@ for (const [w, h] of SIZES) await guard(`${w}x${h}`, async () => {
   /* ---- 1 · the always-visible controls ---- */
   let c = await controls(page);
   const names = c.filter(x => !x.tl).map(x => x.id).sort().join('|');
-  check(`1 · ${tag}: nothing selected, the controls are the top row (project, Cut, Takes, Report, Settings), Undo and Cut here: 7, plus the picture`, names === 'mtCut|mtUndo|proj|reportb|settingsb|tab-a|tab-b' && await shown(page, '#monitor'), names);
+  check(`1 · ${tag}: nothing selected, the controls are the top row (project, Cut, Takes, Report, Settings), Undo and Cut here: 7, plus the picture (its play glyph is the button)`, names === 'mPlayG|mtCut|mtUndo|proj|reportb|settingsb|tab-a|tab-b' && await shown(page, '#monitor'), names);
   check(`1 · ${tag}: inside the timeline only its own handles (cut grips, the two range handles)`, c.filter(x => x.tl).every(x => /^(grip|mk-in|mk-out)$/.test(x.id)), c.filter(x => x.tl).map(x => x.id).join('|'));
   const gone = await page.evaluate(() => { const v = s => [...document.querySelectorAll(s)].some(e => e.getClientRects().length > 0); const tabs = document.getElementById('mTabs').getBoundingClientRect();
     return { transport: v('.transport,.transport *'), peek: v('.m-peekb'), zoom: v('#zin,#zout,#zfit'), tabsAtBottom: tabs.top > innerHeight / 2, oneRow: tabs.bottom <= document.querySelector('.top').getBoundingClientRect().bottom + 1 && Math.abs(tabs.top + tabs.height / 2 - (document.getElementById('proj').getBoundingClientRect().top + document.getElementById('proj').getBoundingClientRect().height / 2)) < 3 }; });
@@ -53,7 +53,7 @@ for (const [w, h] of SIZES) await guard(`${w}x${h}`, async () => {
   const minTl = h === 844 ? 330 : h === 667 ? 190 : 150;
   check(`7 · ${tag}: the timeline fills the rest, at least ${minTl}px`, tlr && tlr.h >= minTl && Math.abs(tlr.b - tool.y) < 2 && Math.abs(tlr.y - mon.b) < 4, tlr && `${Math.round(tlr.h)}px, monitor ${Math.round(mon.h)}px, bar ${Math.round(tool.h)}px`);
   check(`7 · ${tag}: the bar is 60px (plus the safe area) at the bottom edge`, tool && Math.abs(tool.h - 60) < 1.5 && Math.abs(tool.b - h) < 1, JSON.stringify(tool));
-  if (w === 390 && h === 844) console.log(`MEASURED 390x844: picture ${Math.round(fr.w)}x${Math.round(fr.h)}, timeline ${Math.round(tlr.h)}px, always-visible controls ${c.filter(x => !x.tl).length} (+ the picture)`);
+  if (w === 390 && h === 844) console.log(`MEASURED 390x844: picture ${Math.round(fr.w)}x${Math.round(fr.h)}, timeline ${Math.round(tlr.h)}px, always-visible controls ${c.filter(x => !x.tl && x.id !== 'mPlayG').length} (+ the picture)`);
   await setRatio(page, '9:16'); await sleep(300);
   const fr9 = await rect(page, '#mframe'), tl9 = await rect(page, '.timeline');
   check(`7 · ${tag}: a 9:16 picture is at least 50% of the screen height, the timeline keeps 150px`, fr9.h >= h * .5 && Math.abs(fr9.w / fr9.h - 9 / 16) < .01 && tl9.h >= 150, `${Math.round(fr9.w)}x${Math.round(fr9.h)} = ${Math.round(fr9.h / h * 100)}%, timeline ${Math.round(tl9.h)}px`);
@@ -66,13 +66,21 @@ for (const [w, h] of SIZES) await guard(`${w}x${h}`, async () => {
   const t0 = await timeTxt(), g0 = await glyph(), tm = await rect(page, '#mTime');
   check(`2 · ${tag}: paused, the play glyph is centred on the picture and the time reads current / total on its lower edge (mono, tabular)`, g0 && /^\d+:\d\d\.\d \/ \d+:\d\d\.\d/.test(t0) && tm && tm.b <= fr.b + 1 && tm.y > fr.y + fr.h / 2
     && await page.evaluate(() => { const g = document.getElementById('mPlayG').getBoundingClientRect(), f = document.getElementById('mframe').getBoundingClientRect(), cs = getComputedStyle(document.getElementById('mTime'));
-      return Math.abs(g.left + g.width / 2 - (f.left + f.width / 2)) < 2 && Math.abs(g.top + g.height / 2 - (f.top + f.height / 2)) < 2 && /Mono/.test(cs.fontFamily) && /tabular-nums/.test(cs.fontVariantNumeric); }), t0);
+      return Math.abs(g.left + g.width / 2 - (f.left + f.width / 2)) < 2 && Math.abs(g.top + g.height / 2 - (f.top + f.height / 2)) < 2 && /Mono/.test(cs.fontFamily) && /tabular-nums/.test(cs.fontVariantNumeric) && document.getElementById('mPlayG').getAttribute('aria-label') === 'Play'; }), t0);
   await page.touchscreen.tap(mon.x + mon.w / 2, mon.y + mon.h * .3); await sleep(900);
   let s = await state(page); const t1 = await timeTxt(), g1 = await glyph();
-  check(`2 · ${tag}: a tap on the picture plays; the time moves; the glyph is gone`, !s.paused && t1 !== t0 && !g1, `${t0} → ${t1}`);
+  check(`2 · ${tag}: a tap on the picture plays; the time moves; the glyph is gone`, !s.paused && t1 !== t0 && !g1 && await page.$eval('#mPlayG', e => e.getAttribute('aria-label')) === 'Pause', `${t0} → ${t1}`);
   await page.touchscreen.tap(mon.x + mon.w / 2, mon.y + mon.h * .3); await sleep(500);
   s = await state(page);
   check(`2 · ${tag}: a second tap pauses; the glyph is back`, s.paused && await glyph());
+
+  // a slate with its own control (as the Download of a clip that isn't on this phone): the glyph stays clear of it
+  const mact = await page.evaluate(() => { document.getElementById('slate').insertAdjacentHTML('beforeend', '<div class="miss" style="grid-column:1/-1"><span>Clip not on this device yet</span> <button type="button" class="btn small" data-mact="none" id="tMact">Download</button></div>');
+    const b = document.getElementById('tMact').getBoundingClientRect(), g = document.getElementById('mPlayG').getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
+    return { top: document.elementFromPoint(x, y).id, apart: g.bottom <= b.top || g.top >= b.bottom || g.right <= b.left || g.left >= b.right, x, y, inFrame: b.bottom <= document.getElementById('mframe').getBoundingClientRect().bottom }; });
+  await page.touchscreen.tap(mact.x, mact.y); await sleep(300);
+  check(`2 · ${tag}: a control in the slate keeps its tap: the play glyph is clear of it, and tapping it does not play`, mact.top === 'tMact' && mact.apart && mact.inFrame && (await state(page)).paused, JSON.stringify(mact));
+  await page.evaluate(() => document.querySelector('#slate .miss').remove());
 
   /* ---- 3 · the bar's three states ---- */
   await toShot(page, 2); await tapTile(page);
@@ -284,7 +292,7 @@ for (const [lw, lh] of ONLY && ONLY !== 'land' ? [] : [[844, 390], [667, 375]]) 
   check(`hostile · ${tag}: rotated with the Project sheet open: the sheet is closed`, !v.sheet);
   check(`10 · ${tag}: "Rotate to edit" shows, then goes after 2 s`, v.hint === 'Rotate to edit' && await sleep(2400).then(() => page.evaluate(() => { const e = document.getElementById('mRot'); return !e.getClientRects().length || +getComputedStyle(e).opacity === 0; })), String(v.hint));
   const ctl = await controls(page);
-  check(`10 · ${tag}: nothing to edit with: the only control is the scrub bar`, ctl.map(x => x.id).join('|') === 'mScrub', ctl.map(x => x.id).join('|'));
+  check(`10 · ${tag}: nothing to edit with: the only controls are the picture's play button and the scrub bar`, ctl.map(x => x.id).join('|') === 'mPlayG|mScrub', ctl.map(x => x.id).join('|'));
   await page.touchscreen.tap(lw / 2, lh / 2); await sleep(800); let s = await state(page);
   const tt = await page.evaluate(() => { const e = document.getElementById('mTime'), r = e.getBoundingClientRect(); return { t: e.textContent, on: r.width > 0 && r.bottom <= innerHeight && r.right <= innerWidth }; });
   check(`10 · ${tag}: a tap plays; the time is overlaid`, !s.paused && s.t > before.t + .3 && tt.on && /\//.test(tt.t), `${before.t.toFixed(2)} → ${s.t.toFixed(2)} ${tt.t}`);
