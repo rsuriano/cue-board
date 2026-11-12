@@ -16,7 +16,8 @@
    MIN_FREE_DISK_BYTES (1 GiB: under this much free space on DATA_DIR's disk, new rooms get 507 disk_full and updates 4413)
    AUTH_PUBLIC_KEY_FILE (auth's session public key, <SESSION_KEY_FILE>.pub from packages/auth; unset: nobody can create
      rooms from the app, everything else works)
-   REPORTS_PER_HOUR (5: problem reports per IP per hour) · REPORTS_PER_DAY (200: from everyone) · MAX_REPORTS (500 kept)
+   REPORTS_PER_HOUR (5: problem reports per IP per hour) · REPORTS_PER_IP_PER_DAY (10) · REPORTS_PER_DAY (2000: from
+     everyone; with the per-IP day it takes 200 addresses to use it up) · MAX_REPORTS (500 kept)
    SERVE_DEMO=1 (serve demo/ at /demo/, dev only) · LOG_LEVEL (info) */
 import { startServer } from './server.mjs';
 import { createLogger } from './log.mjs';
@@ -43,7 +44,7 @@ srv = await startServer({
   maxRooms: num(env.MAX_ROOMS, 10_000), maxRoomBytes: num(env.MAX_ROOM_BYTES, 64 * 1024 * 1024),
   maxPendingBytes: num(env.MAX_PENDING_BYTES, 4 * 1024 * 1024), createPerHour: num(env.CREATE_PER_HOUR, 30), authPublicKey,
   maxRoomsPerAccount: num(env.MAX_ROOMS_PER_ACCOUNT, 20), minFreeDiskBytes: num(env.MIN_FREE_DISK_BYTES, 1024 * 1024 * 1024),
-  reportsPerHour: num(env.REPORTS_PER_HOUR, 5), reportsPerDay: num(env.REPORTS_PER_DAY, 200), maxReports: num(env.MAX_REPORTS, 500),
+  reportsPerHour: num(env.REPORTS_PER_HOUR, 5), reportsPerIpPerDay: num(env.REPORTS_PER_IP_PER_DAY, 10), reportsPerDay: num(env.REPORTS_PER_DAY, 2000), maxReports: num(env.MAX_REPORTS, 500),
   media: {
     relayRoomBytesPerSec: num(env.RELAY_ROOM_BYTES_PER_SEC, 8 * 1024 * 1024), relayIpBytesPerSec: num(env.RELAY_IP_BYTES_PER_SEC, 4 * 1024 * 1024),
     relayMaxTransferBytes: num(env.RELAY_MAX_TRANSFER_BYTES, RELAY_MAX_FILE),

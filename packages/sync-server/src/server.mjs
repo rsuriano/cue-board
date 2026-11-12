@@ -41,7 +41,7 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
  *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, maxPendingBytes?: number, maxAwarenessIds?: number, maxAwarenessBytes?: number, maxRoomsPerAccount?: number, minFreeDiskBytes?: number, createPerHour?: number,
- *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
+ *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerIpPerDay?: number, reportsPerDay?: number, maxReports?: number,
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
 export async function startServer(opts = {}) {
@@ -50,7 +50,7 @@ export async function startServer(opts = {}) {
     compactEvery: 500, compactIntervalMs: 60_000, unloadAfterMs: 30_000, pingMs: 30_000, maxBufferedBytes: 8 * 1024 * 1024,
     trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info',
     corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, maxPendingBytes: 4 * 1024 * 1024, maxAwarenessIds: 4, maxAwarenessBytes: 8 * 1024, createPerHour: 30,
-    maxRoomsPerAccount: 20, minFreeDiskBytes: 1024 * 1024 * 1024, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
+    maxRoomsPerAccount: 20, minFreeDiskBytes: 1024 * 1024 * 1024, reportsPerHour: 5, reportsPerIpPerDay: 10, reportsPerDay: 2000, maxReports: 500, ...opts,
   };
   const log = o.log || createLogger(o.logLevel), store = new ProjectStore(o.dataDir, log);
   /** @type {Map<string, Room>} */ const rooms = new Map();
@@ -207,7 +207,7 @@ export async function startServer(opts = {}) {
     store, log, dataDir: o.dataDir, corsOrigins: o.corsOrigins, maxRooms: o.maxRooms, createPerHour: o.createPerHour,
     maxRoomsPerAccount: o.maxRoomsPerAccount, lowDisk,
     authPublicKey: o.authPublicKey || null, clientIp, kickRoom, deleteRoom,
-    reportsPerHour: o.reportsPerHour, reportsPerDay: o.reportsPerDay, maxReports: o.maxReports,
+    reportsPerHour: o.reportsPerHour, reportsPerIpPerDay: o.reportsPerIpPerDay, reportsPerDay: o.reportsPerDay, maxReports: o.maxReports,
     initDoc: name => { const d = new Y.Doc(); initProject(d, { title: name }); return d; },
   });
 
