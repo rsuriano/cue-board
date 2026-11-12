@@ -1,6 +1,8 @@
 // @ts-check
 /* On-disk layout, one folder per project under DATA_DIR:
-     <id>/project.json   { id, name, created, tokens: [{ sha256, created }], owner?: { sha256, created, code? } }
+     <id>/project.json   { id, name, created, tokens: [{ sha256, created }], owner?: { sha256, created, code? }, account? }
+                         account: sha256 of the creator's account (email), on rooms created from the app since the
+                         security fixes of 2026-11-12; the per-account room limits count it. Older rooms have none.
                          invite tokens and the owner token are stored hashed only. `owner` is absent on rooms made by the
                          CLI before owners existed (legacy rooms): they join and sync as before, nobody can manage them
                          until the CLI attaches an owner (bin/attach-owner.mjs). `code` is how the creator got their
@@ -39,10 +41,10 @@ export class ProjectStore {
 
   /** Create a project folder, seeded with `doc`'s state. Returns the room id and a first invite token; with
       `owner: true` also an owner token (the creator's, see setOwner). `code` is the redeemed code's label, kept for the operator. */
-  createProject(/** @type {string} */ name, /** @type {Y.Doc} */ doc, /** @type {{ owner?: boolean, code?: string }} */ o = {}) {
+  createProject(/** @type {string} */ name, /** @type {Y.Doc} */ doc, /** @type {{ owner?: boolean, code?: string, account?: string }} */ o = {}) {
     const id = randomBytes(12).toString('base64url');
     fs.mkdirSync(this.folder(id));
-    this.#writeProject(id, { id, name, created: new Date().toISOString(), tokens: [] });
+    this.#writeProject(id, { id, name, created: new Date().toISOString(), tokens: [], ...(o.account ? { account: o.account } : {}) });
     this.compact(id, doc);
     const token = this.addToken(id);
     return o.owner ? { id, token, ownerToken: this.setOwner(id, o.code) } : { id, token };
@@ -96,6 +98,23 @@ export class ProjectStore {
     let n = 0;
     for (const e of fs.readdirSync(this.dir, { withFileTypes: true })) if (e.isDirectory() && ROOM_ID.test(e.name) && fs.existsSync(path.join(this.dir, e.name, 'project.json'))) n++;
     return n;
+  }
+
+  /** Rooms on disk, and those created by `account` (all, and since `since` ms): read from project.json each time, so
+      the per-account limits hold across restarts. Rooms without `account` (legacy, CLI) count for nobody. */
+  census(/** @type {string} */ account, since = 0) {
+    let rooms = 0, mine = 0, recent = 0;
+    for (const e of fs.readdirSync(this.dir, { withFileTypes: true })) {
+      if (!e.isDirectory() || !ROOM_ID.test(e.name)) continue;
+      let p;
+      try { p = JSON.parse(fs.readFileSync(path.join(this.dir, e.name, 'project.json'), 'utf8')); } catch (err) {
+        if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') continue;
+        rooms++; continue;   // unreadable: still a room on disk, owned by nobody we can tell
+      }
+      rooms++;
+      if (account && p?.account === account) { mine++; if (Date.parse(p.created) >= since) recent++; }
+    }
+    return { rooms, mine, recent };
   }
 
   /** Size of a room's update log on disk (0 when there is none yet). */

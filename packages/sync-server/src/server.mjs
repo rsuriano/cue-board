@@ -7,7 +7,8 @@
    Close codes: 4400 malformed message · 4401 bad token (also sent to everyone in a room whose invite link the owner
                 replaced) · 4404 unknown room · 4410 room deleted by its owner · 4413 room full: an update would take
                 the room's log past MAX_ROOM_BYTES, so it was not applied (updates held back for a missing
-                dependency count too; past MAX_PENDING_BYTES of those the sender gets 4400) · 4429 too many connections from this IP
+                dependency count too; past MAX_PENDING_BYTES of those the sender gets 4400), or the server's free disk
+                is under MIN_FREE_DISK_BYTES (reason 'server disk full') · 4429 too many connections from this IP
                 4500 room unavailable (unreadable project.json or updates.bin, or the room is degraded: an append to its log
                 failed and it refuses joins until a compaction gets its state on disk; see the error log)
                 Message type 10 is media signaling and relay (media-relay.mjs, docs/media-p2p.md); a type-10 frame the
@@ -39,7 +40,7 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
- *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, maxPendingBytes?: number, maxAwarenessIds?: number, maxAwarenessBytes?: number, createPerHour?: number,
+ *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, maxPendingBytes?: number, maxAwarenessIds?: number, maxAwarenessBytes?: number, maxRoomsPerAccount?: number, minFreeDiskBytes?: number, createPerHour?: number,
  *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
@@ -48,7 +49,8 @@ export async function startServer(opts = {}) {
     port: 3300, host: '127.0.0.1', dataDir: './data', maxMessageBytes: 2 * 1024 * 1024, maxConnsPerIp: 16,
     compactEvery: 500, compactIntervalMs: 60_000, unloadAfterMs: 30_000, pingMs: 30_000, maxBufferedBytes: 8 * 1024 * 1024,
     trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info',
-    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, maxPendingBytes: 4 * 1024 * 1024, maxAwarenessIds: 4, maxAwarenessBytes: 8 * 1024, createPerHour: 30, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
+    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, maxPendingBytes: 4 * 1024 * 1024, maxAwarenessIds: 4, maxAwarenessBytes: 8 * 1024, createPerHour: 30,
+    maxRoomsPerAccount: 20, minFreeDiskBytes: 1024 * 1024 * 1024, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
   };
   const log = o.log || createLogger(o.logLevel), store = new ProjectStore(o.dataDir, log);
   /** @type {Map<string, Room>} */ const rooms = new Map();
@@ -181,8 +183,25 @@ export async function startServer(opts = {}) {
     return store.deleteProject(id);
   }
 
+  /** Free space on DATA_DIR's disk is under minFreeDiskBytes: new rooms and updates are refused (507 disk_full, 4413)
+      instead of filling the disk. Read at most every 5 s (every update asks); logged once per low spell. A failed
+      statfs counts as not low, so a filesystem without it never blocks the server. */
+  let diskAt = 0, diskLow = false;
+  function lowDisk() {
+    const t = Date.now();
+    if (t - diskAt < 5000) return diskLow;
+    diskAt = t;
+    let free = Infinity;
+    try { const s = fs.statfsSync(store.dir); free = s.bavail * s.bsize; } catch { /* not low */ }
+    const low = free < o.minFreeDiskBytes;
+    if (low && !diskLow) log.error('free disk below MIN_FREE_DISK_BYTES: refusing new rooms and updates', { free, min: o.minFreeDiskBytes });
+    if (!low && diskLow) log.info('free disk back above MIN_FREE_DISK_BYTES', { free, min: o.minFreeDiskBytes });
+    return (diskLow = low);
+  }
+
   const api = createApi({
     store, log, dataDir: o.dataDir, corsOrigins: o.corsOrigins, maxRooms: o.maxRooms, createPerHour: o.createPerHour,
+    maxRoomsPerAccount: o.maxRoomsPerAccount, lowDisk,
     authPublicKey: o.authPublicKey || null, clientIp, kickRoom, deleteRoom,
     reportsPerHour: o.reportsPerHour, reportsPerDay: o.reportsPerDay, maxReports: o.maxReports,
     initDoc: name => { const d = new Y.Doc(); initProject(d, { title: name }); return d; },
@@ -284,6 +303,12 @@ export async function startServer(opts = {}) {
           if (decoding.peekVarUint(dec) !== SYNC_STEP1 && room.bytes + held + (dec.arr.length - dec.pos) > o.maxRoomBytes) {
             log.warn('closing: room full (MAX_ROOM_BYTES)', { room: id, ip, bytes: room.bytes, pending: held, update: dec.arr.length - dec.pos, max: o.maxRoomBytes });
             ws.close(4413, 'room full');
+            return;
+          }
+          // same answer when the server's disk is low: the app keeps the edit and stops until a reload
+          if (decoding.peekVarUint(dec) !== SYNC_STEP1 && lowDisk()) {
+            log.warn('closing: free disk below MIN_FREE_DISK_BYTES', { room: id, ip });
+            ws.close(4413, 'server disk full');
             return;
           }
           const enc = encoding.createEncoder();
