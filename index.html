@@ -435,6 +435,9 @@ input[type="checkbox"]{width:var(--icon-lg);height:var(--icon-lg);margin:0;accen
 .slate.cap p{display:none}
 .mprog{position:absolute;left:0;right:0;bottom:0;height:var(--sp-0-5);background:var(--border-subtle)}
 .mprog b{display:block;height:100%;width:0;background:var(--accent)}
+.mplay,.mtime,.mscrub,.mrot{display:none}
+/* a slate with its own action (Download or Retry for a file that isn't here): the play glyph moves up, clear of it */
+.mframe:has(.slate [data-mact]) .mplay{top:var(--sp-4);margin-top:0}
 
 /* inspector */
 .editor{display:grid;align-content:start;gap:var(--sp-3);min-width:0;min-height:0;overflow:auto;padding:var(--inset-panel);background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
@@ -872,19 +875,19 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 /* "not all and (min-width:820px)", not (max-width:819px): with zoom or a fractional DPR the width can be 819.5px */
 @media not all and (min-width:820px){
   :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-input-mono:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
-    --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --tabbar-h:52px; --toolbar-h:60px; --peek-h:60px;
-    /* the timeline's rows: the ruler (the zoom on its right), the shot strip, the waveform. A fixed height; the preview takes the rest */
-    --tl-ruler-h:var(--hit); --tl-strip-h:56px; --tl-wave-h:clamp(72px,12dvh,120px);
-    --tl-h:calc(var(--tl-ruler-h) + var(--sp-1) + var(--tl-strip-h) + var(--sp-2) + var(--tl-wave-h) + var(--sp-2) + 2 * var(--hairline));
+    --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --toolbar-h:60px;
+    /* the timeline takes the height the picture and the bar leave; its ruler row is one touch target tall */
+    --tl-ruler-h:var(--hit); --mon-max:56dvh;
     --grip-w:var(--sp-3); --icon-tool:var(--sp-5); --z-sheet:14;
     --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px); --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px)}
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
   .app{display:flex;flex-direction:column;gap:0;height:100dvh;max-width:none;padding:0}
-  /* app bar: the project's name (it opens the Projects sheet: who's here, files, the room), then Report a problem and
-     Settings, icon only. The files indicator and the bubbles live in that sheet; the indicator's dot moves to the name.
+  /* the top row: the project's name (it opens the Project sheet: projects, output, who's here, files, the room), the
+     Cut / Takes switch, then Report a problem and Settings, icon only. The files indicator and the bubbles live in that
+     sheet; the indicator's dot moves to the name, and a save error puts a red one there while it lasts.
      The files panel stays in the DOM (a bottom sheet here, opened from the sheet's Files row): its wrapper has no box */
-  .top{display:flex;flex:none;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
+  .top{display:flex;flex:none;align-items:center;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-t));margin:0;padding:var(--safe-t) calc(var(--sp-2) + var(--safe-r)) 0 calc(var(--sp-2) + var(--safe-l))}
   .brand,#renamep,.projops,.songops,.top .sides,#joinb,#roomb,#status,#presence,#mstat,.mlabel,#reportb::after,#settingsb::after{display:none!important}
   .top .collab,.top .mstat{display:contents}
   .tleft{flex:1;min-width:0}
@@ -898,34 +901,39 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #projname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #proj:hover,#proj[aria-expanded="true"]{border-color:transparent}
   /* the files indicator's dot, by the chevron: hollow when a file is missing here, red when something went wrong */
-  #proj[data-att]::after{content:"";position:absolute;top:var(--sp-2);right:var(--sp-1);width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round)}
+  #proj[data-att]::after,#proj[data-saveerr]::after{content:"";position:absolute;top:var(--sp-2);right:var(--sp-1);width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round)}
+  /* Cut / Takes: a segmented switch. Navigation, so neutral: the chosen side is ink on a raised surface, never orange.
+     Each side is a full 44px target; the transparent border keeps the raised pill inside the outline */
+  .m-tabs{flex:none;display:flex;height:var(--hit);border-radius:var(--r-md);box-shadow:inset 0 0 0 var(--hairline) var(--border-control)}
+  .m-tabs button{all:unset;box-sizing:border-box;min-width:var(--hit);height:var(--hit);padding:0 var(--sp-3);border:var(--sp-1) solid transparent;border-radius:var(--r-md);background-clip:padding-box;font:var(--w-medium) var(--text-md)/var(--lh-control) var(--font-ui);color:var(--ink-3);text-align:center;cursor:pointer}
+  .m-tabs [aria-selected="true"]{background-color:var(--surface-3);color:var(--ink);font-weight:var(--w-semibold)}
+  .m-tabs button:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
   #proj[data-att="off"]::after,#mFiles[data-att="off"] #mFilesV::before{box-shadow:inset 0 0 0 var(--hairline) var(--ink-2)}
-  #proj[data-att="err"]::after,#mFiles[data-att="err"] #mFilesV::before{background:var(--error)}
+  #proj[data-att="err"]::after,#proj[data-saveerr]::after,#mFiles[data-att="err"] #mFilesV::before{background:var(--error)}
   #mFiles[data-att] #mFilesV{display:inline-flex;align-items:center;gap:var(--sp-1-5)}
   #mFiles[data-att] #mFilesV::before{content:"";flex:none;width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round)}
-  .strip,.keys,#mark,#copylist,.transport>.grow,.btn kbd,#ed-empty,#f-imglbl,#f-imgmsg{display:none!important}
+  .strip,.keys,.transport,#ed-empty,#f-imglbl,#f-imgmsg{display:none!important}
   #sideA,#sideB{flex:1;min-height:0}
   #sideA{display:flex;flex-direction:column;gap:0}
-  .sideB{display:grid;align-content:start;overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-3) calc(var(--gutter) + var(--safe-r)) var(--sp-6) calc(var(--gutter) + var(--safe-l))}
+  .sideB{display:grid;align-content:start;overflow-y:auto;overscroll-behavior:contain;padding:var(--sp-3) calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l))}
   .songbar{flex:none;margin:var(--sp-2) var(--gutter) 0}
-  /* the monitor: full width and all the height the deck leaves; the frame sits in it in the project's ratio.
-     aspect-ratio:auto: the stacked layout's 16/9 (above) would make it wider than the screen here */
-  .stage{display:block;flex:1 1 0;min-height:0}
-  .monitor{height:100%;min-height:0;aspect-ratio:auto;border:0;border-radius:0}
-  .slate{padding:var(--sp-4)}
-  .slate.cap{padding:var(--sp-8) var(--sp-4) var(--sp-3)}
-  .slate .t{font-size:var(--text-xl);line-height:var(--lh-xl)}
-  .slate p{font-size:var(--text-md);line-height:var(--lh-md);-webkit-line-clamp:2}
-  /* transport: Play, the time, Loop and Speed in one row; zoom sits on the right of the timeline's ruler row */
-  .deck{position:relative;flex:none;display:flex;flex-direction:column;gap:0}
-  .transport{flex:none;flex-wrap:nowrap;gap:var(--sp-2);padding:var(--sp-1) calc(var(--gutter) + var(--safe-r)) var(--sp-1) calc(var(--gutter) + var(--safe-l))}
-  .transport .tgroup{display:contents}
-  #play{min-width:0;padding:0 var(--sp-4)}
-  #tc{flex:1;min-width:0}
-  #speed{width:auto}
-  .transport .seg{position:absolute;right:calc(var(--sp-2) + var(--safe-r));bottom:calc(var(--tl-h) - var(--hairline) - var(--tl-ruler-h));z-index:3}
+  /* the monitor: the frame in the project's ratio, as large as the width allows (16:9: the full width, no bars; a tall
+     frame: up to --mon-max of the screen). The picture is the play button: the time sits on its lower edge, a play
+     glyph in its centre while paused. On the Takes side the same monitor stays on top, smaller for a tall frame */
+  .stage{display:block;flex:none}
+  .monitor{width:100%;height:auto;min-height:0;max-height:var(--mon-max);aspect-ratio:var(--fr,1.7778);border:0;border-radius:0;cursor:pointer;-webkit-user-select:none;user-select:none}
+  #sideA[hidden]{display:block!important;flex:none}
+  #sideA[hidden]>:not(.stage){display:none!important}
+  #sideA[hidden] .monitor{max-height:34dvh}
+  .slate,.slate.cap{align-content:end;padding:var(--sp-4) var(--sp-4) var(--sp-8)}
+  .slate.cap{padding-top:var(--sp-8)}
+  .slate .t{overflow:hidden;font-size:var(--text-xl);line-height:var(--lh-xl);text-wrap:nowrap;text-overflow:ellipsis}
+  .slate p{font-size:var(--text-md);line-height:var(--lh-md);-webkit-line-clamp:1}
+  .slate .shot{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* no transport row: Play is the picture, Loop and Speed are in the shot's More sheet, zoom is a pinch */
+  .deck{position:relative;flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:0}
   /* the timeline: a native horizontal scroller under a fixed playhead. The canvas is the viewport's size */
-  .timeline{flex:none;height:var(--tl-h);border-width:var(--hairline) 0;border-radius:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .timeline{flex:1 1 0;min-height:0;border-width:var(--hairline) 0;border-radius:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
   #tl-scroll{position:static;display:flex;height:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;scrollbar-width:none;touch-action:pan-x}
   #tl-scroll::-webkit-scrollbar{display:none}
   #tl{position:sticky;left:0;flex:none;cursor:default;touch-action:pan-x}
@@ -937,35 +945,27 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .grip[aria-pressed="true"]::before{background:var(--ink);box-shadow:none}
   .grip:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
   .m-ghost{position:fixed;left:0;top:0;z-index:var(--z-drag);pointer-events:none;padding:var(--sp-2) var(--sp-3);background:var(--surface-3);border:var(--hairline) solid var(--accent);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-semibold) var(--text-sm)/var(--lh-sm) var(--font-ui);white-space:nowrap}
-  /* the selected shot in one row (opens its details), then its tools */
-  .m-peek{flex:none;min-height:var(--peek-h);border-top:var(--hairline) solid var(--border-subtle);background:var(--surface-1)}
-  .m-peekb{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:var(--sp-0-5) var(--sp-3);width:100%;min-height:var(--peek-h);padding:var(--sp-2) calc(var(--gutter) + var(--safe-r)) var(--sp-2) calc(var(--gutter) + var(--safe-l));cursor:pointer}
-  .m-peekb:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
-  .m-peekb .pt{min-width:0;overflow:hidden;font-weight:var(--w-semibold);text-overflow:ellipsis;white-space:nowrap}
-  .m-peekb .pt em{font-style:normal;font-weight:var(--w-regular);color:var(--ink-3)}
-  .m-peekb .ico{color:var(--ink-3)}
-  .m-peekb .pn{grid-column:2/-1;min-width:0;overflow:hidden;color:var(--ink-2);font-size:var(--text-sm);line-height:var(--lh-sm);text-overflow:ellipsis;white-space:nowrap}
+  /* a notice while there is no song; then the one bar. Its tools depend on the selection (data-mode): nothing selected,
+     Undo and Cut here; a shot, six tools; a picked cut, the nudge row */
+  .m-peek:empty{display:none}
+  .m-peek{flex:none;border-bottom:var(--hairline) solid var(--border-subtle);background:var(--surface-1)}
   .m-empty{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) calc(var(--gutter) + var(--safe-r)) var(--sp-2) calc(var(--gutter) + var(--safe-l));color:var(--ink-2)}
   .m-empty>span{flex:1 1 12em}
-  .m-tool{flex:none;display:flex;min-height:var(--toolbar-h);padding:0 var(--safe-r) 0 var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
-  .m-tool>button{all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;display:grid;justify-items:center;align-content:center;gap:var(--sp-1);padding:var(--sp-1) 0;font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-ui);color:var(--ink-2);white-space:nowrap;cursor:pointer}
+  .m-tool{flex:none;box-sizing:border-box;display:flex;min-height:calc(var(--toolbar-h) + var(--safe-b));padding:0 var(--safe-r) var(--safe-b) var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
+  .m-tool>button{all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;display:grid;justify-items:center;align-content:center;gap:var(--sp-1);min-height:calc(var(--toolbar-h) - var(--hairline));padding:var(--sp-1) 0;font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-ui);color:var(--ink-2);white-space:nowrap;cursor:pointer}
   .m-tool>button .ico{width:var(--icon-tool);height:var(--icon-tool)}
   .m-tool>button:active{background:var(--surface-2);color:var(--ink)}
   .m-tool>button:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
   .m-tool>button:disabled{opacity:var(--o-disabled);cursor:not-allowed}
-  .m-tool>button[data-armed]{color:var(--error);background:var(--error-subtle)}
+  .m-tool[data-mode="none"] #mtUndo{flex:0 0 calc(var(--toolbar-h) + var(--sp-3))}
+  .m-tool[data-mode="none"] #mtCut{display:flex;align-items:center;justify-content:flex-start;gap:var(--sp-2);padding:0 var(--sp-3);font-size:var(--text-md);font-weight:var(--w-semibold);color:var(--ink)}
+  .m-tip{flex:0 1 auto;min-width:0;align-self:center;overflow:hidden;padding:0 var(--gutter) 0 var(--sp-2);color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm);text-overflow:ellipsis;white-space:nowrap}
   .m-read{flex:2.4 1 0;min-width:0;display:grid;align-content:center;padding:0 var(--sp-2);border-inline:var(--hairline) solid var(--border-subtle);color:var(--ink-3);font-size:var(--text-tiny);line-height:var(--lh-sm)}
   .m-read b{font:var(--w-medium) var(--text-xl)/var(--lh-xl) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
   .m-read span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .flip .ico{transform:scaleX(-1)}
-  /* tabs: navigation, so neutral */
-  .m-tabs{flex:none;display:flex;padding:0 var(--safe-r) var(--safe-b) var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
-  .m-tabs button{all:unset;box-sizing:border-box;flex:1;display:grid;justify-items:center;align-content:center;gap:var(--sp-0-5);height:var(--tabbar-h);font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-ui);color:var(--ink-3);cursor:pointer}
-  .m-tabs button .ico{width:var(--icon-tool);height:var(--icon-tool)}
-  .m-tabs [aria-selected="true"]{color:var(--ink);font-weight:var(--w-semibold)}
-  .m-tabs button:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}
-  /* shot details: the inspector as a bottom sheet. Half height under the transport (the preview and Play stay in
-     view), full height while a field has the focus; it ends at the keyboard (--kb, from visualViewport) */
+  /* shot details: the inspector as a bottom sheet. Half height under the picture (it stays in view, and a tap on it
+     still plays), full height while a field has the focus; it ends at the keyboard (--kb, from visualViewport) */
   .editor{position:fixed;left:0;right:0;top:var(--sheet-top,40dvh);bottom:var(--kb,0px);z-index:var(--z-sheet);display:none;gap:var(--sp-3);padding:0 calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l));overflow:auto;overscroll-behavior:contain;border-width:var(--hairline) 0 0;border-color:var(--border-strong);border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-overlay)}
   body.m-ed .editor{display:grid}
   body.m-ed.m-full .editor{top:var(--safe-t)}
@@ -975,6 +975,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .sh-top h3{margin:0 0 0 var(--sp-2);font:var(--w-semibold) var(--text-xl)/var(--lh-xl) var(--font-ui);letter-spacing:var(--track-tight)}
   #mShotChips .chip[aria-pressed="true"]{background:var(--accent-subtle);border-color:var(--accent-border);color:var(--accent)}
   .chip{height:var(--h-sm);font-size:var(--text-sm)}
+  /* small buttons: the hit area is the full 44px, their hairline border included */
+  .btn.small::after{inset:calc((var(--h-sm) - var(--hit)) / 2 - var(--hairline)) 0}
   /* side B: a rail of shots, the header stacked, frames and takes in one column; no generation on the phone */
   /* a scroll container's automatic minimum height is 0, so in this height-bound scrolling grid an auto row collapses
      to it and the header draws under the rail: every row is its content's height */
@@ -1004,9 +1006,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .dlg{padding:var(--sp-2) var(--safe-r) var(--inset-dialog) var(--safe-l)}
   .setTabs{margin-inline:calc((var(--gutter) + var(--safe-l)) * -1) calc((var(--gutter) + var(--safe-r)) * -1)}
   .dlg .row:has(.field){grid-template-columns:minmax(0,1fr)}
-  .sh{display:grid;gap:var(--gap-block);padding:0 var(--safe-r) var(--sp-6) var(--safe-l)}
+  .sh{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--gap-block);padding:0 var(--safe-r) var(--sp-6) var(--safe-l)}
   .sheet .sh-top{padding-top:var(--sp-1)}
-  .m-list{display:grid}
+  .m-list{display:grid;grid-template-columns:minmax(0,1fr)}
   .m-pi{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-3);min-height:var(--hit);color:var(--ink-2);cursor:pointer}
   .m-pi .ico{visibility:hidden;color:var(--ink)}
   .m-pi[aria-current="true"]{color:var(--ink)}
@@ -1014,10 +1016,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-pi>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .m-pi .muted{flex:none}
   .m-pi:focus-visible,.m-row:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring));border-radius:var(--r-xs)}
-  .m-acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:var(--sp-2)}
-  .m-room{display:grid;gap:var(--sp-3);padding-top:var(--gap-block);border-top:var(--hairline) solid var(--border-subtle)}
+  .m-sec,.m-sub{display:grid;grid-template-columns:minmax(0,1fr)}
+  .m-sh{margin:0;padding:var(--sp-1) 0;font:var(--w-semibold) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3)}
+  .m-sub{padding-left:calc(var(--icon-md) + var(--sp-3))}
+  #mRoom{gap:var(--sp-1)}
   .m-rh{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2)}
-  .m-rh h3{margin:0;font:var(--w-semibold) var(--text-md)/var(--lh-md) var(--font-ui)}
   .m-people{display:grid;gap:var(--sp-1);margin:0;padding:0;list-style:none}
   .m-people li{display:flex;align-items:center;gap:var(--sp-3);min-height:var(--hit)}
   .m-people .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1027,30 +1030,58 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-state[data-k="err"] b{color:var(--error)}
   .m-saveerr{margin:0;padding:var(--inset-card);border:var(--hairline) solid var(--error);border-radius:var(--r-md);color:var(--error)}
   .m-state p{margin:0}
-  .m-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit);border-top:var(--hairline) solid var(--border-subtle);cursor:pointer}
-  .m-row>span:first-child{flex:1;font-weight:var(--w-medium)}
+  .m-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:var(--sp-3);position:relative;height:calc(var(--hit) + var(--sp-1));cursor:pointer}
+  .m-row>span:first-of-type{flex:1 0 auto;font-weight:var(--w-medium)}
+  .m-row>.muted{flex:0 1 auto;min-width:0;overflow:hidden;text-align:right;text-overflow:ellipsis;white-space:nowrap}
+  .m-row:disabled{opacity:var(--o-disabled);cursor:not-allowed}
+  .m-row[aria-pressed="true"]>.muted{color:var(--ink)}
   .m-row .ico{color:var(--ink-3)}
-  .m-out{display:grid}
-  #mFrame{width:auto;height:var(--h-sm);padding:0 var(--sp-3);background-color:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-input)}
+  /* the frame row is a native select laid over the whole row: a tap anywhere on it opens the picker */
+  #mFrame{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:var(--text-input);cursor:pointer}
   .rn-frame .linkbtn,.rn-done .linkbtn{min-height:var(--hit);min-width:var(--hit)}
   .rn-frame .linkbtn,.rn-done .linkbtn{display:inline-flex;align-items:center;justify-content:center}
   /* in/out marks: 44px grips on the ruler row, over the canvas that draws them */
   .mkgrip{all:unset;position:absolute;top:0;width:var(--hit);height:var(--tl-ruler-h);margin-left:calc(var(--hit) / -2);pointer-events:auto;touch-action:none;cursor:ew-resize;z-index:2}
-  /* Clear sits under the handles: one passing behind it stays draggable */
-  #mkClear{position:absolute;top:0;left:calc(var(--sp-2) + var(--safe-l));z-index:1;min-width:var(--hit);height:var(--tl-ruler-h)}
-  .m-del,#mDelsong{justify-self:start}
-  .m-del:hover,.m-del[data-armed],#mDelsong[data-armed]{color:var(--error);background:var(--error-subtle);border-color:transparent}
+  /* Clear: at the ruler's right end, in the row; the canvas draws no label under it. It sits under the handles: one
+     passing behind it stays draggable */
+  #mkClear{position:absolute;top:0;right:var(--safe-r);border-radius:0;border-width:0 0 0 var(--hairline);z-index:1;min-width:var(--hit);height:var(--tl-ruler-h)}
+  /* Delete: last and apart, under a rule */
+  .m-del{border-top:var(--hairline) solid var(--border-subtle)}
+  .m-del[data-armed],.m-del[data-armed] .ico,#mDelsong[data-armed]{color:var(--error)}
   .mpanel{position:fixed;top:auto;right:0;bottom:0;left:0;width:auto;max-width:none;max-height:calc(100dvh - var(--safe-t) - var(--appbar-h));padding:var(--inset-panel) calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l));border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-overlay)}
   .mp-head{grid-template-columns:minmax(0,1fr) auto;column-gap:var(--sp-2)}
   #fClose{grid-column:2;grid-row:1 / span 2;align-self:start}
   .lims{grid-template-columns:minmax(0,1fr)}
   .mlist{max-height:none}
-  .toast{bottom:calc(var(--toolbar-h) + var(--tabbar-h) + var(--sp-3) + var(--safe-b));max-width:calc(100vw - 2 * var(--gutter));white-space:normal;text-align:center}
+  .toast{bottom:calc(var(--toolbar-h) + var(--sp-3) + var(--safe-b));max-width:calc(100vw - 2 * var(--gutter));white-space:normal;text-align:center}
+  /* on the picture: the time (current / total) on a scrim at the lower edge; a play glyph while paused */
+  .mtime{display:block;position:absolute;right:var(--sp-2);bottom:var(--sp-2);z-index:1;padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--scrim);color:var(--ink);font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+  .mplay{display:grid;place-items:center;position:absolute;left:50%;top:50%;z-index:1;width:var(--hit);height:var(--hit);margin:calc(var(--hit) / -2) 0 0 calc(var(--hit) / -2);padding:0;border:0;border-radius:var(--r-round);background:var(--scrim);color:var(--ink);cursor:pointer}
+  .mplay .ico{width:var(--icon-tool);height:var(--icon-tool)}
+  .mplay:focus-visible{outline:var(--ring) solid var(--accent)}
+  .monitor[data-playing] .mplay:not(:focus-visible){opacity:0}
 }
-@media not all and (min-width:820px){@media (max-height:699px){.m-peek{display:none}}}
-/* landscape (or any very short window): no layout of its own, the page just scrolls */
-@media not all and (min-width:820px){@media (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.stage{flex:none}.monitor{height:auto;max-height:34dvh;aspect-ratio:16/9;margin-inline:auto}}}
-@media not all and (min-width:820px){@media (prefers-reduced-motion:no-preference){body.m-ed .editor{animation:rise var(--dur-base) var(--ease-out)}}}
+/* a very short window that is not a phone on its side: no layout of its own, the page just scrolls */
+@media not all and (min-width:820px){@media (max-height:479px){html,body{overflow:auto}.app{height:auto;min-height:100dvh}#sideA{flex:none}.deck{flex:none}.timeline{flex:none;height:200px}.monitor{max-height:34dvh}}}
+@media not all and (min-width:820px){@media (prefers-reduced-motion:no-preference){body.m-ed .editor{animation:rise var(--dur-base) var(--ease-out)}.mplay{transition:opacity var(--dur-fast) var(--ease-out)}}}
+/* a phone on its side (a coarse pointer, landscape, under 500px tall; 844px wide is past the phone layout, so this
+   stands on its own): the viewer. The monitor fills the screen, the frame fitted in it; a tap plays or pauses, the
+   time sits on it, a thin bar along the bottom edge scrubs. Nothing to edit with: turning back restores the screen */
+@media (pointer:coarse) and (orientation:landscape) and (max-height:499.98px){
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  .top,.deck,.strip,.keys,.songbar,.editor,#sideB,#mPeek,#mTool,.mprog,.mpanel{display:none!important}
+  #sideA{display:block!important}
+  .monitor,#sideA[hidden] .monitor{position:fixed;inset:0;z-index:var(--z-menu);--hit:44px;width:auto;height:auto;max-height:none;min-height:0;aspect-ratio:auto;border:0;border-radius:0;background:var(--screen);cursor:pointer}
+  .mtime{display:block;position:absolute;right:calc(var(--sp-3) + env(safe-area-inset-right,0px));bottom:calc(var(--sp-6) + env(safe-area-inset-bottom,0px));padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--scrim);color:var(--ink);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;pointer-events:none}
+  .mplay{display:grid;place-items:center;position:absolute;left:50%;top:50%;width:var(--hit);height:var(--hit);margin:calc(var(--hit) / -2) 0 0 calc(var(--hit) / -2);padding:0;border:0;border-radius:var(--r-round);background:var(--scrim);color:var(--ink);cursor:pointer}
+  .monitor[data-playing] .mplay:not(:focus-visible){opacity:0}
+  .mscrub{display:block;position:absolute;left:0;right:0;bottom:0;z-index:2;height:calc(var(--hit) + env(safe-area-inset-bottom,0px));touch-action:none;cursor:ew-resize}
+  .mscrub::before,.mscrub b{content:"";position:absolute;left:0;bottom:env(safe-area-inset-bottom,0px);height:var(--sp-1);background:var(--border-strong)}
+  .mscrub::before{right:0}
+  .mscrub b{width:0;background:var(--accent)}
+  .mrot:not([hidden]){display:block;position:absolute;left:50%;top:calc(var(--sp-3) + env(safe-area-inset-top,0px));transform:translateX(-50%);padding:var(--sp-1) var(--sp-3);border-radius:var(--r-sm);background:var(--scrim);color:var(--ink);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);pointer-events:none}
+}
 </style>
 </head>
 <body>
@@ -1084,6 +1115,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-flag" viewBox="0 0 16 16"><path d="M3.5 14V2.5M3.5 3h8.5l-2 3.25 2 3.25H3.5"/></symbol>
   <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
   <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3 6.5h7.25a3 3 0 0 1 0 6H8M5.5 4L3 6.5 5.5 9"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 16 16"><path d="M10.5 2l2.5 2.5L10.5 7M13 4.5H5.5A2.5 2.5 0 0 0 3 7v.5M5.5 14L3 11.5 5.5 9M3 11.5h7.5A2.5 2.5 0 0 0 13 9v-.5"/></symbol>
+  <symbol id="i-frame" viewBox="0 0 16 16"><path d="M2.5 4.5h11v7h-11z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><path d="M5.5 5.5h7v7h-7zM10.5 5.5v-2h-7v7h2"/></symbol>
 </defs></svg>
 <div class="app">
   <header class="top">
@@ -1125,6 +1159,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
         <input id="song" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac,.ogg" hidden>
       </div>
     </div>
+    <!-- phone: the side switch, in the same row as the project's name (desktop has .sides) -->
+    <nav id="mTabs" class="m-only m-tabs" role="tablist" aria-label="Side"><button type="button" role="tab" data-side="a" aria-selected="true">Cut</button><button type="button" role="tab" data-side="b" aria-selected="false">Takes</button></nav>
     <nav class="sides" role="tablist" aria-label="Side"><button type="button" class="sidetab" role="tab" data-side="a" aria-selected="true">Side A<span class="lbl">&nbsp;· Cut</span></button><button type="button" class="sidetab" role="tab" data-side="b" aria-selected="false">Side B<span class="lbl">&nbsp;· Takes</span></button></nav>
     <div class="tzone tright">
       <div class="tgroup collab">
@@ -1166,8 +1202,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <div class="monitor" id="monitor"><div class="mframe" id="mframe">
       <img id="mimg" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'/%3E" hidden>
       <video id="mvid" muted playsinline preload="auto" hidden></video>
-      <div class="slate" id="slate"></div></div>
+      <div class="slate" id="slate"></div>
+      <!-- phone and the landscape viewer: the whole picture plays and pauses (its glyph is the button a screen reader finds), the time sits on it -->
+      <button type="button" class="mplay" id="mPlayG" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg></button><span class="mtime" id="mTime"></span></div>
       <div class="mprog"><b id="mprog"></b></div>
+      <div class="mscrub" id="mScrub" role="slider" aria-label="Position in the song" aria-valuemin="0"><b></b></div><span class="mrot" id="mRot" hidden>Rotate to edit</span>
     </div>
 
     <aside class="editor" id="editor" aria-label="Shot details">
@@ -1197,6 +1236,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     </aside>
   </section>
 
+  <!-- phone: a notice while there is no song (hidden on desktop) -->
+  <div id="mPeek" class="m-only m-peek"></div>
   <section class="deck">
   <div class="transport">
     <div class="tgroup">
@@ -1224,9 +1265,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 
   <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="mSpace" class="m-only"></div><div id="ph" class="ph"></div></div><div id="mGrips" class="m-only"></div><button type="button" id="mkClear" class="btn small m-only" aria-label="Clear selection" hidden>Clear</button></div>
   </section>
-  <!-- phone: the selected shot in one row, then its tools at thumb height (hidden on desktop) -->
-  <div id="mPeek" class="m-only m-peek"></div>
-  <div id="mTool" class="m-only m-tool" role="toolbar" aria-label="Shot tools"></div>
+  <!-- phone: the one bar; its tools depend on the selection (hidden on desktop) -->
+  <div id="mTool" class="m-only m-tool" role="toolbar" aria-label="Tools"></div>
   <div class="strip" id="strip"></div>
   <p class="keys" id="keys"><span><kbd>Space</kbd> play</span><span><kbd>M</kbd> cut</span><span><kbd>L</kbd> loop</span><span><kbd>←</kbd><kbd>→</kbd> step</span><button type="button" class="linkbtn" id="keysb" aria-haspopup="dialog"><kbd>?</kbd> All shortcuts</button></p>
   </div>
@@ -1302,7 +1342,6 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       </section>
     </div>
   </div>
-  <nav id="mTabs" class="m-only m-tabs" role="tablist" aria-label="Side"><button type="button" role="tab" data-side="a" aria-selected="true"><svg class="ico" aria-hidden="true"><use href="#i-wave"/></svg>Cut</button><button type="button" role="tab" data-side="b" aria-selected="false"><svg class="ico" aria-hidden="true"><use href="#i-film"/></svg>Takes</button></nav>
 </div>
 <dialog id="dlgKeys" aria-labelledby="kTitle"><div class="dlg" id="kBody" tabindex="-1">
   <div class="khead"><h3 id="kTitle">Shortcuts</h3><button type="button" id="kClose" class="btn ghost icon" aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
@@ -1340,26 +1379,33 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     </dl></section>
   </div>
 </div></dialog>
-<!-- phone: the project, the song and the room in one sheet (the app bar's title opens it) -->
+<!-- phone: the project, its output and the room in one sheet (the top row's project name opens it). Rows are built
+     in the script (mRow): icon, label, then a value and a chevron on the right -->
 <dialog id="mProj" class="sheet" aria-labelledby="mProjH"><div class="sh">
-  <div class="sh-top"><span class="grab" aria-hidden="true"></span><h3 id="mProjH">Projects</h3><span class="grow"></span><button type="button" class="btn ghost icon" data-close aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="sh-top"><span class="grab" aria-hidden="true"></span><h3 id="mProjH">Project</h3><span class="grow"></span><button type="button" class="btn ghost icon" data-close aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
   <p class="m-saveerr" id="mSaveErr" role="alert" hidden></p>
-  <div class="m-list" id="mProjList" role="group" aria-label="Projects"></div>
-  <div class="m-acts"><button type="button" class="btn" id="mNew">New</button><button type="button" class="btn" id="mRename">Rename</button><button type="button" class="btn" id="mImport">Import</button><button type="button" class="btn" id="mExport">Export</button></div>
-  <div class="m-acts"><button type="button" class="btn" id="mSong">Load song</button><button type="button" class="btn ghost" id="mDelsong" hidden><span>Remove song</span></button></div>
-  <div class="m-out"><label class="m-row" for="mFrame"><span>Frame</span><select id="mFrame"></select></label>
-    <button type="button" class="m-row" id="mRender" aria-haspopup="dialog"><span>Render video</span><span class="muted">MP4</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button></div>
-  <section class="m-room" id="mRoom" hidden>
-    <div class="m-rh"><h3>Collaboration</h3><span class="muted" id="mRoomN"></span></div>
+  <section class="m-sec" aria-labelledby="mShP"><h4 class="m-sh" id="mShP">Projects</h4>
+    <div class="m-list" id="mProjList" role="group" aria-label="Projects"></div>
+    <i data-row="mNew|plus|New project"></i><i data-row="mImport|import|Import project file"></i></section>
+  <section class="m-sec" aria-labelledby="mShT"><h4 class="m-sh" id="mShT">This project</h4>
+    <i data-row="mRename|pencil|Rename||1"></i><i data-row="mSong|wave|Song|mSongV|1"></i>
+    <div class="m-sub" id="mSongOps" hidden><i data-row="mSongRep|swap|Replace song"></i><i data-row="mDelsong|x|Remove song"></i></div>
+    <label class="m-row" id="mFrameRow" for="mFrame"><svg class="ico" aria-hidden="true"><use href="#i-frame"/></svg><span>Frame</span><span class="muted" id="mFrameV"></span><svg class="ico" data-chev aria-hidden="true"><use href="#i-chev"/></svg><select id="mFrame" aria-label="Frame"></select></label></section>
+  <section class="m-sec" aria-labelledby="mShO"><h4 class="m-sh" id="mShO">Output</h4>
+    <i data-row="mRender|film|Render video|=MP4|1"></i><i data-row="mCopy|copy|Copy shot list"></i><i data-row="mExport|export|Save project file"></i></section>
+  <section class="m-sec" id="mRoom" aria-labelledby="mShC" hidden>
+    <div class="m-rh"><h4 class="m-sh" id="mShC">Collaboration</h4><span class="muted" id="mRoomN"></span></div>
     <ul class="m-people" id="mPeople"></ul>
     <div class="m-state" id="mState"><b id="mStateT"></b><p class="muted" id="mStateTip"></p></div>
-    <button type="button" class="m-row" id="mFiles"><span>Files and downloads</span><span class="muted" id="mFilesV"></span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
-    <button type="button" class="m-row" id="mRoomb" aria-haspopup="dialog"><span>This room</span><span class="muted">Invite link, leave</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
-    <button type="button" class="btn" id="mJoin"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Collaborate</button>
-  </section>
-  <button type="button" class="m-row" id="mCopy"><span>Copy shot list</span><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+    <i data-row="mFiles|sync|Files and downloads|mFilesV|1"></i><i data-row="mRoomb|users|This room|=Invite link, leave|1"></i><i data-row="mJoin|users|Collaborate||1"></i></section>
   <p class="hint" id="mInstall" hidden>Add Cue Board to your Home Screen (Share, then Add to Home Screen) to keep your projects on this phone. In a browser tab, iOS may clear them after a week without a visit.</p>
-  <button type="button" class="btn ghost m-del" id="mDelp"><span>Delete project</span></button>
+  <i data-row="mDelp|trash|Delete project|=Asks again"></i>
+</div></dialog>
+<!-- phone: the rare actions for the selected shot (the bar's More opens it); Delete shot last and apart -->
+<dialog id="mMore" class="sheet" aria-labelledby="mMoreH"><div class="sh">
+  <div class="sh-top"><span class="grab" aria-hidden="true"></span><h3 id="mMoreH"></h3><span class="grow"></span><button type="button" class="btn ghost icon" data-close aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="m-sec"><i data-row="mmLoop|loop|Loop this shot|mmLoopV"></i><i data-row="mmSpeed|play|Playback speed|mmSpeedV"></i></div>
+  <i data-row="mmDel|trash|Delete shot|=Asks again"></i>
 </div></dialog>
 <dialog id="dlgSize"><form class="dlg" method="dialog">
   <h3 id="szTitle">Download this take?</h3>
@@ -1469,6 +1515,10 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 <script>
 (function(){
 const $ = id => document.getElementById(id);
+/* the phone sheets' rows, written as <i data-row="id|icon|label|value|chevron">: an icon, the label, then a value
+   ("=text", or the id of a span the script fills) and a chevron on the right. One shape for every row */
+document.querySelectorAll("i[data-row]").forEach(i=>{const[id,ic,l,v,ch]=i.dataset.row.split("|"),u=(n,a="")=>`<svg class="ico"${a} aria-hidden="true"><use href="#i-${n}"/></svg>`;
+  i.outerHTML=`<button type="button" class="m-row${/^(mDelp|mmDel)$/.test(id)?" m-del":""}" id="${id}">${u(ic)}<span>${l}</span>${v?`<span class="muted"${v[0]==="="?">"+v.slice(1):` id="${v}">`}</span>`:""}${ch?u("chev"," data-chev"):""}</button>`});
 /* icons come from the <symbol> sprite at the top of <body> */
 const ico = n => `<svg class="ico" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const NEXT_LABEL = `Last frame${ico("arrow-right")}next shot`;
@@ -1520,7 +1570,7 @@ function renderSaved(){const s=$("status"),r=SYNC_URL&&cur&&cset.rooms[cur.id]?r
   else if(r==="syncing"){k="busy";t="Syncing…";tip="Saved in this browser. Connecting to the room…"}
   else{k="local";t="Saved locally";tip="Saved in this browser. Your changes go to the room once it can be reached again."}
   s.dataset.k=k;s.title=tip;s.querySelector(".lbl").textContent=t;s.querySelector("use").setAttribute("href",k==="err"?"#i-alert":k==="busy"?"#i-more":"#i-check");
-  const m=$("mSaveErr");m.hidden=!saveErr;m.textContent=saveErr?saveTip(saveErr):""}
+  $("proj").toggleAttribute("data-saveerr",!!saveErr);const m=$("mSaveErr");m.hidden=!saveErr;m.textContent=saveErr?saveTip(saveErr):""}
 
 /* media: blobs in IndexedDB, shown through object URLs cached per session */
 const mediaCache=new Map();
@@ -1693,7 +1743,7 @@ function renderFrame(){const r=ratioOf(cur),[w,h]=RATIOS[r];$("monitor").style.s
   /* the same choice in two places: radio items under Frame in More (desktop), a select in the phone's Projects sheet */
   const box=$("frameItems"),s=$("mFrame"),ks=Object.keys(RATIOS);
   if(!s.options.length){s.innerHTML=ks.map(k=>`<option>${k}</option>`).join("");box.insertAdjacentHTML("beforeend",ks.map(k=>`<button type="button" class="mi" role="menuitemradio" tabindex="-1" data-ratio="${k}">${ico("check")}<span>${k}</span></button>`).join(""))}
-  s.value=r;s.disabled=!cur;box.querySelectorAll("[data-ratio]").forEach(b=>{b.setAttribute("aria-checked",String(b.dataset.ratio===r));b.disabled=!cur});
+  s.value=r;s.disabled=!cur;$("mFrameV").textContent=r;box.querySelectorAll("[data-ratio]").forEach(b=>{b.setAttribute("aria-checked",String(b.dataset.ratio===r));b.disabled=!cur});
   $("renderb").disabled=!cur;rnDraw()}
 function setRatio(v){if(!cur||!RATIOS.hasOwnProperty(v)||v===ratioOf(cur))return;hRec("frame "+v,()=>{cur.ratio=v});scheduleSave();renderFrame();if(side==="b")renderFrames()}
 $("mFrame").onchange=e=>setRatio(e.target.value);
@@ -1835,7 +1885,7 @@ function renderSongbar(){
   renderPeek();
 }
 function renderTransport(){
-  const pl=$("play"),pi=playing?"pause":"play";$("play").disabled=!hasAudio;
+  const pl=$("play"),pi=playing?"pause":"play";$("play").disabled=!hasAudio;$("monitor").toggleAttribute("data-playing",playing);$("mPlayG").setAttribute("aria-label",playing?"Pause":"Play");
   if(pl.dataset.ico!==pi){pl.dataset.ico=pi;pl.innerHTML=ico(pi)+(playing?"Pause":"Play")}
   $("mark").disabled=!cur;$("loop").setAttribute("aria-pressed",String(loop));$("copylist").disabled=$("mCopyl").disabled=!cur;
 }
@@ -1878,7 +1928,7 @@ function tlLabel(g,num,title,room){
   if(lo>=2)return num+"  "+title.slice(0,lo).trimEnd()+"…";
   return g.measureText(num).width<=room?num:"";
 }
-function placePlayhead(){if(phone()){$("tc").textContent=fmt(now());mSync();mDraw();return}ph.style.transform=`translateX(${now()*P}px)`;$("tc").textContent=fmt(now())}
+function placePlayhead(){if(phone()){$("tc").textContent=fmt(now());mTimeTxt();mSync();mDraw();return}ph.style.transform=`translateX(${now()*P}px)`;$("tc").textContent=fmt(now())}
 /* cards are patched in place when the order is unchanged, so a collaborator's keystroke doesn't reload every thumbnail */
 function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
@@ -1957,13 +2007,13 @@ audio.addEventListener("ended",()=>{playing=false;renderTransport()});
 function tick(){
   if(!playing||!cur)return;
   const t=audio.currentTime,s=S();
-  if(loop){const i=s.findIndex(x=>x.id===selId);if(i>=0){const a=s[i].start,b=secEnd(i);if(t>=b-.03||t<a-.3)audio.currentTime=a}}
+  if(loop||mOnB()){const i=s.findIndex(x=>x.id===selId);if(i>=0){const a=s[i].start,b=secEnd(i);if(t>=b-.03||t<a-.3)audio.currentTime=a}}
   else if(!editing()){const i=secAt(t);if(s[i].id!==selId){selId=s[i].id;renderStrip();renderEditor();renderTimeline();scrollCard()}}
   placePlayhead();renderMonitor();
   if(!phone()){const x=t*P;if(x<scroller.scrollLeft||x>scroller.scrollLeft+scroller.clientWidth-40)scroller.scrollLeft=Math.max(0,x-40)}
   raf=requestAnimationFrame(tick);
 }
-function setLoop(v){loop=v;renderTransport();toast(loop?"Looping this shot":"Loop off")}
+function setLoop(v){loop=v;renderTransport();mTimeTxt();toast(loop?"Looping this shot":"Loop off")}
 function scrollCard(){const c=$("strip").querySelector(".card.sel");if(c){const st=$("strip");const l=c.offsetLeft-st.offsetLeft;if(l<st.scrollLeft||l+c.offsetWidth>st.scrollLeft+st.clientWidth)st.scrollLeft=l-20}}
 function select(id,doSeek){selId=id;const s=selSec();if(doSeek&&s)seek(s.start);renderStrip();renderEditor();renderTimeline();renderMonitor(true);scrollCard()}
 function addMarker(){
@@ -2012,7 +2062,7 @@ scroller.addEventListener("wheel",e=>{
 
 /* ---------- controls ---------- */
 $("play").onclick=toggle;$("mark").onclick=addMarker;$("loop").onclick=()=>setLoop(!loop);
-$("speed").onchange=e=>{audio.playbackRate=+e.target.value};
+$("speed").onchange=e=>{audio.playbackRate=+e.target.value;mTimeTxt()};
 $("zin").onclick=()=>{pps=Math.min(400,(pps==null?P:pps)*1.6);renderTimeline()};
 $("zout").onclick=()=>{const cw=scroller.clientWidth;let v=(pps==null?P:pps)/1.6;pps=v*dur()<=cw?null:v;renderTimeline()};
 $("zfit").onclick=()=>{pps=null;renderTimeline()};
@@ -2430,7 +2480,7 @@ function renderB(){
   if(!cur||!S().length){$("bEmpty").hidden=false;$("bMain").hidden=true;$("bList").innerHTML="";return}
   $("bEmpty").hidden=true;$("bMain").hidden=false;
   if(!selSec())selId=S()[0].id;
-  renderBList();renderBShot();renderBHead();
+  renderBList();renderBShot();renderBHead();mBSeek();
 }
 function renderBHead(){
   if(!cur)return;
@@ -2520,7 +2570,7 @@ function tickElapsed(){document.querySelectorAll("[data-since]").forEach(x=>{con
 setInterval(()=>{if(side==="b")tickElapsed()},1000);
 
 /* ---------- B interactions ---------- */
-$("bList").addEventListener("click",e=>{const b=e.target.closest(".bitem");if(!b)return;selId=b.dataset.id;renderBList();renderBShot()});
+$("bList").addEventListener("click",e=>{const b=e.target.closest(".bitem");if(!b)return;selId=b.dataset.id;renderBList();renderBShot();mBSeek()});
 $("bPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;hText(fieldLabel("vidPrompt",s),s,"vidPrompt",e.target.value);scheduleSave(true);updateEst()});
 $("bChips").addEventListener("click",e=>{const c=e.target.closest("[data-add]");if(!c)return;const ta=$("bPrompt"),add=c.dataset.add;
   ta.value=ta.value.trim()?ta.value.replace(/\s*$/,"")+" "+add:add;ta.dispatchEvent(new Event("input"));ta.focus()});
@@ -3256,11 +3306,22 @@ async function joinFlow(inv){
 }
 
 /* ================= PHONE: below 820px (docs/mobile/PLAN.md) =================
-   Same DOM and handlers. The timeline is a native horizontal scroller under a fixed playhead: scrolling is seeking.
+   Same DOM and handlers, arranged as an editor (docs/specs/mobile-redesign-b.md): one top row (the project's name opens
+   the Project sheet, the Cut / Takes switch, Report and Settings), the picture (a tap plays or pauses, the time on it),
+   the timeline, and one bar whose tools depend on the selection. The timeline is a native horizontal scroller under a
+   fixed playhead: scrolling is seeking, a pinch zooms, a double tap on the ruler fits the song.
    The canvas is the viewport's size and redrawn on scroll. Cuts have 44px grips (drag to trim, tap for ±0.1 s);
-   holding a shot lifts it (drop as on desktop: middle swaps, an edge slides in). The inspector is a bottom sheet, the
-   bar's project name opens the Project sheet, and the selected shot gets a peek row and a toolbar at thumb height. */
-const phoneMQ=matchMedia("not all and (min-width:820px)"),phone=()=>phoneMQ.matches;
+   holding a shot lifts it (drop as on desktop: middle swaps, an edge slides in). The inspector is a bottom sheet.
+   A phone on its side gets the viewer only (landMQ): the picture, the time, a scrub bar; nothing to edit with. */
+const phoneMQ=matchMedia("not all and (min-width:820px)"),landMQ=matchMedia("(pointer:coarse) and (orientation:landscape) and (max-height:499.98px)");
+/* a phone on its side can be 820px wide or more: it is still the phone (its state, its Wi-Fi rule), showing the viewer */
+const land=()=>landMQ.matches,phone=()=>phoneMQ.matches||land(),mOnB=()=>side==="b"&&phone()&&!land();
+/* Takes side: the monitor shows the picked shot (the take in the cut, its picture, or its slate); the rail keeps it in view */
+function mBSeek(){const s=selSec();if(!mOnB()||!s)return;if(S()[secAt(now())]!==s)seek(s.start);
+  const r=$("bList"),c=r.querySelector(".bitem.sel"),l=c?c.offsetLeft-r.offsetLeft:0;if(c&&(l<r.scrollLeft||l+c.offsetWidth>r.scrollLeft+r.clientWidth))r.scrollLeft=l-16}
+/* on the picture: current / total, and what changes how it plays (a loop, a speed other than 1×); the viewer's scrub bar */
+function mTimeTxt(){const t=now(),d=dur(),r=audio.playbackRate||1;$("mTime").textContent=cur?fmt(t)+" / "+fmt(d)+(loop?" · loop":"")+(r!==1?" · "+r+"×":""):"";
+  const sb=$("mScrub");sb.firstChild.style.width=Math.min(100,t/Math.max(.01,d)*100)+"%";sb.setAttribute("aria-valuetext",fmt(t))}
 const standalone=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
 let wifiOnly=false;
 const onWifi=()=>{const c=navigator.connection;return!!c&&/^(wifi|ethernet)$/.test(c.type||"")};
@@ -3273,7 +3334,9 @@ function sizeAsk(title,text,go){const d=$("dlgSize");$("szTitle").textContent=ti
   d.returnValue="";d.showModal();return new Promise(r=>d.addEventListener("close",()=>r(d.returnValue==="ok"),{once:true}))}
 
 /* ---------- timeline ---------- */
-let mProg=null,mTouch=false,mScrollAt=0,mFit=false,mGrip=null,mCutId="",mMode="",mLift=null,mPress=null;
+let mProg=null,mTouch=false,mScrollAt=0,mFit=false,mGrip=null,mCutId="",mMode="",mLift=null,mPress=null,mPick="",mPinch=null,mRulerAt=0;
+/* mPick: the shot the user tapped (its tools are in the bar, its tile has the orange edge). While it is set it follows
+   the selection (a scroll, playback, Cut here); it is dropped when that shot goes away or is tapped again */
 /* the picked cut is kept by the id of the shot it starts (a collaborator's insert before it doesn't move the pick), resolved here */
 function mCutI(){const i=mCutId?S().findIndex(x=>x.id===mCutId):-1;return i>0?i:-1}
 const mBusy=()=>!!((mGrip&&mGrip.moved)||mLift);
@@ -3287,12 +3350,12 @@ function renderTimelineM(){
   P=pps!=null?pps:mFit?fit:Math.max(fit,12);W=Math.round(d*P);$("mSpace").style.width=W+"px";
   const H=scroller.clientHeight,dpr=window.devicePixelRatio||1;
   if(cv.width!==Math.round(cw*dpr)||cv.height!==Math.round(H*dpr)){cv.style.width=cw+"px";cv.style.height=H+"px";cv.width=Math.round(cw*dpr);cv.height=Math.round(H*dpr)}
-  mSync();mDraw();
+  mSync();mTimeTxt();mDraw();
 }
 /* the scroll position is the time, except while a finger (or its fling) moves it */
 function mSync(){if(!phone()||mTouch||mLift||performance.now()-mScrollAt<200)return;const x=Math.round(now()*P);
   if(Math.abs(scroller.scrollLeft-x)>1){mProg=x;scroller.scrollLeft=x}}
-/* the rows, as --tl-h in the CSS: a 44px ruler that holds the zoom, the shot strip, the waveform */
+/* the rows: a 44px ruler, the shot strip, and the waveform in what is left (its bars capped, so a tall timeline stays calm) */
 const tlBox=document.querySelector(".timeline"),MRU=44,mBand=H=>{const top=MRU+4,h=Math.max(44,Math.min(56,H-top-8-72-8));return{top,h,wave:top+h+8,waveH:H-8-(top+h+8)}};
 function mDraw(){
   if(!phone()||!cv.width)return;const cw=cv.clientWidth,H=cv.clientHeight,dpr=window.devicePixelRatio||1,g=cv.getContext("2d");
@@ -3300,9 +3363,10 @@ function mDraw(){
   const off=scroller.scrollLeft-cw/2,X=t=>t*P-off,d=dur(),RU=MRU,b=mBand(H),t0=Math.max(0,off/P),t1=Math.min(d,(off+cw)/P);
   /* the ruler spans the whole width, before the song's start and after its end too: no empty column beside the centre playhead */
   g.fillStyle=T["--tl-ruler"];g.fillRect(0,0,cw,RU);
+  const clr=$("mkClear");clr.hidden=!cur||(io.in==null&&io.out==null);const rEnd=cw-(clr.hidden?0:clr.offsetWidth);
   const st=[1,2,5,10,15,30,60,120].find(s=>s*P>=64)||120;
   g.font="500 11px 'JetBrains Mono', monospace";g.textBaseline="middle";g.textAlign="left";g.lineWidth=1;
-  for(let t=Math.floor(t0/st)*st;t<=t1+1e-6;t+=st){const x=Math.round(X(t))+.5;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
+  for(let t=Math.floor(t0/st)*st;t<=t1+1e-6;t+=st){const x=Math.round(X(t))+.5;if(x+4+g.measureText(fmtS(t)).width>rEnd)break;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
   if(cur)ioDraw(g,X,RU);
   /* the selection's handles: 44px buttons on the ruler row, always there; an unset one rests at its end of the song,
      drawn dim (the cuts' grips are in #mGrips, on the strip) */
@@ -3310,10 +3374,9 @@ function mDraw(){
     if(!b){b=document.createElement("button");b.type="button";b.className="mkgrip m-only";b.dataset.mk=k;b.setAttribute("aria-label",k==="in"?"Selection start":"Selection end");tlBox.appendChild(b)}
     b.hidden=!cur;if(!cur)continue;const x=Math.round(X(io[k]??(k==="in"?0:d))),s=k==="in"?1:-1;b.style.left=x+"px";
     if(io[k]==null){g.fillStyle=T["--tl-label"];g.fillRect(x-1,0,2,RU);g.fillRect(s>0?x:x-6,0,6,2);g.fillRect(s>0?x:x-6,RU-2,6,2)}}
-  $("mkClear").hidden=!cur||(io.in==null&&io.out==null);
   const grips=[];
-  if(cur){const s=S(),mid=b.wave+(H-8-b.wave)/2,wh=(H-8-b.wave)/2;
-    s.forEach((x,i)=>{const a=X(x.start),e=X(secEnd(i));if(e<0||a>cw)return;const sel=x.id===selId,lift=mLift&&mLift.id===x.id;
+  if(cur){const s=S(),mid=b.wave+(H-8-b.wave)/2,wh=Math.min(56,(H-8-b.wave)/2);
+    s.forEach((x,i)=>{const a=X(x.start),e=X(secEnd(i));if(e<0||a>cw)return;const sel=!!mPick&&x.id===selId,lift=mLift&&mLift.id===x.id;
       g.fillStyle=sel?T["--tl-region-sel"]:(i%2?T["--tl-region-b"]:T["--tl-region-a"]);g.fillRect(a,RU,e-a,H-RU);
       g.save();g.globalAlpha=lift?.3:1;g.beginPath();g.rect(a+2,b.top,Math.max(0,e-a-4),b.h);g.clip();g.fillStyle=MT["--screen"];g.fillRect(a+2,b.top,e-a-4,b.h);
       const im=mThumb(x.img&&x.kind!=="video"?x.img:x.key);
@@ -3341,19 +3404,30 @@ function mPlaceGrips(list){const box=$("mGrips"),ci=mCutI();
     b.style.left=c.x+"px";b.style.top=c.top+"px";b.style.height=c.h+"px";
     b.setAttribute("aria-label",`Cut between shots ${pad(c.i)} and ${pad(c.i+1)}, at ${fmt(c.t)}`);b.setAttribute("aria-pressed",String(ci===c.i))})}
 /* scrolling: seek, and the shot under the playhead becomes the selected one (as when playing) */
-scroller.addEventListener("scroll",()=>{if(!phone())return;const x=scroller.scrollLeft;
+scroller.addEventListener("scroll",()=>{if(!phone()||land())return;const x=scroller.scrollLeft;
   if(mProg!=null&&Math.abs(x-mProg)<2){mProg=null;mDraw();return}mProg=null;
   if(!cur){mDraw();return}
-  mScrollAt=performance.now();const t=Math.max(0,Math.min(dur()-.01,x/P));if(hasAudio)audio.currentTime=t;else vt=t;$("tc").textContent=fmt(t);
+  mScrollAt=performance.now();const t=Math.max(0,Math.min(dur()-.01,x/P));if(hasAudio)audio.currentTime=t;else vt=t;$("tc").textContent=fmt(t);mTimeTxt();
   if(!editing()&&!mLift&&!mGrip&&!loop){const i=secAt(t);if(S()[i]&&S()[i].id!==selId){selId=S()[i].id;renderStrip();renderEditor()}}
   renderMonitor();mDraw()},{passive:true});
 scroller.addEventListener("touchstart",()=>{mTouch=true},{passive:true});
-["touchend","touchcancel"].forEach(n=>scroller.addEventListener(n,()=>{mTouch=false;mScrollAt=performance.now()},{passive:true}));
+["touchend","touchcancel"].forEach(n=>scroller.addEventListener(n,e=>{mTouch=e.targetTouches.length>0;if(e.targetTouches.length<2)mPinch=null;mScrollAt=performance.now()},{passive:true}));
+/* pinch: two fingers zoom around their centre (the time under them stays under them; the playhead stays in the middle,
+   so the position follows, as with any scroll). Touch events: pointer events stop once the browser pans. Between the
+   whole song (Fit) and 400 px/s; taking the gesture here also keeps the page from scrolling or zooming with it */
+/* targetTouches: both fingers on the timeline (one resting on the picture or the bar is not a pinch) */
+const tGap=e=>Math.abs(e.targetTouches[0].clientX-e.targetTouches[1].clientX),tMid=e=>(e.targetTouches[0].clientX+e.targetTouches[1].clientX)/2;
+scroller.addEventListener("touchstart",e=>{if(e.targetTouches.length!==2||!cur||mLift||mGrip)return;if(mPress){clearTimeout(mPress.timer);mPress=null}
+  if(e.cancelable)e.preventDefault();mPinch={gap:Math.max(8,tGap(e)),p:P,t:playing?null:mTimeAt(tMid(e))}},{passive:false});
+scroller.addEventListener("gesturestart",e=>e.preventDefault());
 /* a lifted shot moves with the finger, not the timeline */
-scroller.addEventListener("touchmove",e=>{if(mLift&&e.cancelable)e.preventDefault()},{passive:false});
+scroller.addEventListener("touchmove",e=>{if((mLift||mPinch)&&e.cancelable)e.preventDefault();if(!mPinch||e.targetTouches.length!==2)return;
+  const cw=scroller.clientWidth,fit=cw/dur(),v=Math.min(400,mPinch.p*tGap(e)/mPinch.gap);mFit=v<=fit;pps=mFit?null:v;renderTimeline();
+  /* while it plays the song keeps its place: the zoom is around the playhead */
+  if(mPinch.t==null)scroller.scrollLeft=mProg=Math.round(now()*P);else scroller.scrollLeft=Math.round(mPinch.t*P-(tMid(e)-cv.getBoundingClientRect().left)+cw/2)},{passive:false});
 const mTimeAt=clientX=>(scroller.scrollLeft-cv.clientWidth/2+(clientX-cv.getBoundingClientRect().left))/P;
 const mInBand=clientY=>{const y=clientY-cv.getBoundingClientRect().top,b=mBand(cv.clientHeight);return y>=b.top&&y<=b.top+b.h};
-cv.addEventListener("pointerdown",e=>{if(!phone()||!cur||e.button>0)return;
+cv.addEventListener("pointerdown",e=>{if(!phone()||!cur||e.button>0||mPinch)return;
   const t=mTimeAt(e.clientX),band=mInBand(e.clientY);mPress={x:e.clientX,y:e.clientY,pid:e.pointerId,at:performance.now(),t,band,timer:0};
   if(band&&t>=0&&t<=dur())mPress.timer=setTimeout(()=>mLiftStart(e),450)});
 cv.addEventListener("pointermove",e=>{if(!phone())return;
@@ -3362,12 +3436,18 @@ cv.addEventListener("pointermove",e=>{if(!phone())return;
 cv.addEventListener("pointerup",e=>{if(!phone())return;
   if(mLift){mLiftEnd(true);return}
   const p=mPress;mPress=null;if(!p)return;clearTimeout(p.timer);if(performance.now()-p.at>450)return;
-  /* a tap: on a shot, select it and go to its start; on the waveform, go there */
-  if(mCutId||mMode){mCutId="";mMode="";renderMTool()}
-  const t=Math.max(0,Math.min(dur()-.01,p.t));mScrollAt=0;if(p.band){const s=S()[secAt(t)];if(s)select(s.id,true)}else seek(t)});
-/* the preview: a tap plays or pauses, except on a control in it (the slate's Download / Retry, a link);
+  /* a tap: on a shot, pick it and go to its start (on the picked one: let go of it); on the ruler or the waveform, go
+     there, with nothing picked. A second tap on the ruler fits the whole song */
+  const was=!!(mCutId||mMode);mCutId="";mMode="";
+  /* a tap has no fling to wait for: the timeline may follow the seek at once (pointerup comes before touchend) */
+  const t=Math.max(0,Math.min(dur()-.01,p.t));mTouch=false;mScrollAt=0;
+  if(p.band){const s=S()[secAt(t)];if(!s)return;if(mPick&&s.id===selId){if(!was)mPick="";renderMTool();mDraw()}else{mPick=s.id;select(s.id,true)}return}
+  if(p.y-cv.getBoundingClientRect().top<MRU){const n=performance.now();if(n-mRulerAt<350){mRulerAt=0;$("zfit").onclick();return}mRulerAt=n}
+  mPick="";seek(t);renderMTool();mDraw()});
+/* the picture: a tap plays or pauses, except on a control in it (the slate's Download / Retry, a link, the viewer's
+   scrub bar) and while a cut, a shot or a range handle is being dragged (a second finger must not start the song);
    Enter or Space on a focused button also arrives here as a click */
-$("monitor").addEventListener("click",e=>{if(phone()&&!e.target.closest("button,a,input,select,textarea,label,[data-mact]"))toggle()});
+$("monitor").addEventListener("click",e=>{if(phone()&&!mBusy()&&!ioDrag&&!e.target.closest("button:not(#mPlayG),a,input,select,textarea,label,[data-mact],#mScrub"))toggle()});
 cv.addEventListener("pointercancel",()=>{if(mPress){clearTimeout(mPress.timer);mPress=null}if(mLift)mLiftEnd(false)});
 function mLiftStart(e){const p=mPress;if(!p||!cur)return;const s=S()[secAt(p.t)];if(!s)return;
   mPress=null;try{cv.setPointerCapture(p.pid)}catch(_){}
@@ -3402,34 +3482,41 @@ tlBox.addEventListener("pointerdown",e=>{const b=e.target.closest(".mkgrip");if(
 tlBox.addEventListener("pointermove",e=>{if(ioDrag&&e.target.closest(".mkgrip"))ioSet(ioDrag,mTimeAt(e.clientX),true)});
 ["pointerup","pointercancel"].forEach(n=>tlBox.addEventListener(n,e=>{if(e.target.closest(".mkgrip"))ioDrag=""}));
 $("mkClear").onclick=()=>ioSet();
-/* Fit means the whole song; the zoom buttons sit on the timeline's corner */
+/* the viewer's scrub bar: drag along the bottom edge */
+{const sb=$("mScrub");let on=false;const at=e=>{const r=sb.getBoundingClientRect();seek((e.clientX-r.left)/Math.max(1,r.width)*dur())};
+  sb.addEventListener("pointerdown",e=>{if(!cur)return;on=true;try{sb.setPointerCapture(e.pointerId)}catch(_){}at(e)});
+  sb.addEventListener("pointermove",e=>{if(on)at(e)});["pointerup","pointercancel"].forEach(n=>sb.addEventListener(n,()=>{on=false}))}
+/* Fit means the whole song (a double tap on the ruler; the zoom buttons are not shown on the phone) */
 {const zf=$("zfit").onclick,zo=$("zout").onclick,zi=$("zin").onclick;
   $("zfit").onclick=()=>{mFit=true;zf()};$("zout").onclick=()=>{mFit=true;zo()};$("zin").onclick=()=>{mFit=false;zi()}}
 
-/* ---------- peek row and toolbar ---------- */
-function renderPeek(){if(!phone())return;const el=$("mPeek"),s=selSec();
-  if(!cur)el.innerHTML=`<div class="m-empty"><span>Load a song, then tap Cut here at every change in the music. Or <button type="button" class="linkbtn" data-example>open the example project</button>.</span><button type="button" class="btn primary" data-msong>Load song</button></div>`;
-  else if(!hasAudio&&!(cur.song&&cur.song.name))el.innerHTML=`<div class="m-empty"><span>Load the song to hear it and cut along.</span><button type="button" class="btn primary" data-msong>Load song</button></div>`;
-  else if(s){const i=S().indexOf(s),d=secEnd(i)-s.start,h=`<span class="ed-n">${pad(i+1)}</span><span class="pt">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="tc">${d.toFixed(1)} s</span>${ico("chev")}<span class="pn">${esc(s.notes||s.shot||"Notes, shot type and prompts")}</span>`;
-    const b=el.querySelector(".m-peekb");if(b){if(b._h!==h){b.innerHTML=h;b._h=h}}else{el.innerHTML=`<button type="button" class="m-peekb" aria-label="Shot details">${h}</button>`;el.firstChild._h=h}}
-  else el.innerHTML="";
-}
-$("mPeek").addEventListener("click",e=>{if(e.target.closest("[data-msong]"))$("song").click();else if(e.target.closest(".m-peekb"))openDetails(e.target.closest(".m-peekb"))});
-const MTOOL=[["mtCut","shot","split","Cut here"],["mtDet","shot","lines","Details"],["mtImg","shot","image","Photo"],["mtMove","shot","swap","Move"],["mtUndo","shot","undo","Undo","Undo (hold to redo)"],["mtDel","shot","trash","Delete"],
-  ["mtDone","cut move","check","Done"],["mtRead","cut"],["mtMinus","cut","minus","0.1 s","Move the cut 0.1 s earlier"],["mtPlus","cut","plus","0.1 s","Move the cut 0.1 s later"],
-  ["mtPrev","move","arrow-right","Earlier","Swap with the shot before"],["mtNext","move","arrow-right","Later","Swap with the shot after"],["mtHint","move"]];
-$("mTool").innerHTML=MTOOL.map(([id,m,ic,l,al])=>ic?`<button type="button" id="${id}" data-m="${m}"${id==="mtPrev"?' class="flip"':""}${al?` aria-label="${al}"`:""}>${ico(ic)}<span>${l}</span></button>`:`<div class="m-read" id="${id}" data-m="${m}" aria-live="polite"></div>`).join("");
+/* ---------- the no-song notice and the bar ---------- */
+function renderPeek(){if(!phone())return;const el=$("mPeek"),k=!cur?1:!hasAudio&&!(cur.song&&cur.song.name)?2:0;if(el._k===k)return;el._k=k;
+  el.innerHTML=k===1?`<div class="m-empty"><span>Load a song, then tap Cut here at every change in the music. Or <button type="button" class="linkbtn" data-example>open the example project</button>.</span><button type="button" class="btn primary" data-msong>Load song</button></div>`
+    :k===2?`<div class="m-empty"><span>Load the song to hear it and cut along.</span><button type="button" class="btn primary" data-msong>Load song</button></div>`:""}
+$("mPeek").addEventListener("click",e=>{if(e.target.closest("[data-msong]"))$("song").click()});
+/* one bar, three layouts (data-m: the modes an item shows in). none: nothing picked. shot: a picked shot (and move, its
+   Earlier / Later). cut: a picked cut. Delete is not here: it is in More, away from Undo */
+const MTOOL=[["mtUndo","none shot","undo","Undo","Undo (hold to redo)"],["mtCut","none shot","split","Cut here"],["mtTip","none"],["mtDet","shot","lines","Details"],["mtImg","shot","image","Photo"],["mtMove","shot","swap","Move"],["mtMore","shot","more","More","More for this shot"],
+  ["mtMinus","cut","minus","0.1 s","Move the cut 0.1 s earlier"],["mtRead","cut"],["mtPlus","cut","plus","0.1 s","Move the cut 0.1 s later"],
+  ["mtPrev","move","arrow-right","Earlier","Swap with the shot before"],["mtNext","move","arrow-right","Later","Swap with the shot after"],["mtHint","move"],["mtDone","cut move","check","Done"]];
+$("mTool").innerHTML=MTOOL.map(([id,m,ic,l,al])=>ic?`<button type="button" id="${id}" data-m="${m}"${id==="mtPrev"?' class="flip"':""}${al?` aria-label="${al}"`:""}${id==="mtMore"?' aria-haspopup="dialog"':""}>${ico(ic)}<span>${l}</span></button>`
+  :id==="mtTip"?`<span class="m-tip" id="${id}" data-m="${m}">Tap a shot to edit it</span>`:`<div class="m-read" id="${id}" data-m="${m}" aria-live="polite"></div>`).join("");
 $("mtHint").innerHTML="<span>Or hold a shot on the timeline</span><span>and drag it</span>";
 function renderMTool(){if(!phone())return;const s=selSec(),i=s?S().indexOf(s):-1;
-  const mCut=mCutI();if(mCut<0)mCutId="";const mode=mCut>0?"cut":mMode==="move"&&s?"move":"shot";
-  $("mTool").querySelectorAll("[data-m]").forEach(b=>b.hidden=!b.dataset.m.split(" ").includes(mode));
-  ["mtCut","mtDet","mtImg","mtMove","mtDel"].forEach(id=>$(id).disabled=!cur||(!s&&id!=="mtCut"));$("mtMove").disabled=!s||S().length<2;
+  /* the pick follows the selection while its shot exists; a shot deleted here or by a collaborator leaves nothing picked */
+  if(mPick&&mPick!==selId)mPick=s&&S().some(x=>x.id===mPick)?selId:"";if(!s)mPick="";
+  const mCut=mCutI();if(mCut<0)mCutId="";const mode=mCut>0?"cut":!mPick?"none":mMode==="move"?"move":"shot";if(mode!=="move")mMode="";
+  $("mTool").dataset.mode=mode;$("mTool").querySelectorAll("[data-m]").forEach(b=>b.hidden=!b.dataset.m.split(" ").includes(mode));
+  if(mPick)renderMore();else if($("mMore").open)$("mMore").close();
+  $("mtCut").disabled=!cur;$("mtTip").hidden=mode!=="none"||!cur;$("mtMove").disabled=!s||S().length<2;
   $("mtUndo").disabled=!cur||!(hist.canUndo()||hist.canRedo());
   $("mtPrev").disabled=i<1;$("mtNext").disabled=i<0||i>=S().length-1;
   if(mode==="cut"){const c=S()[mCut],a=S()[mCut-1];$("mtRead").innerHTML=`<b>${fmt(c.start)}</b><span>${pad(mCut)} is ${(c.start-a.start).toFixed(1)} s · ${pad(mCut+1)} is ${(secEnd(mCut)-c.start).toFixed(1)} s</span>`}}
 $("mtCut").onclick=addMarker;
 $("mtDet").onclick=()=>openDetails($("mtDet"));
 $("mtImg").onclick=()=>$("f-img").click();
+$("mtMore").onclick=()=>{if(!selSec())return;renderMore();mMore.showModal();mMore.querySelector("[data-close]").focus()};
 $("mtMove").onclick=()=>{mMode="move";mCutId="";renderMTool();mDraw()};
 $("mtDone").onclick=()=>{mMode="";mCutId="";renderMTool();mDraw()};
 $("mtMinus").onclick=()=>mNudge(-.1);$("mtPlus").onclick=()=>mNudge(.1);
@@ -3440,9 +3527,17 @@ $("mtMinus").onclick=()=>mNudge(-.1);$("mtPlus").onclick=()=>mNudge(.1);
   b.addEventListener("contextmenu",e=>e.preventDefault());
   b.onclick=()=>{if(held){held=false;return}if(!hist.canUndo()&&hist.canRedo()){toast("Nothing to undo. Hold Undo to redo");return}doUndo("undo")}}
 [["mtPrev",-1],["mtNext",1]].forEach(([id,k])=>$(id).onclick=()=>{const s=S(),i=s.findIndex(x=>x.id===selId),o=s[i+k];if(o)moveShot(selId,{kind:"swap",to:o.id})});
-/* disarmed whenever the selection changes (renderEditor: a scroll, playback crossing a cut, a tap), a sheet opens or
-   closes, the tab or the project changes, so a second tap never deletes a shot that wasn't armed */
-const resetMtDel=twoTap($("mtDel"),"Delete","Tap again",deleteShot);
+/* More: the rare actions for the picked shot. Loop and Speed are the transport's own controls (hidden on the phone),
+   pressed from here; the sheet names the shot it acts on and follows the selection */
+const mMore=$("mMore");
+function renderMore(){const s=selSec();if(!s)return;$("mMoreH").textContent=pad(S().indexOf(s)+1)+"  "+(s.title||"Untitled");
+  $("mmLoop").setAttribute("aria-pressed",String(loop));$("mmLoopV").textContent=loop?"On":"Off";$("mmSpeedV").textContent=$("speed").selectedOptions[0].textContent}
+$("mmLoop").onclick=()=>{$("loop").click();renderMore()};
+$("mmSpeed").onclick=()=>{const sp=$("speed");sp.selectedIndex=(sp.selectedIndex+1)%sp.options.length;sp.dispatchEvent(new Event("change"));renderMore()};
+/* Delete shot asks again. Disarmed whenever the selection changes (renderEditor: a scroll, playback crossing a cut, a
+   tap, a collaborator's edit), a sheet opens or closes, the side or the project changes, so a second tap never
+   deletes a shot that wasn't armed */
+const resetMtDel=twoTap($("mmDel"),"Delete shot","Tap again to delete",()=>{mMore.close();deleteShot()});
 /* shot type: the common ones as chips, the field stays for anything else */
 const MSHOTS=["Wide shot","Medium shot","Close-up","Extreme close-up","Insert / detail","POV"];
 $("mShotChips").innerHTML=MSHOTS.map(v=>`<button type="button" class="chip" aria-pressed="false" data-shot="${v}">${v}</button>`).join("");
@@ -3452,7 +3547,7 @@ $("f-shot").addEventListener("input",mShotChips);
 
 /* ---------- sheets ---------- */
 let mEdFrom=null;
-const mSheetTop=()=>document.documentElement.style.setProperty("--sheet-top",Math.round(document.querySelector(".transport").getBoundingClientRect().bottom)+"px");
+const mSheetTop=()=>document.documentElement.style.setProperty("--sheet-top",Math.round($("monitor").getBoundingClientRect().bottom)+"px");
 function openDetails(from){if(!phone()||!selSec())return;resetMtDel();mEdFrom=from||null;mSheetTop();document.body.classList.add("m-ed");$("editor").scrollTop=0;$("mEdClose").focus({preventScroll:true})}
 function closeDetails(){if(!document.body.classList.contains("m-ed"))return;resetMtDel();const ed=$("editor");if(ed.contains(document.activeElement))document.activeElement.blur();
   document.body.classList.remove("m-ed","m-full");ed.style.transform="";const f=mEdFrom;mEdFrom=null;if(f&&f.isConnected&&f.getClientRects().length)f.focus({preventScroll:true})}
@@ -3468,19 +3563,19 @@ function sheetDrag(handle,sheet,close){let y0=null,dy=0;
   handle.addEventListener("pointermove",e=>{if(y0==null)return;dy=Math.max(0,e.clientY-y0);sheet.style.transform=dy?`translateY(${dy}px)`:""});
   const end=()=>{if(y0==null)return;y0=null;sheet.style.transform="";if(dy>80)close()};handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end)}
 sheetDrag($("editor").querySelector(".sh-top"),$("editor"),closeDetails);
-const mProj=$("mProj");sheetDrag(mProj.querySelector(".sh-top"),mProj,()=>mProj.close());
-mProj.addEventListener("click",e=>{if(e.target===mProj||e.target.closest("[data-close]"))mProj.close()});
-mProj.addEventListener("close",()=>resetMtDel());
+const mProj=$("mProj");[mProj,mMore].forEach(d=>{sheetDrag(d.querySelector(".sh-top"),d,()=>d.close());d.addEventListener("click",e=>{if(e.target===d||e.target.closest("[data-close]"))d.close()});d.addEventListener("close",()=>resetMtDel())});
 $("dlgSize").addEventListener("click",e=>{if(e.target===$("dlgSize"))$("dlgSize").close()});
-/* the app bar's project name opens the Project sheet instead of the menu */
+/* the top row's project name opens the Project sheet instead of the menu */
 $("proj").parentNode.addEventListener("click",e=>{if(phone()&&e.target.closest("#proj")){e.stopPropagation();openProjSheet()}},true);
-function openProjSheet(){closeDetails();resetMtDel();renderProjSheet();mProj.showModal();mProj.querySelector("[data-close]").focus()}
+function openProjSheet(){closeDetails();resetMtDel();$("mSongOps").hidden=true;renderProjSheet();mProj.showModal();mProj.querySelector("[data-close]").focus()}
 function renderProjSheet(){
   const list=projects.map(p=>cur&&p.id===cur.id?cur:p);if(cur&&!list.includes(cur))list.unshift(cur);
   $("mProjList").innerHTML=list.map(p=>`<button type="button" class="m-pi" data-pid="${esc(p.id)}" aria-current="${p===cur}">${ico("check")}<span>${esc(p.title||"Untitled project")}</span>${SYNC_URL&&cset.rooms[p.id]?'<span class="muted">in a room</span>':""}</button>`).join("")
     +(list.some(p=>p.id==="p-example")?"":`<button type="button" class="m-pi" data-example>${ico("plus")}<span>Example project</span></button>`);
   const has=!!(cur&&(hasAudio||(cur.song&&cur.song.name)));
-  ["mRename","mExport","mCopy","mDelp","mRender"].forEach(id=>$(id).disabled=!cur);$("mSong").textContent=has?"Replace song":"Load song";$("mDelsong").hidden=!has;
+  ["mRename","mExport","mCopy","mDelp","mRender","mSong"].forEach(id=>$(id).disabled=!cur);
+  /* Song: its name; a tap opens Replace and Remove under it (with no song yet, the picker) */
+  $("mSongV").textContent=has?(cur.song&&cur.song.name)||"Loaded":"Load song";if(!has)$("mSongOps").hidden=true;$("mSong").setAttribute("aria-expanded",String(!$("mSongOps").hidden));
   const inRoom=!!(SYNC_URL&&cur&&cset.rooms[cur.id]);$("mRoom").hidden=!SYNC_URL;
   ["mPeople","mState","mFiles","mRoomN","mRoomb"].forEach(id=>$(id).hidden=!inRoom);$("mJoin").hidden=inRoom;
   if(inRoom){const b=cset.rooms[cur.id],me=b.name||cset.name||"You",l=csess&&csessPid===cur.id?peers:[];
@@ -3499,7 +3594,8 @@ $("mNew").onclick=()=>{mProj.close();newProject($("proj"))};
 $("mRename").onclick=()=>{mProj.close();startRename($("proj"))};
 $("mImport").onclick=()=>{mProj.close();$("importf").click()};
 $("mExport").onclick=()=>{mProj.close();$("exportb").click()};
-$("mSong").onclick=()=>{mProj.close();$("song").click()};
+$("mSong").onclick=()=>{if(cur&&(hasAudio||(cur.song&&cur.song.name))){$("mSongOps").hidden=!$("mSongOps").hidden;renderProjSheet();$("mSongOps").scrollIntoView({block:"nearest"})}else{mProj.close();$("song").click()}};
+$("mSongRep").onclick=()=>{mProj.close();$("song").click()};
 twoTap($("mDelsong"),"Remove song","Tap again to remove",()=>{removeSong();renderProjSheet()});
 $("mJoin").onclick=()=>{mProj.close();collabFlow()};
 /* the room's link, Leave and the owner's actions: the same This room panel as the bar's, here a sheet */
@@ -3511,11 +3607,16 @@ $("mTabs").addEventListener("click",e=>{const b=e.target.closest("[data-side]");
 /* the keyboard: sheets and dialogs end where it starts (iOS doesn't resize the layout for it) */
 if(window.visualViewport){const vv=window.visualViewport,kb=()=>document.documentElement.style.setProperty("--kb",Math.max(0,Math.round(innerHeight-vv.height-vv.offsetTop))+"px");
   vv.addEventListener("resize",kb);vv.addEventListener("scroll",kb)}
-/* crossing the breakpoint (a rotation, a resized window): sheets close, everything redraws for the other layout */
-phoneMQ.addEventListener("change",()=>{closeDetails();if(mProj.open)mProj.close();if(mLift)mLiftEnd(false);mCutId="";mMode="";closeFiles();fCloseBtn();
-  ph.style.transform="";lastKey="";renderAll();if(side==="b")renderB();
+/* crossing the breakpoint or turning the phone: sheets close, a drag in progress ends (a moved cut is kept, as one
+   step), everything redraws for the other layout. The position, the selection and the pick stay, so turning back
+   restores the screen; only leaving the phone layout for the desktop drops the phone's own picks */
+let mRotT=0;
+function mRotHint(){const h=$("mRot");clearTimeout(mRotT);h.hidden=!land();if(land())mRotT=setTimeout(()=>{h.hidden=true},2000)}
+function mRelayout(){closeDetails();[mProj,mMore].forEach(d=>{if(d.open)d.close()});if(mLift)mLiftEnd(false);mGripEnd();ioDrag="";mPinch=null;mMode="";if(!phone()){mCutId="";mPick=""}closeFiles();fCloseBtn();
+  ph.style.transform="";lastKey="";renderAll();if(side==="b")renderB();mRotHint();
   /* videos wait for Wi-Fi in the phone layout only: re-evaluate them, then the chip */
-  const m=cmedia();if(m)m.refresh();if(csess)renderCollab(csess.status())});
+  const m=cmedia();if(m)m.refresh();if(csess)renderCollab(csess.status())}
+phoneMQ.addEventListener("change",mRelayout);landMQ.addEventListener("change",mRelayout);mRotHint();
 window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"))mSheetTop()});
 
 /* ================= RENDER (docs/specs/export-render.md) =================

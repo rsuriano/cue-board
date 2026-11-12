@@ -104,15 +104,15 @@ for (const size of SIZES) for (const [prof, mk] of Object.entries(PROFILES)) for
   const ovf = await page.evaluate(() => [document.documentElement.scrollWidth - innerWidth, document.getElementById('sideB').scrollWidth - document.getElementById('sideB').clientWidth]);
   check(tag, 'no horizontal overflow (page and the tab)', ovf.every(x => x <= 0), ovf.join(','));
 
-  // the end of the tab: the last control sits above the tab bar
+  // the end of the tab: the last control is on screen with room under it
   await page.evaluate(() => { const b = document.getElementById('sideB'); b.scrollTop = b.scrollHeight; });
   await page.waitForTimeout(250);
   const end = await page.evaluate(() => {
     const vis = [...document.querySelectorAll('#sideB button, #sideB label.btn, #sideB input:not([type=file]), #sideB textarea, #sideB select')].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.closest('#bList'));
     const last = vis.sort((a, b) => a.getBoundingClientRect().bottom - b.getBoundingClientRect().bottom).pop(), tabs = document.getElementById('mTabs').getBoundingClientRect();
-    return { name: last && (last.id || last.textContent.trim().slice(0, 20)), bottom: last && last.getBoundingClientRect().bottom, tabs: tabs.top, onScreen: tabs.bottom <= innerHeight + 1 };
+    return { name: last && (last.id || last.textContent.trim().slice(0, 20)), bottom: last && last.getBoundingClientRect().bottom, tabs: tabs.top, onScreen: tabs.bottom <= 60, ih: innerHeight };
   });
-  check(tag, 'scrolled to the end, the last control is above the tab bar', end.name && end.bottom + 8 <= end.tabs && end.onScreen, `${end.name} ${Math.round(end.bottom)} / ${Math.round(end.tabs)}`);
+  check(tag, 'scrolled to the end, the last control is on screen, clear of the bottom edge (the switch is in the top row now)', end.name && end.bottom + 8 <= end.ih && end.onScreen, `${end.name} ${Math.round(end.bottom)} / ${end.ih}`);
   await page.screenshot({ path: join(out, file + '-end.png') });
   check(tag, 'no page errors', !errs.length, errs.slice(0, 2).join(' | '));
   await ctx.close();

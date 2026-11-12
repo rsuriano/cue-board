@@ -286,11 +286,11 @@ try {
     const clr = await page.evaluate(() => { const b = document.getElementById('mkClear'); if (!b || b.hidden) return null; const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, text: b.textContent.trim(), onScreen: r.left >= 0 && r.right <= innerWidth }; });
     check(`A3 · ${tag}: a Clear affordance is on the ruler while a selection exists (≥ 44px, on screen)`, clr && clr.w >= 44 && clr.h >= 44 && clr.onScreen && /Clear/.test(clr.text), JSON.stringify(clr));
     await shoot(page, `ruler-selection-${tag}`);
-    /* stacking: a handle passing behind Clear stays draggable; one passing behind the zoom buttons doesn't take their taps */
-    const stack = await page.evaluate(() => { const c = document.getElementById('mkClear').getBoundingClientRect(), f = document.getElementById('zfit').getBoundingClientRect(), g = document.querySelector('.mkgrip[data-mk="in"]'), was = g.style.left, top = (x, y) => document.elementFromPoint(x, y);
+    /* stacking: a handle passing behind Clear stays draggable; the zoom buttons are gone from the phone's ruler */
+    const stack = await page.evaluate(() => { const c = document.getElementById('mkClear').getBoundingClientRect(), g = document.querySelector('.mkgrip[data-mk="in"]'), was = g.style.left, top = (x, y) => document.elementFromPoint(x, y);
       const box = g.parentElement.getBoundingClientRect(), at = r => { g.style.left = (r.left + r.width / 2 - box.left) + 'px'; return top(r.left + r.width / 2, r.top + r.height / 2); };
-      const overClear = at(c) === g, overFit = !!at(f).closest('#zfit'); g.style.left = was; return { overClear, overFit }; });
-    check(`A3 · ${tag}: a handle behind Clear is still the thing a finger grabs; the zoom buttons keep their taps`, stack.overClear && stack.overFit, JSON.stringify(stack));
+      const overClear = at(c) === g, overFit = !document.getElementById('zfit').getClientRects().length; g.style.left = was; return { overClear, overFit }; });
+    check(`A3 · ${tag}: a handle behind Clear is still the thing a finger grabs; no zoom button is left on the ruler to cover one`, stack.overClear && stack.overFit, JSON.stringify(stack));
     await openDialog(page);
     dis = await page.$eval(radio(page, 'sel'), e => e.disabled); const st = await page.$eval('#rnSelT', e => e.textContent), chosen = (await state(page)).range;
     check(`A2 · ${tag}, with a selection: Current selection enabled and chosen, with its times`, !dis && chosen === 'sel' && /^0:01\.\d to 0:04\.\d/.test(st), JSON.stringify({ dis, st, chosen }));
