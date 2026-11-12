@@ -1,0 +1,16 @@
+{
+  "id": "R90U48_Im4xdVng4",
+  "name": "Fixture room",
+  "created": "2026-11-12T06:05:51.191Z",
+  "tokens": [
+    {
+      "sha256": "7382fc025471b4dd6a63795bf5b7f889cfec2beaab08c601cbf8526a508d6560",
+      "created": "2026-11-12T06:05:51.209Z"
+    }
+  ],
+  "owner": {
+    "sha256": "77543ec5c0585710ab380435acd76165d5fd3f7bbf04666d3cbb361c8edcd4e6",
+    "created": "2026-11-12T06:05:51.210Z",
+    "code": "invite:Fixture"
+  }
+}
