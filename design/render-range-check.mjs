@@ -146,9 +146,9 @@ try {
   await section('A1', async () => {
     const page = D.page; await openDialog(page);
     const a = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#dlgRender input[name="rnRange"]')].map(i => [i.value, i.closest('label').querySelector('span').textContent.trim()]),
-      setBtns: [...document.querySelectorAll('button')].filter(b => /\b(set|mark) (in|out)\b/i.test(b.textContent + ' ' + (b.getAttribute('aria-label') || ''))).map(b => b.id || b.textContent.trim()),
+      setBtns: [...document.querySelectorAll('#dlgRender button')].filter(b => /\b(set|mark) (in|out)\b/i.test(b.textContent + ' ' + (b.getAttribute('aria-label') || ''))).map(b => b.id || b.textContent.trim()),
       old: ['rnIn', 'rnOut', 'rnClear', 'rnNow'].filter(id => document.getElementById(id)) }));
-    check('A1 · the dialog has no set-in / set-out buttons (none anywhere in the app)', !a.setBtns.length && !a.old.length, JSON.stringify(a));
+    check('A1 · the dialog has no set-in / set-out buttons (the transport has them since docs/specs/selection-controls.md)', !a.setBtns.length && !a.old.length, JSON.stringify(a));
     check('A1 · Range is exactly All, Current selection, Custom, in that order', JSON.stringify(a.rows) === JSON.stringify([['all', 'All'], ['sel', 'Current selection'], ['custom', 'Custom']]), JSON.stringify(a.rows));
     await shoot(page, 'dialog-all-desktop-1440x900');
   });
@@ -156,7 +156,7 @@ try {
     const page = D.page; await openDialog(page);
     const off = await page.evaluate(() => { const i = document.querySelector('#dlgRender input[name="rnRange"][value="sel"]'), h = document.getElementById('rnSelHint');
       return { disabled: i.disabled, hint: h && h.getClientRects().length ? h.textContent.trim() : '', checked: document.querySelector('#dlgRender input[name="rnRange"]:checked').value }; });
-    check('A2 · desktop, no selection: Current selection disabled with "Mark a range on the timeline first"; All is chosen', off.disabled && off.hint === 'Mark a range on the timeline first' && off.checked === 'all', JSON.stringify(off));
+    check('A2 · desktop, no selection: Current selection disabled with the desktop hint; All is chosen', off.disabled && off.hint === 'Set In and Out in the bar above the timeline, or press I and O' && off.checked === 'all', JSON.stringify(off));
     await closeDialog(page);
     await seekTo(page, 1); await page.keyboard.press('i'); await seekTo(page, 3); await page.keyboard.press('o'); await sleep(100);
     await openDialog(page);
@@ -276,7 +276,7 @@ try {
     check(`A3 · ${tag}: grips are ≥ 44px`, g.every(x => x.w >= 44 && x.h >= 44), JSON.stringify(g.map(x => [x.w, x.h])));
     await openDialog(page);
     let dis = await page.$eval(radio(page, 'sel'), e => e.disabled), hint = await page.$eval('#rnSelHint', e => e.getClientRects().length ? e.textContent.trim() : '');
-    check(`A2 · ${tag}, no selection: Current selection disabled with the hint`, dis && hint === 'Mark a range on the timeline first', JSON.stringify({ dis, hint }));
+    check(`A2 · ${tag}, no selection: Current selection disabled with the hint`, dis && hint === "Drag the two handles on the timeline's ruler", JSON.stringify({ dis, hint }));
     await shoot(page, `dialog-all-${tag}`); await closeDialog(page);
     const X = await ruler(page, 6);
     await dragGrip(page, 'in', X(1)); let m = await marks(page);
