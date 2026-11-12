@@ -70,7 +70,7 @@ Tests: `packages/sync-server/test/media-relay.test.mjs` (ids and fan-out, no cro
 
 ## ICE servers (owner to choose)
 
-`<meta name="cue-ice-urls" content="">`, space or comma separated (`stun:host:port`, `turn:user:secret@host:port`). Nothing is hardcoded.
+`<meta name="cue-ice-urls" content="">`, space or comma separated (`stun:host:port`). Nothing is hardcoded. The client also parses `turn:user:secret@host:port`, but never put a fixed TURN login there: the page is public, so anyone could relay through that TURN server. TURN only with short-lived credentials (below).
 
 | Option | Who connects directly | Privacy |
 |---|---|---|

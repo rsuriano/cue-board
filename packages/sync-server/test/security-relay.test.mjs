@@ -73,6 +73,13 @@ test('the whole server has one relay rate, whatever the rooms, accounts and IPs'
   assert.ok(through <= 10 && dropped >= 10, `through ${through}, dropped ${dropped}`);
 });
 
+test('finding 9: the public page never shows or suggests a fixed TURN login', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
+  assert.ok(!/turns?:[^:@\s"]+:[^@\s"]+@/.test(html), 'no turn:user:secret@host in index.html');
+  assert.match(html, /<meta name="cue-ice-urls" content="">/, 'ICE servers empty in this repo');
+});
+
 test('a room created from the app carries its account to the relay; reloading the room keeps it', async () => {
   const dir = tmpDir(), srv = await server(dir, 0);
   try {

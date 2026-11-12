@@ -6,7 +6,9 @@
 <meta name="description" content="Cue Board: plan an AI music video against the song (side A) and generate each shot through OpenRouter (side B).">
 <!-- Collaboration: the sync server's WebSocket URL (e.g. wss://sync.example.dev). Empty = off: no network, collab.js never loads. -->
 <meta name="cue-sync-url" content="">
-<!-- Media between collaborators (docs/media-p2p.md): ICE servers for WebRTC, e.g. "stun:stun.example.dev:3478 turn:user:secret@turn.example.dev:3478".
+<!-- Media between collaborators (docs/media-p2p.md): ICE servers for WebRTC, e.g. "stun:stun.example.dev:3478".
+     Never put a TURN user and password here: this page is public, so anyone could use the TURN server. TURN needs
+     short-lived credentials issued per session (not built); until then the sync server's relay does that job.
      Empty = none: peers on the same network connect directly, everyone else through the sync server's encrypted relay. -->
 <meta name="cue-ice-urls" content="">
 <!-- Accounts (packages/auth): the auth service (e.g. https://auth.bedrocklabs.dev) and the checkout link. Creating a room
