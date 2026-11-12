@@ -951,8 +951,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-peek{flex:none;border-bottom:var(--hairline) solid var(--border-subtle);background:var(--surface-1)}
   .m-empty{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) calc(var(--gutter) + var(--safe-r)) var(--sp-2) calc(var(--gutter) + var(--safe-l));color:var(--ink-2)}
   .m-empty>span{flex:1 1 12em}
-  .m-tool{flex:none;display:flex;min-height:var(--toolbar-h);padding:0 var(--safe-r) var(--safe-b) var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
-  .m-tool>button{all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;display:grid;justify-items:center;align-content:center;gap:var(--sp-1);min-height:var(--toolbar-h);padding:var(--sp-1) 0;font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-ui);color:var(--ink-2);white-space:nowrap;cursor:pointer}
+  .m-tool{flex:none;box-sizing:border-box;display:flex;min-height:calc(var(--toolbar-h) + var(--safe-b));padding:0 var(--safe-r) var(--safe-b) var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
+  .m-tool>button{all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;display:grid;justify-items:center;align-content:center;gap:var(--sp-1);min-height:calc(var(--toolbar-h) - var(--hairline));padding:var(--sp-1) 0;font:var(--w-medium) var(--text-tiny)/var(--lh-sm) var(--font-ui);color:var(--ink-2);white-space:nowrap;cursor:pointer}
   .m-tool>button .ico{width:var(--icon-tool);height:var(--icon-tool)}
   .m-tool>button:active{background:var(--surface-2);color:var(--ink)}
   .m-tool>button:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:calc(-1 * var(--ring))}

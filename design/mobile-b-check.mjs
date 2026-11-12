@@ -52,7 +52,7 @@ for (const [w, h] of SIZES) await guard(`${w}x${h}`, async () => {
   check(`7 · ${tag}: the 16:9 picture is the full width with no bars (${w}x${Math.round(w * 9 / 16)})`, mon && fr && Math.abs(fr.w - w) < 1 && Math.abs(fr.h - w * 9 / 16) < 1.5 && Math.abs(mon.h - fr.h) < 1.5, JSON.stringify(fr));
   const minTl = h === 844 ? 330 : h === 667 ? 190 : 150;
   check(`7 · ${tag}: the timeline fills the rest, at least ${minTl}px`, tlr && tlr.h >= minTl && Math.abs(tlr.b - tool.y) < 2 && Math.abs(tlr.y - mon.b) < 4, tlr && `${Math.round(tlr.h)}px, monitor ${Math.round(mon.h)}px, bar ${Math.round(tool.h)}px`);
-  check(`7 · ${tag}: the bar is 60px (plus the safe area) at the bottom edge`, tool && Math.abs(tool.h - 60) < 1.5 && Math.abs(tool.b - h) < 1, JSON.stringify(tool));
+  check(`7 · ${tag}: the bar is 60px (plus the safe area) at the bottom edge`, tool && Math.abs(tool.h - 60) < .5 && Math.abs(tool.b - h) < 1, JSON.stringify(tool));
   if (w === 390 && h === 844) console.log(`MEASURED 390x844: picture ${Math.round(fr.w)}x${Math.round(fr.h)}, timeline ${Math.round(tlr.h)}px, always-visible controls ${c.filter(x => !x.tl && x.id !== 'mPlayG').length} (+ the picture)`);
   await setRatio(page, '9:16'); await sleep(300);
   const fr9 = await rect(page, '#mframe'), tl9 = await rect(page, '.timeline');
