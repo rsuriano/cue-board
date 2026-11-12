@@ -12,7 +12,7 @@ It makes no requests to third parties except the user's own calls to OpenRouter.
 |---|---|
 | `index.html` | The whole app. |
 | `server.mjs` | Optional local server and OpenRouter relay. Listens on `127.0.0.1` only. |
-| `example/example.js` | The example project and its song. Loaded only when needed. |
+| `example/example.js`, `example/media/` | The example project and its song; its keyframes and takes (1.3 MB). Loaded only when the example opens, then stored like your own media. From a `file://` page the pictures are skipped. |
 | `mp4-muxer.js` | [mp4-muxer](https://github.com/Vanilagy/mp4-muxer) 5.2.2 (MIT), vendored. Loaded only when the render dialog opens. How to update it: `docs/specs/export-render-notes.md`. |
 | `collab.js` | The collaboration client, built from `packages/collab-client`. Loaded only when a project is in a room. |
 | `manifest.webmanifest`, `icons/` | The phone install (Add to Home Screen). |
@@ -73,7 +73,7 @@ Tips that save money:
 
 ### Example project
 
-**The Mountain King (example)** loads on the first visit: 13 shots on Grieg's *In the Hall of the Mountain King*, with notes, frame prompts and motion prompts. The recording is by the Musopen Symphony Orchestra and, like the composition, is in the public domain ([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Grieg_-_Peer_Gynt_Suite_No._1,_Op._46_-_IV._In_the_Hall_of_the_Mountain_King_(Musopen_Symphony).flac), [Musopen](https://musopen.org/music/777-peer-gynt-suite-no-1-op-46/)).
+**The Mountain King (example)** loads on the first visit: 13 shots on Grieg's *In the Hall of the Mountain King*, with notes, frame prompts and motion prompts, a painted keyframe on every shot and takes on shots 3, 4 and 10. The recording is by the Musopen Symphony Orchestra and, like the composition, is in the public domain ([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Grieg_-_Peer_Gynt_Suite_No._1,_Op._46_-_IV._In_the_Hall_of_the_Mountain_King_(Musopen_Symphony).flac), [Musopen](https://musopen.org/music/777-peer-gynt-suite-no-1-op-46/)).
 
 ## The packages
 
@@ -123,4 +123,4 @@ The design checks in `design/` drive the app in headless Chromium with Playwrigh
 node design/run-local.mjs design/<check>.mjs . <out-dir>
 ```
 
-`run-local.mjs` finds the Playwright headless shell in `~/.cache/ms-playwright` and a `playwright-core` install in `~/testkit` (or set `CUE_TESTKIT` and `CUE_CHROMIUM`). The README screenshots come from `design/readme-shots.mjs`, which writes `docs/readme/`.
+`run-local.mjs` finds the Playwright headless shell in `~/.cache/ms-playwright` and a `playwright-core` install in `~/testkit` (or set `CUE_TESTKIT` and `CUE_CHROMIUM`). The README screenshots come from `design/readme-shots.mjs`, which writes `docs/readme/`. They show the example as shipped: its pictures and takes are files in `example/media/`, painted by `node design/run-local.mjs design/example-art.mjs .` (which also points `example/example.js` at them), and `design/example-media-check.mjs` checks that a fresh profile gets them all.

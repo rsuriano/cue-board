@@ -59,7 +59,7 @@ a link.
 | Frame ratios | 4: 16:9, 9:16, 1:1, 4:3 |
 | Render | MP4 at 30 fps. Everyone gets 720p with a small watermark. An account gives 1080p without it |
 | Files between collaborators | Peer to peer, in 64 KiB chunks. The app checks each file against its SHA-256 hash. The relay accepts files up to 2 GiB |
-| Example project | 13 shots on a 2:34 public-domain recording of Grieg's *In the Hall of the Mountain King* |
+| Example project | 13 shots on a 2:34 public-domain recording of Grieg's *In the Hall of the Mountain King*. Each shot has a painted keyframe. Three shots have video takes |
 
 ## How it works
 
@@ -145,6 +145,9 @@ projects after one week without a visit.
 The example project opens on the first visit. You can try both sides before you load your own song. To make frames
 and takes, paste an [OpenRouter key](https://openrouter.ai/keys) in **Settings**.
 
+When you open `index.html` as a file, the example has no pictures and no takes. The browser does not let a file page
+load them. To see them, use the local relay below or the live app.
+
 To keep the key out of the browser, use the local relay. It needs Node 18 or later. It does not need `npm install`.
 
 ```bash
@@ -163,7 +166,7 @@ index.html               The whole app
 server.mjs               Optional local relay for the OpenRouter key
 collab.js                Collaboration client, built from packages/collab-client
 mp4-muxer.js             Vendored MP4 muxer, loaded by the render dialog
-example/                 The example project and its song
+example/                 The example project, its song, and its pictures and takes (made by design/example-art.mjs)
 fonts/, icons/           Fonts that the app hosts, app icons
 manifest.webmanifest     Phone install file
 packages/sync-server     Yjs sync server: rooms, invite links, media relay, problem reports

@@ -2385,11 +2385,16 @@ async function exportProject(withSong){
 }
 async function importFile(f){
   let data;try{data=JSON.parse(await f.text())}catch(e){toast("That file isn't a Cue Board export");return}
+  return importData(data);
+}
+/* a parsed export; `quiet` keeps the caller's toast up (the example's "Loading the example…") until it's done.
+   A media entry carries its bytes as a data URL, or (only the example, from openExample) as an already fetched blob */
+async function importData(data,quiet){
   if(!data||data.format!=="cueboard"||!data.project||!Array.isArray(data.project.sections)){toast("That file isn't a Cue Board export");return}
   if(dirty){clearTimeout(timer);timer=null;await flush()}
-  toast("Importing…");
+  if(!quiet)toast("Importing…");
   const p=data.project,map={};
-  for(const [oldId,m] of Object.entries(data.media||{})){try{const b=await dataURLToBlob(m.data);const r=await assets.upload(b,{type:m.type||b.type});map[oldId]=r.id}catch(e){}}
+  for(const [oldId,m] of Object.entries(data.media||{})){try{const b=m.blob instanceof Blob?m.blob:await dataURLToBlob(m.data);const r=await assets.upload(b,{type:m.type||b.type});map[oldId]=r.id}catch(e){}}
   const re=id=>id&&map[id]?map[id]:"";
   p.refs=(p.refs||[]).map(re).filter(Boolean);
   p.sections.forEach(s=>{Object.assign(s,{img:re(s.img),key:re(s.key),endKey:re(s.endKey)});
@@ -2402,14 +2407,27 @@ async function importFile(f){
   selectProject(p);toast(`Imported “${p.title}”`);
 }
 $("importf").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)importFile(f)};
-/* example project: example/example.js, loaded only when asked for (a <script> tag also works when the page is opened as a file) */
+/* example project: example/example.js, loaded only when asked for (a <script> tag also works when the page is opened as a file).
+   Its pictures and takes are files in example/media/ (design/example-art.mjs), fetched here and stored like any other
+   media. A file:// page can't fetch (the browser refuses, with a console error per file), so there it doesn't try:
+   the example opens without pictures and takes. */
+let exampleBusy=false;
 async function openExample(quiet){
   const have=projects.find(p=>p.id==="p-example");
   if(have){if(!cur||cur.id!==have.id){if(dirty)flush();selectProject(have)}setSide("a");toast("Opened the example project");return}
-  if(!quiet)toast("Loading the example…");
-  if(!window.CUEBOARD_EXAMPLE)await new Promise(ok=>{const sc=document.createElement("script");sc.src="example/example.js";sc.onload=ok;sc.onerror=ok;document.head.appendChild(sc)});
-  const data=window.CUEBOARD_EXAMPLE;if(!data){if(!quiet)toast("Couldn't load the example (example/example.js is missing)");return}
-  await importFile(new File([JSON.stringify(data)],"example.cueboard.json",{type:"application/json"}));setSide("a");
+  if(exampleBusy)return;exampleBusy=true;
+  try{
+    if(!quiet)toast("Loading the example…",6e4);
+    if(!window.CUEBOARD_EXAMPLE)await new Promise(ok=>{const sc=document.createElement("script");sc.src="example/example.js";sc.onload=ok;sc.onerror=ok;document.head.appendChild(sc)});
+    const src=window.CUEBOARD_EXAMPLE;if(!src){if(!quiet)toast("Couldn't load the example (example/example.js is missing)");return}
+    const data=JSON.parse(JSON.stringify(src)),media={};
+    await Promise.all(Object.entries(data.media||{}).map(async([id,m])=>{
+      if(!m.url){media[id]=m;return}
+      if(location.protocol==="file:")return;
+      try{const r=await fetch(m.url);if(!r.ok)return;media[id]={type:m.type,blob:await r.blob()}}catch(e){}}));
+    data.media=media;data.project.sections.forEach(s=>{s.takes=(s.takes||[]).filter(t=>media[t.media])});
+    await importData(data,true);setSide("a");
+  }finally{exampleBusy=false}
 }
 document.addEventListener("click",e=>{if(e.target.closest("[data-example]"))openExample()});
 $("exportb").onclick=()=>{if(!cur){toast("Nothing to export yet");return}$("dlgExport").showModal()};
