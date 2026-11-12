@@ -945,7 +945,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-ghost{position:fixed;left:0;top:0;z-index:var(--z-drag);pointer-events:none;padding:var(--sp-2) var(--sp-3);background:var(--surface-3);border:var(--hairline) solid var(--accent);border-radius:var(--r-sm);box-shadow:var(--shadow-float);font:var(--w-semibold) var(--text-sm)/var(--lh-sm) var(--font-ui);white-space:nowrap}
   /* a notice while there is no song; then the one bar. Its tools depend on the selection (data-mode): nothing selected,
      Undo and Cut here; a shot, six tools; a picked cut, the nudge row */
-  .m-peek:not(:empty){flex:none;border-bottom:var(--hairline) solid var(--border-subtle);background:var(--surface-1)}
+  .m-peek:empty{display:none}
+  .m-peek{flex:none;border-bottom:var(--hairline) solid var(--border-subtle);background:var(--surface-1)}
   .m-empty{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) calc(var(--gutter) + var(--safe-r)) var(--sp-2) calc(var(--gutter) + var(--safe-l));color:var(--ink-2)}
   .m-empty>span{flex:1 1 12em}
   .m-tool{flex:none;display:flex;min-height:var(--toolbar-h);padding:0 var(--safe-r) var(--safe-b) var(--safe-l);background:var(--surface-1);border-top:var(--hairline) solid var(--border-subtle)}
@@ -3312,8 +3313,9 @@ async function joinFlow(inv){
 const phoneMQ=matchMedia("not all and (min-width:820px)"),landMQ=matchMedia("(pointer:coarse) and (orientation:landscape) and (max-height:499.98px)");
 /* a phone on its side can be 820px wide or more: it is still the phone (its state, its Wi-Fi rule), showing the viewer */
 const land=()=>landMQ.matches,phone=()=>phoneMQ.matches||land(),mOnB=()=>side==="b"&&phone();
-/* Takes side: the monitor shows the picked shot (the take in the cut, its picture, or its slate) */
-function mBSeek(){const s=selSec();if(mOnB()&&s&&S()[secAt(now())]!==s)seek(s.start)}
+/* Takes side: the monitor shows the picked shot (the take in the cut, its picture, or its slate); the rail keeps it in view */
+function mBSeek(){const s=selSec();if(!mOnB()||!s)return;if(S()[secAt(now())]!==s)seek(s.start);
+  const r=$("bList"),c=r.querySelector(".bitem.sel"),l=c?c.offsetLeft-r.offsetLeft:0;if(c&&(l<r.scrollLeft||l+c.offsetWidth>r.scrollLeft+r.clientWidth))r.scrollLeft=l-16}
 /* on the picture: current / total, and what changes how it plays (a loop, a speed other than 1×); the viewer's scrub bar */
 function mTimeTxt(){const t=now(),d=dur(),r=audio.playbackRate||1;$("mTime").textContent=cur?fmt(t)+" / "+fmt(d)+(loop?" · loop":"")+(r!==1?" · "+r+"×":""):"";
   const sb=$("mScrub");sb.firstChild.style.width=Math.min(100,t/Math.max(.01,d)*100)+"%";sb.setAttribute("aria-valuetext",fmt(t))}

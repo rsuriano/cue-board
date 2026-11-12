@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, extname, normalize } from 'node:path';
 const { chromium } = createRequire('/home/ramiro/testkit/')('playwright-core');
+import { tapTile } from './mobile-b-lib.mjs';
 
 const [root, out] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });
@@ -315,13 +316,15 @@ try {
     const tag = `phone-${w}x${h}`;
     await ph.waitForFunction(() => /Mountain/.test(document.getElementById('projname').textContent) && document.getElementById('mtUndo'), null, { timeout: 15000 });
     await ph.evaluate(() => document.fonts.ready); await sleep(600);
+    // layout B: the six tools show for a picked shot (a tap on its tile)
+    await ph.evaluate(() => { const a = document.getElementById('audio'), s = __A().S(); a.currentTime = (s[1].start + s[2].start) / 2; }); await sleep(300); await tapTile(ph);
     const tool = () => ph.evaluate(() => {
       const bs = [...document.querySelectorAll('#mTool > button')].filter(b => b.getClientRects().length), u = document.getElementById('mtUndo');
       const box = b => { const r = b.getBoundingClientRect(), i = b.querySelector('.ico').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), icon: Math.round(i.width), stroke: getComputedStyle(b.querySelector('.ico')).strokeWidth, clipped: b.scrollWidth > b.clientWidth + 1, label: b.textContent.trim() }; };
       return { labels: bs.map(b => b.textContent.trim()), undo: box(u), others: bs.filter(b => b !== u).map(box), disabled: u.disabled, aria: u.getAttribute('aria-label'), overflow: document.documentElement.scrollWidth - innerWidth, color: getComputedStyle(u).color };
     });
     let t = await tool();
-    check(`[${tag}] Undo sits in the shot toolbar, before Delete, with the five others`, t.labels.join('|') === 'Cut here|Details|Photo|Move|Undo|Delete', t.labels.join('|'));
+    check(`[${tag}] Undo is first in the bar, with the five others; Delete is not in the bar (it is in More, away from Undo)`, t.labels.join('|') === 'Undo|Cut here|Details|Photo|Move|More', t.labels.join('|'));
     check(`[${tag}] same size, icon and stroke as the other toolbar buttons, nothing clipped`, t.others.every(o => o.w === t.undo.w && o.h === t.undo.h && o.icon === t.undo.icon && o.stroke === t.undo.stroke) && !t.undo.clipped && t.others.every(o => !o.clipped) && t.undo.icon === 20, JSON.stringify({ undo: t.undo, others: t.others }));
     check(`[${tag}] disabled while there is nothing to undo; named for the hold`, t.disabled && /hold to redo/i.test(t.aria), JSON.stringify([t.disabled, t.aria]));
     check(`[${tag}] no horizontal overflow`, t.overflow <= 0, String(t.overflow));

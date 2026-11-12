@@ -31,7 +31,7 @@ for (const [w, h] of SIZES) {
   const page = await ctx.newPage(), errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   await page.goto(origin + '/index.html');
-  await page.waitForFunction(() => /Mountain/.test(document.getElementById('projname').textContent) && document.querySelector('#mPeek .m-peekb'), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Mountain/.test(document.getElementById('projname').textContent) && document.getElementById('mtCut'), null, { timeout: 15000 });
   // 12 shots over the song, then a playhead in the middle of it (the waveform is drawn on both sides of the centre)
   await page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(), d = document.getElementById('audio').duration || 120;
     while (s.length < 12) s.push({ ...s[s.length - 1], id: 'x' + s.length, title: 'Shot ' + (s.length + 1), takes: [] });
@@ -57,16 +57,16 @@ for (const [w, h] of SIZES) {
       zoom: zoom && [zoom.left, zoom.top, zoom.right, zoom.bottom, zoom.height], grips: grips.map(g => [g.left, g.top, g.width, g.height]),
       drawn: (() => { const c = document.getElementById('tl'), g = c.getContext('2d'), d = devicePixelRatio, px = g.getImageData(Math.round(2 * d), Math.round(4 * d), 1, 1).data; return px[0] + px[1] + px[2]; })() };
   });
-  check(dev, 'waveform at most its cap (120px)', m.L.waveH <= 120, `${m.L.waveH}px`);
+  check(dev, 'the waveform row takes the height that is left: at least 72px', m.L.waveH >= 72, `${m.L.waveH}px`);
   check(dev, 'shot strip thumbnails at least 44px tall', m.L.h >= 44, `${m.L.h}px`);
   check(dev, 'timeline spans the full width (ruler drawn from the left edge)', m.tl[0] <= 8 && m.cv[0] <= 8 && m.tl[1] >= m.iw - 1 && m.drawn > 0, `timeline ${m.tl.map(Math.round)}, canvas ${m.cv.map(Math.round)}`);
   check(dev, 'playhead at the centre of the visible timeline (±2px)', Math.abs(m.ph - (m.cv[0] + m.cv[1]) / 2) <= 2, `${m.ph.toFixed(1)} vs ${((m.cv[0] + m.cv[1]) / 2).toFixed(1)}`);
-  check(dev, 'preview at least 30% of the viewport height', m.mon >= m.ih * .3, `${Math.round(m.mon)}px of ${m.ih}`);
+  check(dev, 'the 16:9 picture is the full width with no bars (width × 9/16)', Math.abs(m.mon - m.iw * 9 / 16) <= 1.5, `${Math.round(m.mon)}px of ${m.ih}`);
   check(dev, 'no horizontal or vertical overflow', m.sw <= m.iw && m.sh <= m.ih, `${m.sw}x${m.sh}`);
-  check(dev, 'toolbar and tabs fully visible', m.tool[1] <= m.ih && m.tabs <= m.ih + .5, `toolbar ${m.tool.map(Math.round)}, tabs end ${Math.round(m.tabs)}`);
+  check(dev, 'the bar fully visible at the bottom edge; the Cut / Takes switch in the top row', m.tool[1] <= m.ih + .5 && m.tabs <= 60, `toolbar ${m.tool.map(Math.round)}, tabs end ${Math.round(m.tabs)}`);
   check(dev, 'cut grips at least 44px tall and wide', m.grips.length && m.grips.every(g => g[2] >= 44 && g[3] >= 44), JSON.stringify(m.grips.slice(0, 2).map(g => g.map(Math.round))));
   const wTop = m.cv[2] + m.L.wave, cover = m.zoom && m.grips.some(g => g[0] < m.zoom[2] && g[0] + g[2] > m.zoom[0] && g[1] < m.zoom[3] && g[1] + g[3] > m.zoom[1]);
-  check(dev, 'zoom control 44px tall, off the shot strip and the waveform', m.zoom && m.zoom[4] >= 44 && !cover && (m.zoom[3] <= m.cv[2] + m.L.top || m.zoom[1] >= wTop + m.L.waveH), JSON.stringify(m.zoom && m.zoom.map(Math.round)));
+  check(dev, 'no zoom control over the shot strip or the waveform: none on screen (pinch and double tap, design/mobile-b-check.mjs 5)', !m.zoom && !cover && wTop > 0, JSON.stringify(m.zoom));
   check(dev, 'no page errors', !errs.length, errs.join(' | '));
   // scrub with a finger still seeks
   const c = await page.context().newCDPSession(page), y = m.cv[2] + m.L.wave + m.L.waveH / 2, t0 = await page.evaluate(() => document.getElementById('audio').currentTime);

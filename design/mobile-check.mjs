@@ -4,11 +4,14 @@
 // Same harness as design/topbar-check.mjs: /collab.js is a stub whose status, peers and files the script sets, and
 // index.html gets a sync URL nothing listens on. Every request outside the local server is aborted (no OpenRouter).
 // Screenshots of every phone state go to <out-dir>/<device>-<state>.png.
+// Layout B (docs/specs/mobile-redesign-b.md): a shot's tools show once it is picked (a tap on its tile), Delete is in
+// the More sheet, Play is the picture. The new pieces have their own check, design/mobile-b-check.mjs.
 import { createRequire } from 'node:module';
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, extname, normalize } from 'node:path';
 const { chromium } = createRequire('/home/ramiro/testkit/')('playwright-core');
+import { tapTile } from './mobile-b-lib.mjs';
 
 const [root, out] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });
@@ -73,7 +76,10 @@ const filesHidden = page => page.evaluate(() => document.getElementById('mpanel'
 // the files indicator isn't in the phone's bar: the Projects sheet's "Files and downloads" row opens the panel
 const openFiles = async page => { if (await filesHidden(page)) { await page.tap('#proj'); await page.waitForTimeout(300); await page.tap('#mFiles'); await page.waitForTimeout(200); } };
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-const app = page => page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(); return { n: s.length, ids: s.map(x => x.id), starts: s.map(x => x.start), img: s.map(x => x.img), sel: document.querySelector('#mPeek .ed-n')?.textContent }; });
+const app = page => page.evaluate(() => { const a = window.__CUE_MEDIA_TEST.app, s = a.S(); return { n: s.length, ids: s.map(x => x.id), starts: s.map(x => x.start), img: s.map(x => x.img) }; });
+// the shot under the playhead picked: its tools are in the bar
+const pick = async page => { for (let k = 0; k < 3 && !(await page.isVisible('#mtMore')); k++) { await page.waitForTimeout(150); await tapTile(page); }
+  if (!(await page.isVisible('#mtMore'))) console.log('pick failed', JSON.stringify(await page.evaluate(() => ({ mode: document.getElementById('mTool').dataset.mode, more: document.getElementById('mMore').open, ed: document.body.className, left: document.getElementById('tl-scroll').scrollLeft, t: document.getElementById('audio').currentTime, paused: document.getElementById('audio').paused, toast: document.getElementById('toast').textContent })))); };
 const tl = page => page.evaluate(() => { const r = document.querySelector('.timeline').getBoundingClientRect(), c = document.getElementById('tl').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, band: c.y + window.__CUE_MEDIA_TEST.app.mLayout(c.height).top + 20 }; });
 
 for (const [dev, opts] of Object.entries(DEVICES)) {
@@ -86,11 +92,11 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   page.on('requestfailed', q => { if (!q.url().startsWith(origin)) blocked.push(q.url()); });
   const shot = n => page.screenshot({ path: join(out, `${dev}-${n}.png`) });
   await page.goto(origin + '/index.html');
-  await page.waitForFunction(() => /Mountain/.test(document.getElementById('projname').textContent) && document.querySelector('#mPeek .m-peekb'), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Mountain/.test(document.getElementById('projname').textContent) && document.getElementById('mtCut'), null, { timeout: 15000 });
   await page.waitForTimeout(600);
   await shot('cut');
-  check(dev, 'phone layout: tabs and toolbar shown, the peek row only from 700px tall; desktop bar items hidden', await page.evaluate(() => ['mTabs', 'mTool'].every(id => document.getElementById(id).getClientRects().length) && !!document.getElementById('mPeek').getClientRects().length === innerHeight >= 700 && !document.querySelector('.sides').getClientRects().length && !document.getElementById('strip').getClientRects().length));
-  check(dev, 'the whole side A deck fits the screen (tab bar on screen)', await page.evaluate(() => document.getElementById('mTabs').getBoundingClientRect().bottom <= innerHeight + 1));
+  check(dev, 'phone layout: the Cut / Takes switch and the bar shown, no peek row and no transport row at any height; desktop bar items hidden', await page.evaluate(() => ['mTabs', 'mTool'].every(id => document.getElementById(id).getClientRects().length) && !document.getElementById('mPeek').getClientRects().length && !document.querySelector('.transport').getClientRects().length && !document.querySelector('.sides').getClientRects().length && !document.getElementById('strip').getClientRects().length));
+  check(dev, 'the whole side A deck fits the screen (the bar ends at the bottom edge; the switch is in the top row)', await page.evaluate(() => Math.abs(document.getElementById('mTool').getBoundingClientRect().bottom - innerHeight) <= 1 && document.getElementById('mTabs').getBoundingClientRect().bottom <= 60));
   const small = await page.evaluate(() => [...document.querySelectorAll('#sideA button,#sideA select,.m-tabs button,.top button')].filter(b => b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden').map(b => { const r = b.getBoundingClientRect(); return [b.id || b.className || b.textContent.trim(), Math.round(r.width), Math.round(r.height)]; }).filter(([, w, h]) => h < 44 || w < 44));
   check(dev, 'every visible control on side A is at least 44px', !small.length, JSON.stringify(small));
   const fonts = await page.evaluate(() => [...document.querySelectorAll('input:not([type=checkbox]):not([type=file]),textarea,select')].map(e => parseFloat(getComputedStyle(e).fontSize)).filter(v => v < 16).length);
@@ -101,7 +107,7 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   const t0 = await page.evaluate(() => document.getElementById('audio').currentTime);
   await touch(page, [[T.x + T.w * .75, T.y + T.h * .7], [T.x + T.w * .25, T.y + T.h * .7]]);
   await page.waitForTimeout(400);
-  const sc = await page.evaluate(() => { const s = document.getElementById('tl-scroll'), a = document.getElementById('audio'); return { left: s.scrollLeft, t: a.currentTime, tc: document.getElementById('tc').textContent }; });
+  const sc = await page.evaluate(() => { const s = document.getElementById('tl-scroll'), a = document.getElementById('audio'); return { left: s.scrollLeft, t: a.currentTime, tc: document.getElementById('mTime').textContent }; });
   check(dev, 'dragging the timeline scrubs (scroll = time)', sc.t > t0 + 2 && sc.left > 0, `t ${t0.toFixed(2)} → ${sc.t.toFixed(2)}, ${sc.tc}`);
   await shot('scrubbed');
 
@@ -152,51 +158,62 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
     check(dev, 'hold a shot and drop it on its neighbour: swapped', B.ids[tiles.i] === A.ids[tiles.i + 1] && B.ids[tiles.i + 1] === A.ids[tiles.i], `${A.ids.slice(tiles.i, tiles.i + 2)} → ${B.ids.slice(tiles.i, tiles.i + 2)}`);
   } else check(dev, 'hold a shot and drop it on its neighbour: swapped', false, 'neighbour not on screen ' + JSON.stringify(tiles));
   // Move → Earlier / Later (the button way)
-  await page.tap('#mtMove'); await shot('move');
+  await pick(page); await page.tap('#mtMove'); await shot('move');
   A = await app(page); await page.tap('#mtNext'); B = await app(page);
   check(dev, 'Move · Later swaps the shot with the next one', A.ids.join() !== B.ids.join() && B.n === A.n);
   await page.tap('#mtDone');
 
-  // an armed Delete disarms when the selection changes: a scroll onto another shot, then playback crossing a cut.
-  // The second tap (well within the 2.6 s) only arms again, nothing is deleted.
-  const armed = () => page.evaluate(() => document.getElementById('mtDel').hasAttribute('data-armed'));
+  // Delete is in the shot's More sheet. Armed, it disarms when the selection changes: a scroll onto another shot, then
+  // playback crossing a cut. The second tap (well within the 2.6 s) only arms again, nothing is deleted.
+  const armed = () => page.evaluate(() => document.getElementById('mmDel').hasAttribute('data-armed'));
   const selId = () => page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(), t = document.getElementById('audio').currentTime; return s[s.findLastIndex(x => x.start <= t)].id; });
+  const moreOpen = () => page.evaluate(() => document.getElementById('mMore').open);
+  const openMore = async () => { if (!(await moreOpen())) { await pick(page); await page.tap('#mtMore'); await page.waitForTimeout(300); } };
+  // (a moved shot keeps the selection while the playhead stays: put the selection back under the playhead first)
+  await page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(), sc = document.getElementById('tl-scroll'), a = document.getElementById('audio'), P = (sc.scrollWidth - sc.clientWidth) / a.duration, i = s.findLastIndex(x => x.start <= a.currentTime);
+    sc.scrollLeft = Math.round(((s[i].start + (s[i + 1] ? s[i + 1].start : a.duration)) / 2) * P) + 3; });
+  await page.waitForTimeout(300); await openMore();
   A = await app(page); const shotA = await selId();
-  await page.tap('#mtDel'); const arm1 = await armed();
+  await page.tap('#mmDel'); const arm1 = await armed();
   await page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(), sc = document.getElementById('tl-scroll'), a = document.getElementById('audio'), P = (sc.scrollWidth - sc.clientWidth) / a.duration;
     const i = s.findLastIndex(x => x.start <= a.currentTime), j = s[i + 1] ? i + 1 : i - 1; sc.scrollLeft = Math.round(((s[j].start + (s[j + 1] ? s[j + 1].start : a.duration)) / 2) * P); });
   await page.waitForTimeout(250);
   const shotB = await selId(), dis1 = !(await armed());
-  await page.tap('#mtDel'); await page.waitForTimeout(150); B = await app(page);
-  check(dev, 'armed Delete, then a scroll onto another shot: disarmed, a second tap deletes nothing', arm1 && dis1 && shotA !== shotB && B.n === A.n && B.ids.includes(shotA) && B.ids.includes(shotB), `${shotA} → ${shotB}, ${A.n} → ${B.n}`);
-  // that tap armed Delete on B: let it lapse, go just before the next cut, arm, play across it
-  await page.waitForTimeout(2700);
+  await page.tap('#mmDel'); await page.waitForTimeout(150); B = await app(page);
+  check(dev, 'armed Delete (in More), then a scroll onto another shot: disarmed, a second tap deletes nothing', arm1 && dis1 && shotA !== shotB && B.n === A.n && B.ids.includes(shotA) && B.ids.includes(shotB), `${shotA} → ${shotB}, ${A.n} → ${B.n}`);
+  // that tap armed Delete on B: let it lapse, go just before the next cut, play (the picture), open More, arm, and let
+  // playback cross the cut with the sheet open
+  await page.waitForTimeout(2700); await page.evaluate(() => document.getElementById('mMore').close()); await pick(page);
   await page.evaluate(() => { const s = window.__CUE_MEDIA_TEST.app.S(), a = document.getElementById('audio'), i = s.findLastIndex(x => x.start <= a.currentTime), c = s[i + 1] || s[i];
-    a.currentTime = Math.max(s[i].start + .05, c.start - .25); });
+    a.currentTime = Math.max(s[i].start + .05, c.start - 1.5); });
   await page.waitForTimeout(300);
-  A = await app(page); const shotC = await selId(); await page.tap('#mtDel'); const arm2 = await armed();
-  await page.tap('#play'); await page.waitForFunction(id => { const s = window.__CUE_MEDIA_TEST.app.S(), t = document.getElementById('audio').currentTime; return s[s.findLastIndex(x => x.start <= t)].id !== id; }, shotC, { timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(120); await page.tap('#play');
+  A = await app(page); const shotC = await selId();
+  const mon = await page.evaluate(() => { const r = document.getElementById('monitor').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 3]; });
+  await page.touchscreen.tap(mon[0], mon[1]); await page.tap('#mtMore'); await page.tap('#mmDel'); const arm2 = await armed();
+  await page.waitForFunction(id => { const s = window.__CUE_MEDIA_TEST.app.S(), t = document.getElementById('audio').currentTime; return s[s.findLastIndex(x => x.start <= t)].id !== id; }, shotC, { timeout: 4000 }).catch(() => {});
+  await page.waitForTimeout(120); await page.evaluate(() => document.getElementById('audio').pause());
   const shotD = await selId(), dis2 = !(await armed());
-  await page.tap('#mtDel'); await page.waitForTimeout(150); B = await app(page);
+  await page.tap('#mmDel'); await page.waitForTimeout(150); B = await app(page);
   check(dev, 'armed Delete, then playback crosses a cut: disarmed, a second tap deletes nothing', arm2 && dis2 && shotC !== shotD && B.n === A.n && B.ids.includes(shotC) && B.ids.includes(shotD), `${shotC} → ${shotD}, armed ${arm2}/${!dis2}, ${A.n} → ${B.n}`);
   await page.waitForTimeout(2700);
 
   // delete (two taps)
-  A = await app(page); await page.tap('#mtDel'); await page.waitForTimeout(100); await page.tap('#mtDel'); await page.waitForTimeout(200); B = await app(page);
-  check(dev, 'Delete (tap twice) removes the shot', B.n === A.n - 1, `${A.n} → ${B.n}`);
+  await openMore();
+  A = await app(page); await page.tap('#mmDel'); await page.waitForTimeout(100); await page.tap('#mmDel'); await page.waitForTimeout(200); B = await app(page);
+  check(dev, 'Delete shot (tap twice, in More) removes the shot and closes the sheet', B.n === A.n - 1 && !(await moreOpen()), `${A.n} → ${B.n}`);
 
   // upload a photo into the selected shot
   A = await app(page);
+  await pick(page);
   const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.tap('#mtImg')]);
   await fc.setFiles({ name: 'frame.png', mimeType: 'image/png', buffer: PNG }); await page.waitForTimeout(800);
   B = await app(page);
   check(dev, 'Photo uploads an image into the selected shot', B.img.filter(Boolean).length === A.img.filter(Boolean).length + 1 || A.img.join() !== B.img.join());
 
   // details sheet: opens half height, full height on focus, closes and gives focus back
-  await page.tap((await page.isVisible('#mPeek .m-peekb')) ? '#mPeek .m-peekb' : '#mtDet'); await page.waitForTimeout(300);
-  const half = await page.evaluate(() => ({ open: document.body.classList.contains('m-ed'), top: document.getElementById('editor').getBoundingClientRect().top, play: document.getElementById('play').getBoundingClientRect().bottom }));
-  check(dev, 'Details opens as a sheet under the transport (Play stays visible)', half.open && half.top >= half.play - 1, JSON.stringify(half));
+  await pick(page); await page.tap('#mtDet'); await page.waitForTimeout(300);
+  const half = await page.evaluate(() => ({ open: document.body.classList.contains('m-ed'), top: document.getElementById('editor').getBoundingClientRect().top, play: document.getElementById('monitor').getBoundingClientRect().bottom }));
+  check(dev, 'Details opens as a sheet under the picture (the picture, which is Play, stays visible)', half.open && half.top >= half.play - 1, JSON.stringify(half));
   await shot('details');
   check(dev, 'no horizontal overflow with the details sheet', (await overflow(page)) <= 0);
   await page.tap('#f-title'); await page.waitForTimeout(400);
@@ -207,7 +224,7 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   check(dev, 'shot type chips set the field', (await page.inputValue('#f-shot')) === 'Close-up');
   await page.tap('#mEdClose'); await page.waitForTimeout(300);
   check(dev, 'the sheet closes', !(await page.evaluate(() => document.body.classList.contains('m-ed'))));
-  check(dev, 'a long shot title: no overflow (the peek row truncates it)', (await overflow(page)) <= 0 && await page.evaluate(() => { const e = document.querySelector('#mPeek .pt'); return !e.getClientRects().length || e.scrollWidth > e.clientWidth; }));
+  check(dev, 'a long shot title: no overflow (the slate on the picture truncates it)', (await overflow(page)) <= 0 && await page.evaluate(() => { const e = document.querySelector('#slate .t'); return e.getClientRects().length > 0 && e.scrollWidth > e.clientWidth; }));
 
   // tabs
   await page.tap('#mTabs [data-side="b"]'); await page.waitForTimeout(400);
@@ -224,8 +241,8 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
   await shot('project');
   check(dev, 'no horizontal overflow with the Project sheet', (await overflow(page)) <= 0);
   const acc = await page.getAttribute('#song', 'accept');
-  const [sc2] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null), page.tap('#mSong')]);
-  check(dev, 'song picker opens, accept lists the extensions (iOS)', !!sc2 && /\.mp3/.test(acc) && /\.m4a/.test(acc), acc);
+  const [sc2] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null), page.tap('#mSong').then(() => page.tap('#mSongRep'))]);
+  check(dev, 'song picker opens (Song, then Replace song), accept lists the extensions (iOS)', !!sc2 && /\.mp3/.test(acc) && /\.m4a/.test(acc), acc);
 
   // join a room from an invite link, then presence, files, Wi-Fi only, size confirmation
   const room = 'roomroomroomroom1234', token = 'tokentokentokentoken5678';
@@ -335,9 +352,10 @@ for (const [dev, opts] of Object.entries(DEVICES)) {
     check(dev, `no horizontal overflow at ${w}px`, o <= 0, String(o));
     if (w === 360) await shot('cut-360');
   }
-  // rotate: landscape still works (no special design)
+  // rotate: the landscape viewer (design/mobile-b-check.mjs has its own checks)
   await page.setViewportSize({ width: opts.screen.height - 90, height: opts.screen.width - 48 }); await page.waitForTimeout(400);
-  check(dev, 'rotated: no overflow, Play reachable', (await overflow(page)) <= 0 && await page.evaluate(() => { const r = document.getElementById('play').getBoundingClientRect(); return r.width > 0 && r.top >= 0; }));
+  check(dev, 'rotated: no overflow, Play reachable (the picture fills the screen; a tap on it plays)', (await overflow(page)) <= 0 && await page.evaluate(() => { const r = document.getElementById('monitor').getBoundingClientRect(); return r.left === 0 && r.top === 0 && r.width === innerWidth && r.height === innerHeight; })
+    && await (async () => { await page.touchscreen.tap(200, 150); await page.waitForTimeout(400); const on = await page.evaluate(() => !document.getElementById('audio').paused); await page.touchscreen.tap(200, 150); await page.waitForTimeout(200); return on; })());
   await shot('landscape');
   await page.setViewportSize(opts.viewport); await page.waitForTimeout(300);
   // manifest and icons
