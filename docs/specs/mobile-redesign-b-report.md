@@ -24,7 +24,7 @@ Contract: `docs/specs/mobile-redesign-b.md`. Branch `mobile-b`, local commits on
 
 ## Size
 
-`index.html` against the spec commit (`109c49c`): **250 lines added, 149 removed** (net +101), markup included. Cap: about 600. No change to the data model, storage keys, sync messages or the export format; `collab.js` and `packages/` untouched.
+`index.html` against the spec commit (`109c49c`): **248 lines added, 147 removed** (net +101), markup included. Cap: about 600. No change to the data model, storage keys, sync messages or the export format; `collab.js` and `packages/` untouched.
 
 ## Old assertion → new assertion
 
