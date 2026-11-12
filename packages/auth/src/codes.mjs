@@ -58,7 +58,8 @@ export class CodeStore {
   standing(/** @type {string} */ id) { const c = this.read().find(x => x && x.id === id); return c && !c.revoked ? c : null; }
 }
 
-/** Failures per key (an IP): after `max` within the window the key is blocked for `blockMs`. A success clears it. */
+/** Failures per key (an IP): after `max` within the window the key is blocked for `blockMs`. Failures only expire with
+    time: a success doesn't clear them, or one valid code slipped in between wrong guesses would never get blocked. */
 export function createFailureLimiter({ max = 5, blockMs = 15 * 60_000, now = Date.now } = {}) {
   /** @type {Map<string, { fails: number, first: number, until: number }>} */ const m = new Map();
   const prune = () => { const t = now(); if (m.size > 1000) for (const [k, e] of m) if (e.until < t && t - e.first > blockMs) m.delete(k); };
@@ -73,7 +74,6 @@ export function createFailureLimiter({ max = 5, blockMs = 15 * 60_000, now = Dat
       m.set(key, e);
       return e.until > t;
     },
-    ok(/** @type {string} */ key) { m.delete(key); },
     size: () => m.size,
   };
 }

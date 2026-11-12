@@ -256,10 +256,10 @@ test('secrets stay out of the log; the code CLIs round-trip; no signing key or n
   } finally { await off.srv.close(); }
 });
 
-test('limiters on their own (moved from the sync server): failures reset after a success, the block ends, maps stay bounded; untake gives one back', () => {
+test('limiters on their own (moved from the sync server): failures expire only with time, the block ends, maps stay bounded; untake gives one back', () => {
   let t = 0; const now = () => t;
   const f = createFailureLimiter({ max: 3, blockMs: 1000, now });
-  assert.equal(f.fail('a'), false); assert.equal(f.fail('a'), false); f.ok('a'); assert.equal(f.fail('a'), false); assert.equal(f.fail('a'), false);
+  assert.equal(f.fail('a'), false); assert.equal(f.fail('a'), false);
   assert.equal(f.fail('a'), true); assert.equal(f.blocked('a'), 1000); t = 999; assert.equal(f.blocked('a'), 1); t = 1000; assert.equal(f.blocked('a'), 0);
   for (let i = 0; i < 1500; i++) f.fail('k' + i); t += 5000; f.fail('z'); assert.ok(f.size() < 1500, 'stale entries are pruned');
   const b = createBurstLimiter({ max: 2, windowMs: 100, now });

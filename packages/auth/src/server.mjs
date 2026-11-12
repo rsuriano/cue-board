@@ -94,7 +94,6 @@ export async function startAuth(o) {
       if (!who) return miss(res, ip, 'bad_key');
       [source, ref] = ['purchase', b.key];
     }
-    fails.ok(ip);
     const at = now();
     users.login({ email: who, product: p.id, source, ref, at: new Date(at).toISOString() });
     log.info('session opened', { product: p.id, source, who: tag(who), ip });
@@ -146,7 +145,6 @@ export async function startAuth(o) {
     if (!c) return miss(res, ip, 'bad_code');
     if (c.revoked) return fail(res, 'code_revoked');
     if (c.maxUsers != null && users.seats(c.id, to) >= c.maxUsers) return fail(res, 'code_full');
-    fails.ok(ip);
     if (!mails.take(to)) return fail(res, 'too_many_attempts');
     try { await send(to, p, link(p, signToken(/** @type {any} */ (key), { typ: 'ticket', sub: to, prd: p.id, code: c.id, exp: now() + TICKET_MS }))); }
     catch (err) { mails.untake(to); log.warn('email failed', { err: /** @type {Error} */ (err).message }); return fail(res, 'upstream'); }

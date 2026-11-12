@@ -33,7 +33,13 @@ export const RELAY_DEFAULTS = {
   relayRoomBytesPerSec: 8 * 1024 * 1024, relayIpBytesPerSec: 4 * 1024 * 1024,
   relayMaxTransferBytes: RELAY_MAX_FILE,     // largest file relayed; also sent to each client (media-limits.mjs)
   relayMaxBufferedBytes: 2 * 1024 * 1024,    // target socket's queue; past this a frame is dropped, never queued
+  // totals, so the relay can't be used as a data pipe: every room an account created shares one budget (a room with
+  // no account, made by the CLI, has its own), and the whole server has one bucket
+  relayTotalBytesPerSec: 16 * 1024 * 1024,
+  relayAccountBytesPerDay: 20 * 1024 * 1024 * 1024,
+  relayAccountTransfers: 32,                 // files (transfer tags) relayed at once per account; a tag idle 30 s ends
 };
+const DAY = 24 * 3600_000, TRANSFER_IDLE_MS = 30_000;
 
 /** Token bucket: `rate` per second, holds up to 2 s worth. */
 export class Bucket {
@@ -62,7 +68,15 @@ export function createMediaRelay(opts, log, send) {
     if (!force && now - swept < 10_000) return;
     swept = now;
     for (const [ip, b] of ipBuckets) { b.take(0, now); if (b.v >= b.cap) ipBuckets.delete(ip); }
+    for (const [k, a] of accounts) {
+      for (const [tag, t] of a.tags) if (now - t > TRANSFER_IDLE_MS) a.tags.delete(tag);
+      if (!a.tags.size && now - a.day >= DAY) accounts.delete(k);
+    }
   }
+  const total = new Bucket(o.relayTotalBytesPerSec);
+  /** per account (or 'room:<id>'): bytes relayed since `day` started, and the transfer tags seen lately (tag → when)
+      @type {Map<string, { day: number, bytes: number, tags: Map<string, number> }>} */
+  const accounts = new Map();
   const stats = { signals: 0, relayed: 0, relayedBytes: 0, dropped: 0, ignored: 0 };
   /** per room: peers by id, buckets, and when a drop (or an ignored frame) was last logged */
   /** @type {WeakMap<object, { peers: Map<number, any>, sig: Bucket, bytes: Bucket, warned: number, drops: number, noted: number, ignored: number }>} */
@@ -119,7 +133,7 @@ export function createMediaRelay(opts, log, send) {
     },
     /** A MSG_MEDIA message from `ws`, type already read. Throws only on one that can't be read (the server closes with
         4400); any other frame it doesn't take is ignored. */
-    handle(/** @type {{ id: string }} */ room, /** @type {any} */ ws, /** @type {decoding.Decoder} */ dec) {
+    handle(/** @type {{ id: string, account?: string }} */ room, /** @type {any} */ ws, /** @type {decoding.Decoder} */ dec) {
       const rs = roomState(room), m = ws.media;
       if (!m) throw new Error('media before join');
       const kind = decoding.readVarUint(dec), to = decoding.readVarUint(dec), payload = decoding.readVarUint8Array(dec);
@@ -151,7 +165,18 @@ export function createMediaRelay(opts, log, send) {
         sweep(now);
         let ipb = ipBuckets.get(m.ip);
         if (!ipb) { ipb = new Bucket(o.relayIpBytesPerSec, now); ipBuckets.set(m.ip, ipb); }
-        if (!rs.bytes.take(payload.length, now) || !ipb.take(payload.length, now)) { drop(DROP.RATE, 'rate cap'); return; }
+        const key = room.account || 'room:' + room.id;
+        let acct = accounts.get(key);
+        if (!acct) { acct = { day: now, bytes: 0, tags: new Map() }; accounts.set(key, acct); }
+        if (now - acct.day >= DAY) { acct.day = now; acct.bytes = 0; }
+        const tag = Buffer.from(payload.subarray(1, 9)).toString('hex');
+        if (!acct.tags.has(tag) && acct.tags.size >= o.relayAccountTransfers) {
+          for (const [t, at] of acct.tags) if (now - at > TRANSFER_IDLE_MS) acct.tags.delete(t);
+          if (acct.tags.size >= o.relayAccountTransfers) { drop(DROP.RATE, 'transfers per account'); return; }
+        }
+        if (acct.bytes + payload.length > o.relayAccountBytesPerDay) { drop(DROP.RATE, 'daily bytes per account'); return; }
+        if (!rs.bytes.take(payload.length, now) || !ipb.take(payload.length, now) || !total.take(payload.length, now)) { drop(DROP.RATE, 'rate cap'); return; }
+        acct.bytes += payload.length; acct.tags.set(tag, now);
         stats.relayed++; stats.relayedBytes += payload.length;
         send(target, frame(K.RELAY, m.id, payload));   // forwarded as is; nothing is kept
         return;

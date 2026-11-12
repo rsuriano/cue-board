@@ -19,7 +19,7 @@ Never in a report: project, shot or room names, notes, prompts, lyrics, file nam
 
 ## Server
 
-`POST /reports` on the sync server (same host as the WebSocket, `packages/sync-server/src/api.mjs`). No token: anyone with the app can report. Same `CORS_ORIGINS` allow-list as the other endpoints. JSON body up to 16 KiB (413 past that, 400 for anything that isn't a JSON object). Limits, both answered 429 "Too many reports right now. Try again later.": `REPORTS_PER_HOUR` per IP (5) and `REPORTS_PER_DAY` for everyone (200, checked first, in memory: a restart resets it). Behind the proxy keep `TRUST_PROXY=1` so the per-IP limit sees real addresses. Many addresses can use up the daily limit; the app then offers Copy and Download.
+`POST /reports` on the sync server (same host as the WebSocket, `packages/sync-server/src/api.mjs`). No token: anyone with the app can report. Same `CORS_ORIGINS` allow-list as the other endpoints. JSON body up to 16 KiB (413 past that, 400 for anything that isn't a JSON object). Limits, both answered 429 "Too many reports right now. Try again later.": `REPORTS_PER_HOUR` per IP (5), `REPORTS_PER_IP_PER_DAY` (10) and `REPORTS_PER_DAY` for everyone (2000, checked first; all in memory: a restart resets them). Behind the proxy keep `TRUST_PROXY=1` so the per-IP limits see real addresses. It takes 200 addresses to use up the daily limit; the app then offers Copy and Download.
 
 Each report is a file `DATA_DIR/reports/<UTC time with ms>-<id>.json` (folder 0700, file 0600), with `id` and `received` added. At most `MAX_REPORTS` (500) are kept; the oldest go first. The log gets one line per report (`report stored`, id and IP), never its contents.
 

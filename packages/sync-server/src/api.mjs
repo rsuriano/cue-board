@@ -7,7 +7,9 @@
 
      OPTIONS *                     CORS preflight (origins from CORS_ORIGINS; see below)
      POST   /rooms    { name }     Bearer <session from auth> → 201 { roomId, token, ownerToken }  (token: first invite token)
-                                   401 no_session · 429 create_limit (per account, CREATE_PER_HOUR) · 507 room_cap (MAX_ROOMS)
+                                   401 no_session · 429 create_limit (per account, CREATE_PER_HOUR) · 429 account_cap (rooms
+                                   one account has on disk, MAX_ROOMS_PER_ACCOUNT) · 507 room_cap (MAX_ROOMS) · 507 disk_full
+                                   (free disk under MIN_FREE_DISK_BYTES)
      POST   /rooms/:id/invite      Bearer <owner token> → 200 { token }: every old invite link stops working and everyone
                                    connected is closed with 4401 (they rejoin with the new link; the owner's app does so itself)
      DELETE /rooms/:id             Bearer <owner token> → 200 { ok }: members get 4410 "room deleted", the folder is wiped
@@ -15,7 +17,7 @@
      POST   /reports  { …report }  no token (anyone can report a problem) → 201 { id }; the body is cleaned against the
                                    report allow-list (src/reports.mjs) and stored under DATA_DIR/reports/, never logged.
                                    400 bad_request · 413 too_large (over 16 KiB) · 429 report_limit (per IP: reportsPerHour,
-                                   5; everyone: reportsPerDay, 200)
+                                   5, and reportsPerIpPerDay, 10; everyone: reportsPerDay, 2000)
 
    CORS: a browser request carries an Origin header; it's answered with CORS headers only if that origin is in
    `corsOrigins` (exact match, scheme and host). A request from any other origin is refused with 403 origin (defence in
@@ -23,20 +25,34 @@
 import { canCreateRoom, createBurstLimiter } from './access.mjs';
 import { ROOM_ID } from './store.mjs';
 import { ReportStore, cleanReport } from './reports.mjs';
+import { isIPv6 } from 'node:net';
 
 const MAX_BODY = 16 * 1024, NAME_MAX = 120;
 const ERRORS = {
   bad_request: [400, 'Bad request'],
   no_session: [401, 'Creating a room needs an account. Log in and try again.'], create_limit: [429, 'You created a lot of rooms in the last hour. Try again later.'],
-  room_cap: [507, "The server can't take more rooms right now. Tell the operator."], unknown_room: [404, 'No such room.'], not_owner: [403, "Only the room's owner can do that."],
+  room_cap: [507, "The server can't take more rooms right now. Tell the operator."],
+  account_cap: [429, 'You have as many rooms as one account can have. Delete one you no longer use to make a new one.'],
+  disk_full: [507, 'The server is low on disk space and not taking new rooms. Tell the operator.'], unknown_room: [404, 'No such room.'], not_owner: [403, "Only the room's owner can do that."],
   report_limit: [429, 'Too many reports right now. Try again later.'], too_large: [413, 'That report is too big.'],
   origin: [403, 'Origin not allowed'], not_found: [404, 'Not found'], server: [500, 'Something went wrong on the server.'],
 };
 
+/** The key the per-IP report limits count on: an IPv4 address as it is, an IPv6 address by its /64 (one home or one
+    server usually holds a whole /64, so a key per address would let it send without end). @param {string} ip */
+export function netKey(ip) {
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (v4) return v4[1];
+  if (!isIPv6(ip)) return ip;
+  const [head, tail = ''] = ip.split('::'), h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const all = ip.includes('::') ? [...h, ...Array(8 - h.length - t.length).fill('0'), ...t] : h;
+  return all.slice(0, 4).map(x => (parseInt(x, 16) || 0).toString(16)).join(':') + '::/64';
+}
+
 /**
  * @param {{ store: import('./store.mjs').ProjectStore, log: ReturnType<typeof import('./log.mjs').createLogger>, dataDir: string,
- *   corsOrigins: string[], maxRooms: number, createPerHour: number, authPublicKey: import('node:crypto').KeyObject | null,
- *   reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
+ *   corsOrigins: string[], maxRooms: number, maxRoomsPerAccount: number, createPerHour: number, lowDisk: () => boolean, authPublicKey: import('node:crypto').KeyObject | null,
+ *   reportsPerHour?: number, reportsPerIpPerDay?: number, reportsPerDay?: number, maxReports?: number,
  *   clientIp: (req: import('node:http').IncomingMessage) => string,
  *   initDoc: (name: string) => import('yjs').Doc,
  *   kickRoom: (id: string, code: number, reason: string) => void, deleteRoom: (id: string) => boolean }} o
@@ -45,7 +61,8 @@ export function createApi(o) {
   const log = o.log;
   const createLimit = createBurstLimiter({ max: o.createPerHour });
   const reports = new ReportStore(o.dataDir, { max: o.maxReports ?? 500 });
-  const reportIp = createBurstLimiter({ max: o.reportsPerHour ?? 5 }), reportAll = createBurstLimiter({ max: o.reportsPerDay ?? 200, windowMs: 24 * 3600_000 });
+  const reportIp = createBurstLimiter({ max: o.reportsPerHour ?? 5 }), reportAll = createBurstLimiter({ max: o.reportsPerDay ?? 2000, windowMs: 24 * 3600_000 });
+  const reportIpDay = createBurstLimiter({ max: o.reportsPerIpPerDay ?? 10, windowMs: 24 * 3600_000 });
   const origins = new Set(o.corsOrigins.map(s => s.trim()).filter(Boolean));
 
   /** @param {import('node:http').ServerResponse} res @param {number} status @param {any} body */
@@ -108,8 +125,13 @@ export function createApi(o) {
     if (!b || (b.name !== undefined && typeof b.name !== 'string')) { fail(res, 'bad_request'); return true; }
     const name = String(b.name || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX) || 'Untitled project';
     if (!createLimit.take(who.who)) { log.warn('create refused: burst limit', { ip, code: who.label }); fail(res, 'create_limit'); return true; }
-    if (o.store.count() >= o.maxRooms) { log.error('create refused: room cap reached (MAX_ROOMS)', { ip, max: o.maxRooms }); fail(res, 'room_cap'); return true; }
-    const { id, token, ownerToken } = o.store.createProject(name, o.initDoc(name), { owner: true, code: who.label });
+    // read from disk, so a restart forgets none of it
+    const n = o.store.census(who.who, Date.now() - 3600_000);
+    if (n.recent >= o.createPerHour) { log.warn('create refused: burst limit', { ip, code: who.label }); fail(res, 'create_limit'); return true; }
+    if (n.mine >= o.maxRoomsPerAccount) { log.warn('create refused: rooms per account (MAX_ROOMS_PER_ACCOUNT)', { ip, code: who.label, max: o.maxRoomsPerAccount }); fail(res, 'account_cap', { max: o.maxRoomsPerAccount }); return true; }
+    if (n.rooms >= o.maxRooms) { log.error('create refused: room cap reached (MAX_ROOMS)', { ip, max: o.maxRooms }); fail(res, 'room_cap'); return true; }
+    if (o.lowDisk()) { log.error('create refused: free disk below MIN_FREE_DISK_BYTES', { ip }); fail(res, 'disk_full'); return true; }
+    const { id, token, ownerToken } = o.store.createProject(name, o.initDoc(name), { owner: true, code: who.label, account: who.who });
     log.info('room created', { room: id, ip, code: who.label });
     json(res, 201, { roomId: id, token, ownerToken });
     return true;
@@ -133,22 +155,24 @@ export function createApi(o) {
     return true;
   }
 
-  /** A problem report from the app: rate-limited per IP and for everyone, cleaned, stored. Only the id is logged.
-      The shared limit is checked before the IP's, so a flood from many addresses stops at reportsPerDay without
-      growing the per-IP table past that.
+  /** A problem report from the app: rate-limited per IP (an hour and a day) and for everyone, cleaned, stored. Only
+      the id is logged. The shared limit is checked before the IP's, so a flood from many addresses stops at
+      reportsPerDay without growing the per-IP tables past that. The per-IP daily limit is what keeps a few addresses
+      from using up the shared one: with the defaults that takes 200 addresses, not 40.
       @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {any} b */
   function report(req, res, b) {
-    const ip = o.clientIp(req);
+    const ip = netKey(o.clientIp(req));
     if (big.has(req)) { log.warn('report refused: too large', { ip }); fail(res, 'too_large'); return true; }
     if (!b || typeof b !== 'object' || Array.isArray(b)) { fail(res, 'bad_request'); return true; }
     if (reportAll.full('all')) { log.warn('report refused: daily limit (everyone)', { ip }); fail(res, 'report_limit'); return true; }
+    if (reportIpDay.full(ip)) { log.warn('report refused: daily limit (IP)', { ip }); fail(res, 'report_limit'); return true; }
     if (!reportIp.take(ip)) { log.warn('report refused: hourly limit (IP)', { ip }); fail(res, 'report_limit'); return true; }
-    reportAll.take('all');
+    reportIpDay.take(ip); reportAll.take('all');
     const id = reports.add(/** @type {Record<string, unknown>} */ (cleanReport(b)));
     log.info('report stored', { id, ip });
     json(res, 201, { id });
     return true;
   }
 
-  return { handle, reports, limits: { create: createLimit, reportIp, reportAll } };
+  return { handle, reports, limits: { create: createLimit, reportIp, reportIpDay, reportAll } };
 }

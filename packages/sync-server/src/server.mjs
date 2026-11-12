@@ -6,7 +6,9 @@
    HTTP:   api.mjs (rooms created from the app with a session from auth, owner actions), /health
    Close codes: 4400 malformed message · 4401 bad token (also sent to everyone in a room whose invite link the owner
                 replaced) · 4404 unknown room · 4410 room deleted by its owner · 4413 room full: an update would take
-                the room's log past MAX_ROOM_BYTES, so it was not applied · 4429 too many connections from this IP
+                the room's log past MAX_ROOM_BYTES, so it was not applied (updates held back for a missing
+                dependency count too; past MAX_PENDING_BYTES of those the sender gets 4400), or the server's free disk
+                is under MIN_FREE_DISK_BYTES (reason 'server disk full') · 4429 too many connections from this IP
                 4500 room unavailable (unreadable project.json or updates.bin, or the room is degraded: an append to its log
                 failed and it refuses joins until a compaction gets its state on disk; see the error log)
                 Message type 10 is media signaling and relay (media-relay.mjs, docs/media-p2p.md); a type-10 frame the
@@ -38,8 +40,8 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
- *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, createPerHour?: number,
- *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
+ *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, maxPendingBytes?: number, maxAwarenessIds?: number, maxAwarenessBytes?: number, maxRoomsPerAccount?: number, minFreeDiskBytes?: number, createPerHour?: number,
+ *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerIpPerDay?: number, reportsPerDay?: number, maxReports?: number,
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
 export async function startServer(opts = {}) {
@@ -47,20 +49,24 @@ export async function startServer(opts = {}) {
     port: 3300, host: '127.0.0.1', dataDir: './data', maxMessageBytes: 2 * 1024 * 1024, maxConnsPerIp: 16,
     compactEvery: 500, compactIntervalMs: 60_000, unloadAfterMs: 30_000, pingMs: 30_000, maxBufferedBytes: 8 * 1024 * 1024,
     trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info',
-    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, createPerHour: 30, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
+    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, maxPendingBytes: 4 * 1024 * 1024, maxAwarenessIds: 4, maxAwarenessBytes: 8 * 1024, createPerHour: 30,
+    maxRoomsPerAccount: 20, minFreeDiskBytes: 1024 * 1024 * 1024, reportsPerHour: 5, reportsPerIpPerDay: 10, reportsPerDay: 2000, maxReports: 500, ...opts,
   };
   const log = o.log || createLogger(o.logLevel), store = new ProjectStore(o.dataDir, log);
   /** @type {Map<string, Room>} */ const rooms = new Map();
   /** @type {Map<string, number>} */ const perIp = new Map();
   let closing = false, warnedShortXff = false;
+  const malformed = { at: 0, quiet: 0 };   // rate limit for the "malformed message" log line
   const relay = createMediaRelay(o.media || {}, log, (ws, msg) => send(ws, msg));
 
   /** failing: compaction is failing (logged once per burst). degraded: an append failed, so the log on disk is behind the
       doc (maybe with a torn tail); nothing more is appended until a compaction rewrites it, and new joins get 4500.
       bytes: the update log's size on disk (the room-size cap, MAX_ROOM_BYTES, is checked against it before an update is
       applied). deleted: the owner deleted the room while it was loaded: nothing is appended, broadcast or compacted anymore.
+      pendingBy: the connection whose message last grew the doc's pending updates (see dropPending). account: the
+      creator's account hash from project.json (the media relay's per-account totals), absent on older rooms.
       @typedef {{ id: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness, conns: Map<import('ws').WebSocket, Set<number>>, records: number, bytes: number, unloadTimer: NodeJS.Timeout | null,
-        failing: boolean, degraded: boolean, deleted: boolean }} Room */
+        failing: boolean, degraded: boolean, deleted: boolean, pendingBy: import('ws').WebSocket | null, account?: string }} Room */
 
   /** @param {string} id */
   function getRoom(id) {
@@ -70,7 +76,9 @@ export async function startServer(opts = {}) {
     if (torn) log.warn('dropped torn tail of update log (original kept as updates.bin.torn-*)', { room: id, bytes: torn });
     const awareness = new awarenessProtocol.Awareness(doc);
     awareness.setLocalState(null);
-    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, bytes, unloadTimer: null, failing: false, degraded: false, deleted: false });
+    const account = store.readProject(id).account;
+    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, bytes, unloadTimer: null, failing: false, degraded: false, deleted: false, pendingBy: null,
+      account: typeof account === 'string' ? account : undefined });
     rooms.set(id, r);
     doc.on('update', (/** @type {Uint8Array} */ update, /** @type {any} */ origin) => {
       // on disk before anyone hears about it. Nothing may throw from here: it would escape the Yjs transaction mid-cleanup.
@@ -90,7 +98,7 @@ export async function startServer(opts = {}) {
     });
     awareness.on('update', (/** @type {any} */ { added, updated, removed }, /** @type {any} */ origin) => {
       const ids = r.conns.get(origin);
-      if (ids) { added.forEach((/** @type {number} */ c) => ids.add(c)); removed.forEach((/** @type {number} */ c) => ids.delete(c)); }
+      if (ids) { [...added, ...updated].forEach((/** @type {number} */ c) => ids.add(c)); removed.forEach((/** @type {number} */ c) => ids.delete(c)); }
       const enc = encoding.createEncoder();
       encoding.writeVarUint(enc, MSG_AWARENESS);
       encoding.writeVarUint8Array(enc, awarenessProtocol.encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]));
@@ -100,6 +108,15 @@ export async function startServer(opts = {}) {
     log.info('room loaded', { room: id, records, bytes, ms: +(performance.now() - t0).toFixed(1) });
     return r;
   }
+
+  /** Bytes of updates Yjs holds in memory because something they depend on hasn't arrived (pending structs and deletes).
+      They aren't in room.bytes (nothing is appended until they apply), so the room-size cap adds them. @param {Room} r */
+  const pendingBytes = r => (r.doc.store.pendingStructs?.update.length || 0) + (r.doc.store.pendingDs?.length || 0);
+
+  /** Forget the pending updates. A normal client has some only for a moment (an edit sent just before its sync step 2
+      fills the gap); once the connection that sent them is gone, or they pass maxPendingBytes, they won't apply. The
+      sender keeps its own copy and sends it again on its next sync. @param {Room} r */
+  function dropPending(r) { r.doc.store.pendingStructs = null; r.doc.store.pendingDs = null; r.pendingBy = null; }
 
   /** @param {unknown} err */
   function fsErr(err) { const e = /** @type {NodeJS.ErrnoException} */ (err); return { code: e.code, err: e.message }; }
@@ -170,10 +187,27 @@ export async function startServer(opts = {}) {
     return store.deleteProject(id);
   }
 
+  /** Free space on DATA_DIR's disk is under minFreeDiskBytes: new rooms and updates are refused (507 disk_full, 4413)
+      instead of filling the disk. Read at most every 5 s (every update asks); logged once per low spell. A failed
+      statfs counts as not low, so a filesystem without it never blocks the server. */
+  let diskAt = 0, diskLow = false;
+  function lowDisk() {
+    const t = Date.now();
+    if (t - diskAt < 5000) return diskLow;
+    diskAt = t;
+    let free = Infinity;
+    try { const s = fs.statfsSync(store.dir); free = s.bavail * s.bsize; } catch { /* not low */ }
+    const low = free < o.minFreeDiskBytes;
+    if (low && !diskLow) log.error('free disk below MIN_FREE_DISK_BYTES: refusing new rooms and updates', { free, min: o.minFreeDiskBytes });
+    if (!low && diskLow) log.info('free disk back above MIN_FREE_DISK_BYTES', { free, min: o.minFreeDiskBytes });
+    return (diskLow = low);
+  }
+
   const api = createApi({
     store, log, dataDir: o.dataDir, corsOrigins: o.corsOrigins, maxRooms: o.maxRooms, createPerHour: o.createPerHour,
+    maxRoomsPerAccount: o.maxRoomsPerAccount, lowDisk,
     authPublicKey: o.authPublicKey || null, clientIp, kickRoom, deleteRoom,
-    reportsPerHour: o.reportsPerHour, reportsPerDay: o.reportsPerDay, maxReports: o.maxReports,
+    reportsPerHour: o.reportsPerHour, reportsPerIpPerDay: o.reportsPerIpPerDay, reportsPerDay: o.reportsPerDay, maxReports: o.maxReports,
     initDoc: name => { const d = new Y.Doc(); initProject(d, { title: name }); return d; },
   });
 
@@ -268,24 +302,48 @@ export async function startServer(opts = {}) {
         if (type === MSG_SYNC) {
           // the room-size cap: an update (or a step-2 answer carrying one) that would take the log past the cap is not
           // applied, and the sender is told plainly (4413). Nothing is lost on the server; the client keeps its copy.
-          if (decoding.peekVarUint(dec) !== SYNC_STEP1 && room.bytes + (dec.arr.length - dec.pos) > o.maxRoomBytes) {
-            log.warn('closing: room full (MAX_ROOM_BYTES)', { room: id, ip, bytes: room.bytes, update: dec.arr.length - dec.pos, max: o.maxRoomBytes });
+          // Updates held back for a missing dependency count: they would all be appended at once when it arrives.
+          const held = pendingBytes(room);
+          if (decoding.peekVarUint(dec) !== SYNC_STEP1 && room.bytes + held + (dec.arr.length - dec.pos) > o.maxRoomBytes) {
+            log.warn('closing: room full (MAX_ROOM_BYTES)', { room: id, ip, bytes: room.bytes, pending: held, update: dec.arr.length - dec.pos, max: o.maxRoomBytes });
             ws.close(4413, 'room full');
+            return;
+          }
+          // same answer when the server's disk is low: the app keeps the edit and stops until a reload
+          if (decoding.peekVarUint(dec) !== SYNC_STEP1 && lowDisk()) {
+            log.warn('closing: free disk below MIN_FREE_DISK_BYTES', { room: id, ip });
+            ws.close(4413, 'server disk full');
             return;
           }
           const enc = encoding.createEncoder();
           encoding.writeVarUint(enc, MSG_SYNC);
-          syncProtocol.readSyncMessage(dec, enc, room.doc, ws);
+          // an update Yjs can't read throws to the catch below (4400) instead of y-protocols' console.error
+          syncProtocol.readSyncMessage(dec, enc, room.doc, ws, err => { throw err; });
+          const pending = pendingBytes(room);
+          if (pending > held) room.pendingBy = ws;
+          if (pending > o.maxPendingBytes) {
+            // kept in memory and re-merged on every message: past the bound it's abuse, not a client catching up
+            log.warn('closing: too many updates with missing dependencies (MAX_PENDING_BYTES)', { room: id, ip, pending, max: o.maxPendingBytes });
+            dropPending(room);
+            ws.close(4400, 'malformed message');
+            return;
+          }
           if (encoding.length(enc) > 1) send(ws, encoding.toUint8Array(enc));
         } else if (type === MSG_AWARENESS) {
-          awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(dec), ws);
+          const update = ownAwareness(room, ws, decoding.readVarUint8Array(dec));
+          if (update) awarenessProtocol.applyAwarenessUpdate(room.awareness, update, ws);
         } else if (type === MSG_QUERY_AWARENESS) {
           sendAwareness(ws, room);
         } else if (type === MSG_MEDIA) {
           relay.handle(room, ws, dec);
         } else throw new Error('unknown message type ' + type);
       } catch (err) {
-        log.warn('closing: malformed message', { room: id, ip, err: /** @type {Error} */ (err).message });
+        // one line, no stack, at most every 10 s for the whole server (the next line says how many closes it skipped)
+        const t = Date.now();
+        if (t - malformed.at >= 10_000) {
+          log.warn('closing: malformed message', { room: id, ip, err: String(/** @type {Error} */ (err)?.message).slice(0, 200), ...(malformed.quiet ? { notLogged: malformed.quiet } : {}) });
+          malformed.at = t; malformed.quiet = 0;
+        } else malformed.quiet++;
         ws.close(4400, 'malformed message');
       }
     });
@@ -297,6 +355,7 @@ export async function startServer(opts = {}) {
       const left = (perIp.get(ip) || 1) - 1;
       if (left) perIp.set(ip, left); else perIp.delete(ip);
       if (room.deleted) { log.debug('left', { room: id, ip, code, deleted: true }); return; }   // the doc and awareness are gone
+      if (room.pendingBy === ws) dropPending(room);
       if (ids && ids.size) awarenessProtocol.removeAwarenessStates(room.awareness, [...ids], null);
       if (code === 1009) log.warn('closed: message too big', { room: id, ip });
       log.debug('left', { room: id, ip, code, conns: room.conns.size });
@@ -308,6 +367,36 @@ export async function startServer(opts = {}) {
     encoding.writeVarUint(enc, MSG_SYNC); syncProtocol.writeSyncStep1(enc, room.doc);
     send(ws, encoding.toUint8Array(enc));
     sendAwareness(ws, room);
+  }
+
+  /** A presence (awareness) update from `ws`, checked before it's applied. Entries for a client id that another
+      connection of the room already holds (or the server's own) are left out: a member can't add entries for someone
+      else or rewrite their name or cursor. Throws (the caller closes with 4400) when the socket would hold more than
+      maxAwarenessIds ids (the app uses one) or a state is over maxAwarenessBytes. Returns the update to apply (the same
+      bytes when nothing was left out), or null when nothing is left.
+      @param {Room} room @param {import('ws').WebSocket} ws @param {Uint8Array} update */
+  function ownAwareness(room, ws, update) {
+    const dec = decoding.createDecoder(update), mine = room.conns.get(ws) || new Set(), held = new Set(mine);
+    /** @type {[number, number, string][]} */ const keep = [];
+    let n = decoding.readVarUint(dec), dropped = 0;
+    if (n > o.maxAwarenessIds * 4) throw new Error('too many presence entries');
+    while (n--) {
+      const clientID = decoding.readVarUint(dec), clock = decoding.readVarUint(dec), state = decoding.readVarString(dec);
+      if (state.length > o.maxAwarenessBytes) throw new Error('presence state too big');
+      let foreign = clientID === room.awareness.clientID;
+      if (!mine.has(clientID)) for (const [c, ids] of room.conns) if (c !== ws && ids.has(clientID)) { foreign = true; break; }
+      if (foreign) { dropped++; continue; }
+      keep.push([clientID, clock, state]);
+      if (state === 'null') held.delete(clientID); else held.add(clientID);
+    }
+    if (held.size > o.maxAwarenessIds) throw new Error('too many presence entries');
+    if (!dropped) return update;
+    log.debug('presence entries for another connection ignored', { room: room.id, ip: /** @type {any} */ (ws).ip, entries: dropped });
+    if (!keep.length) return null;
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, keep.length);
+    for (const [c, k, s] of keep) { encoding.writeVarUint(enc, c); encoding.writeVarUint(enc, k); encoding.writeVarString(enc, s); }
+    return encoding.toUint8Array(enc);
   }
 
   /** @param {import('ws').WebSocket} ws @param {Room} room */

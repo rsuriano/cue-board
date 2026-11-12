@@ -57,6 +57,7 @@ Message type 10 on the room's WebSocket (`media-relay.mjs`, wire format in its h
 | Signals | 40/s per connection, 200/s per room (2 s burst; over: dropped) | |
 | Relay frame | 80 KiB (bigger: ignored) | |
 | Relay bandwidth | 8 MiB/s per room, 4 MiB/s per IP (2 s burst) | `RELAY_ROOM_BYTES_PER_SEC`, `RELAY_IP_BYTES_PER_SEC` |
+| Relay totals | 16 MiB/s for the whole server; per account (every room it created; a room without an account counts alone) 20 GiB a day and 32 files at once (a file idle 30 s stops counting). Over: dropped with reason 1, like the rate cap. In memory: a restart resets the day | `RELAY_TOTAL_BYTES_PER_SEC`, `RELAY_ACCOUNT_BYTES_PER_DAY`, `RELAY_ACCOUNT_TRANSFERS` |
 | Per file: a chunk frame's index must be `< ceil(cap / 64 KiB)`, so a file up to the cap always fits and a chunk sent again never counts twice | 2 GiB (`RELAY_MAX_FILE`), sent to clients in `WELCOME` | `RELAY_MAX_TRANSFER_BYTES` |
 | Receiver's queue | 2 MiB: frame dropped, sender told (`DROPPED`) | |
 | Per-IP buckets | forgotten once idle (swept at most every 10 s) | |
@@ -69,7 +70,7 @@ Tests: `packages/sync-server/test/media-relay.test.mjs` (ids and fan-out, no cro
 
 ## ICE servers (owner to choose)
 
-`<meta name="cue-ice-urls" content="">`, space or comma separated (`stun:host:port`, `turn:user:secret@host:port`). Nothing is hardcoded.
+`<meta name="cue-ice-urls" content="">`, space or comma separated (`stun:host:port`). Nothing is hardcoded. The client also parses `turn:user:secret@host:port`, but never put a fixed TURN login there: the page is public, so anyone could relay through that TURN server. TURN only with short-lived credentials (below).
 
 | Option | Who connects directly | Privacy |
 |---|---|---|
