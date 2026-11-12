@@ -60,9 +60,9 @@ The recording is by the Musopen Symphony Orchestra and, like the composition, is
 **Render** (in the bar; **Render video** in the phone's Projects sheet) makes an MP4 of the cut: each shot's clip or take, or its image held for the shot, or black, against the song. All of it happens in your browser; the file is a download, nothing is uploaded.
 
 - **Frame**: every project has a frame ratio, 16:9 unless you change it (**⋯ → Frame**, or the Projects sheet on a phone): 16:9, 9:16, 1:1 or 4:3. The monitor shows that frame and crops media to fill it, new takes are requested in it when the model offers it, and the render uses it.
-- **A section**: press **I** and **O** at the playhead to mark in and out (drag the marks on the ruler, **Alt+X** clears them), then choose **Selection** in the dialog. On a phone, **Set in** and **Set out** are in the dialog.
+- **A section**: press **I** and **O** at the playhead to mark in and out (drag the marks on the ruler, **Alt+X** clears them), then choose **Current selection** in the dialog. On a phone, drag the two handles on the timeline's ruler (they rest at the song's start and end); **Clear** on the ruler removes the selection. Or choose **Custom** and type a start and end (`1:15`, `1:15.5` or `75`); that doesn't move the marks.
 - **Size**: 720p with a small "Cue Board" watermark for everyone; 1080p without it once you're logged in.
-- **Speed**: with WebCodecs (current Chrome and Edge) it renders faster than real time, as H.264 with AAC (Opus where the browser can't encode AAC, as on Linux). Any other browser still makes a file, in real time, as MP4 or WebM.
+- **Speed**: with WebCodecs (current Chrome and Edge) it renders faster than real time, as H.264 with AAC (Opus where the browser can't encode AAC, as on Linux: that file plays in Chrome and VLC, not in iPhone Photos or QuickTime, and the dialog says so). Any other browser still makes a file, in real time, as MP4 or WebM.
 
 ## Projects
 
