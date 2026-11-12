@@ -18,7 +18,7 @@ const UPSTREAM = "https://openrouter.ai/api/v1";
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml",
-  ".png": "image/png", ".jpg": "image/jpeg", ".md": "text/markdown; charset=utf-8",
+  ".png": "image/png", ".jpg": "image/jpeg", ".mp4": "video/mp4", ".md": "text/markdown; charset=utf-8",
 };
 
 const readBody = (req) => new Promise((ok, ko) => {
