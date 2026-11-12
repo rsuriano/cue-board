@@ -72,6 +72,31 @@ test("awareness: a member cannot overwrite another member's presence (name) by r
   } finally { eve.terminate(); ana.provider.destroy(); ana.doc.destroy(); await srv.close(); }
 });
 
+test('malformed Yjs updates close the socket with 4400 and log one short line, rate-limited, never a stack trace', async () => {
+  const dir = tmpDir(), lines = [];
+  const rec = lv => (msg, fields = {}) => lines.push(JSON.stringify({ level: lv, msg, ...fields }));
+  const srv = await server(dir, 0, { log: { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') } });
+  const { id, token } = makeRoom(dir);
+  const consoleErrors = []; const orig = console.error; console.error = (...a) => consoleErrors.push(a);
+  try {
+    const d = new Y.Doc(); d.getText('x').insert(0, 'hello world, this is a real update');
+    const u = Y.encodeStateAsUpdate(d), broken = u.subarray(0, Math.floor(u.length / 2));
+    const codes = [];
+    for (let i = 0; i < 20; i++) {
+      const ws = await open(`${srv.url}/${id}?token=${token}`);
+      const e = encoding.createEncoder(); encoding.writeVarUint(e, MSG_SYNC); encoding.writeVarUint(e, 2); encoding.writeVarUint8Array(e, broken);
+      ws.send(encoding.toUint8Array(e));
+      codes.push(await new Promise(ok => { ws.on('close', ok); setTimeout(() => ok('open'), 1000); }));
+      ws.terminate();
+    }
+    assert.deepEqual([...new Set(codes)], [4400], 'every broken update closes its socket');
+    assert.equal(consoleErrors.length, 0, 'nothing on console.error');
+    const mal = lines.filter(l => /malformed/.test(l));
+    assert.equal(mal.length, 1, '20 closes in a burst, one log line');
+    assert.ok(mal[0].length < 500 && !/\n|    at /.test(mal[0]), 'short, no stack');
+  } finally { console.error = orig; await srv.close(); }
+});
+
 test('fuzz: bit-flipped Yjs updates, random frames and junk never crash the process, and the room still loads from disk after', async () => {
   const dir = tmpDir(), srv = await server(dir, 0, { compactIntervalMs: 3600_000 });
   const { id, token } = makeRoom(dir);

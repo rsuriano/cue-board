@@ -56,6 +56,7 @@ export async function startServer(opts = {}) {
   /** @type {Map<string, Room>} */ const rooms = new Map();
   /** @type {Map<string, number>} */ const perIp = new Map();
   let closing = false, warnedShortXff = false;
+  const malformed = { at: 0, quiet: 0 };   // rate limit for the "malformed message" log line
   const relay = createMediaRelay(o.media || {}, log, (ws, msg) => send(ws, msg));
 
   /** failing: compaction is failing (logged once per burst). degraded: an append failed, so the log on disk is behind the
@@ -313,7 +314,8 @@ export async function startServer(opts = {}) {
           }
           const enc = encoding.createEncoder();
           encoding.writeVarUint(enc, MSG_SYNC);
-          syncProtocol.readSyncMessage(dec, enc, room.doc, ws);
+          // an update Yjs can't read throws to the catch below (4400) instead of y-protocols' console.error
+          syncProtocol.readSyncMessage(dec, enc, room.doc, ws, err => { throw err; });
           const pending = pendingBytes(room);
           if (pending > held) room.pendingBy = ws;
           if (pending > o.maxPendingBytes) {
@@ -333,7 +335,12 @@ export async function startServer(opts = {}) {
           relay.handle(room, ws, dec);
         } else throw new Error('unknown message type ' + type);
       } catch (err) {
-        log.warn('closing: malformed message', { room: id, ip, err: /** @type {Error} */ (err).message });
+        // one line, no stack, at most every 10 s for the whole server (the next line says how many closes it skipped)
+        const t = Date.now();
+        if (t - malformed.at >= 10_000) {
+          log.warn('closing: malformed message', { room: id, ip, err: String(/** @type {Error} */ (err)?.message).slice(0, 200), ...(malformed.quiet ? { notLogged: malformed.quiet } : {}) });
+          malformed.at = t; malformed.quiet = 0;
+        } else malformed.quiet++;
         ws.close(4400, 'malformed message');
       }
     });
