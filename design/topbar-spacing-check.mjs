@@ -106,7 +106,7 @@ const db = fn => page.evaluate(fn);
 const peers = n => Array.from({ length: n }, (_, i) => ({ id: i + 1, name: 'Peer ' + i, initials: ['NP', 'AR', 'CP', 'DR', 'EM', 'FL', 'GH'][i], sel: '' }));
 const setPeers = async n => { await page.evaluate(p => { window.__STUB.peers = p; window.__STUB.ping(); }, peers(n)); await sleep(250); };
 const inRoom = async n => { await page.reload(); await page.waitForSelector('.card'); await page.waitForFunction(() => window.__STUB && window.__STUB.pid); await sleep(300); await setPeers(n); };
-const WIDTHS = [1920, 1440, 1280, 1024, 820];
+const WIDTHS = [1920, 1440, 1280, 1180, 1024, 960, 820];   // 960 and 1180: export-render-range.md A8
 const bad = [], centre = [], words = [];
 // measure the bar in one state at every width; screenshots at 1440 and 1920
 const pass = async (state, shots = true) => {
@@ -117,7 +117,7 @@ const pass = async (state, shots = true) => {
     if (m.h !== 49 || m.scroll > 0) bad.push(`${state} ${w}: height ${m.h}, overflow ${m.scroll}`);
     // the switch only leaves the centre when a zone is full: its gap to the switch is then the bar's 32px floor
     const full = m.gaps.find(g => (m.off > 0 ? g.b : g.a) === 'sides');
-    if ((w === 1440 || w === 1920) && Math.abs(m.off) > 2 && Math.abs(full.v - 32) > 1) centre.push(`${state} ${w}: ${m.off.toFixed(1)}`);
+    if ([960, 1180, 1440, 1920].includes(w) && Math.abs(m.off) > 2 && Math.abs(full.v - (w >= 1280 ? 32 : 16)) > 1) centre.push(`${state} ${w}: ${m.off.toFixed(1)}`);
     if (Math.abs(m.off) > 2) console.log(`    (${w}: side switch ${m.off.toFixed(1)}px off centre: a full zone, ${full.a}→${full.b} ${full.v})`);
     const off = Object.entries(m.words).filter(([, v]) => Math.abs(v) > 1); if (off.length) words.push(`${state} ${w}: ${JSON.stringify(m.words)}`);
     if (shots && (w === 1440 || w === 1920)) await bar(`${state}-${w}`);
@@ -160,7 +160,7 @@ try {
   await pass('nosong');
 
   check('every gap is its intended step (±1px): logo 32 picker 4 pencil 16 ops 4 … 24 song; room 8, bubbles −4, 8 sync, 24 saved 24 Report 4 Settings; edges gutter / gutter−8 (1920 to 820, local, room, crowd, no song)', !bad.length, bad.slice(0, 4).join(' | '));
-  check('Side A/B on the bar\'s centre at 1440 and 1920 (±2px) unless a zone is full and holds it at 32px',!centre.length, centre.join(' | '));
+  check('Side A/B on the bar\'s centre at 960, 1180, 1440 and 1920 (±2px) unless a zone is full and holds it at the bar\'s gap (32px, 16 below 1280)',!centre.length, centre.join(' | '));
   check('the words in the bar (logo, project, sides, Join/Leave, saved, Settings) sit on its middle (±1px)', !words.length, words.slice(0, 3).join(' | '));
 } catch (e) { check('run completed', false, e.stack.split('\n').slice(0, 3).join(' ')); }
 check('no console errors', errs.length === 0, errs.slice(0, 3).join(' | '));

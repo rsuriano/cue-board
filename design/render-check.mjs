@@ -248,7 +248,7 @@ try {
     await openDialog(page);
     check('11 · opening the dialog loads the muxer, from this origin', await until(() => D.reqs.some(u => u === origin + '/mp4-muxer.js'), 4000), D.reqs.filter(u => /mux/.test(u)).join());
     check('8 · without an account 1080p is disabled, with the hint', await page.$eval('#dlgRender input[name="rnRes"][value="1080"]', e => e.disabled) && await page.$eval('#dlgRender input[name="rnRes"][value="720"]', e => e.checked && !e.disabled) && /Log in or use your invite code for 1080p without watermark/.test(await page.$eval('#dlgRender', d => d.innerText)));
-    check('6 · no marks: only Whole song is offered, with its length', !(await page.isVisible('#dlgRender input[name="rnRange"][value="sel"]')) && /0:06\.0/.test(await page.$eval('#rnAllT', e => e.textContent)), await page.$eval('#rnAllT', e => e.textContent));
+    check('6 · no marks: All is the only choice that can render the song (Current selection disabled), with its length', await page.$eval('#dlgRender input[name="rnRange"][value="sel"]', e => e.disabled) && await page.$eval('#dlgRender input[name="rnRange"][value="all"]', e => e.checked) && /0:06\.0/.test(await page.$eval('#rnAllT', e => e.textContent)), await page.$eval('#rnAllT', e => e.textContent));
     const box = await page.$eval('#dlgRender .dlg', e => { const c = getComputedStyle(e); return [c.paddingLeft, c.paddingTop, c.paddingRight, c.paddingBottom].join(); });
     check('dialog · 20px inset like the other dialogs', box === '20px,20px,20px,20px' && box === await page.$eval('#dlgExport .dlg', e => { const c = getComputedStyle(e); return [c.paddingLeft, c.paddingTop, c.paddingRight, c.paddingBottom].join(); }), box);
     await shoot(page, 'dialog-idle-desktop-1440x900');
@@ -280,12 +280,10 @@ try {
     const r = await render(page, { range: 'sel' }), i = r.info || {}, p = await probe(r.buf, r.name, [0, 1, -0.05]), f = p.frames || [];
     check('7 · the file lasts out minus in (2 s ± 0.1)', i.video && Math.abs(i.duration - 2) <= .1 && Math.abs(i.video.duration - 2) <= .1 && Math.abs(i.audio.duration - 2) <= .1 && /2\.5s-4\.5s\.mp4$/.test(r.name), JSON.stringify(i) + ' ' + r.name);
     check('7 · its first frame is the shot at the in point (green), its last the empty shot (black)', p.ok && near(f[0].centre, GREEN) && near(f[1].centre, GREEN) && near(f[2].centre, BLACK, 24), JSON.stringify(f.map(x => x.centre)));
-    await openDialog(page); await page.click('#rnClear'); await sleep(100);
-    check('7 · Clear in the dialog removes the marks and the Selection choice', JSON.stringify(await marks(page)) === '[null,null]' && !(await page.isVisible('#dlgRender input[name="rnRange"][value="sel"]')) && await page.$eval('#dlgRender input[name="rnRange"][value="all"]', e => e.checked));
+    /* export-render-range.md: the dialog no longer sets or clears marks; Alt+X on the timeline clears them */
+    await page.keyboard.press('Alt+x'); await sleep(100); await openDialog(page);
+    check('7 · Alt+X clears the marks; the dialog then has Current selection disabled and All chosen', JSON.stringify(await marks(page)) === '[null,null]' && await page.$eval('#dlgRender input[name="rnRange"][value="sel"]', e => e.disabled) && await page.$eval('#dlgRender input[name="rnRange"][value="all"]', e => e.checked));
     await page.click('#rnCancel');
-    await seekTo(page, 1); await openDialog(page); await page.click('#rnIn'); await sleep(100);
-    check('5/phone path · Set in from the dialog marks the playhead', Math.abs((await marks(page))[0] - 1) < .05 && await page.isVisible('#dlgRender input[name="rnRange"][value="sel"]'), JSON.stringify(await marks(page)));
-    await page.click('#rnClear'); await page.click('#rnCancel');
   });
 
   /* ======== 10 · cancel; a second render; closing the dialog; a song replaced mid-render; memory ======== */
@@ -393,8 +391,14 @@ try {
       check(`12 · ${w}×${h} ${state}: no horizontal scroll, on screen, touch targets ≥ 44px, no text overlapping`, !a.wide && a.onScreen && !a.small.length && !a.hits.length, JSON.stringify(a));
     };
     await audit('idle'); await shoot(page, `dialog-idle-${tag}`);
-    await page.tap('#rnIn'); await seekTo(page, 3); await page.tap('#rnOut'); await sleep(200);
-    check(`12 · ${w}×${h}: Set in and Set out mark the playhead without a keyboard`, JSON.stringify((await marks(page)).map(v => Math.round(v))) === '[1,3]' && await page.$eval('#dlgRender input[name="rnRange"][value="sel"]', e => e.checked), JSON.stringify(await marks(page)));
+    /* export-render-range.md: marks come from the ruler's handles (resting at 0 and the song's end), not the dialog */
+    await page.tap('#rnCancel'); await sleep(200); await seekTo(page, 3); await sleep(200);
+    await page.evaluate(() => { const g = k => document.querySelector(`.mkgrip[data-mk="${k}"]`), cx = b => { const r = b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+      const [x0, y] = cx(g('in')), [x6] = cx(g('out')), X = t => x0 + (x6 - x0) * t / 6;
+      for (const [k, t] of [['in', 1], ['out', 3]]) { const b = g(k), [s] = cx(b), ev = (n, x) => b.dispatchEvent(new PointerEvent(n, { bubbles: true, pointerId: 3, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y }));
+        ev('pointerdown', s); for (let i = 1; i <= 6; i++) ev('pointermove', s + (X(t) - s) * i / 6); ev('pointerup', X(t)); } });
+    await sleep(150); await page.tap('#proj'); await page.waitForSelector('#mProj[open]'); await sleep(300); await page.tap('#mRender'); await page.waitForSelector('#dlgRender[open]'); await sleep(300);
+    check(`12 · ${w}×${h}: the ruler's handles mark the range without a keyboard; the dialog picks Current selection`, JSON.stringify((await marks(page)).map(v => Math.round(v))) === '[1,3]' && await page.$eval('#dlgRender input[name="rnRange"][value="sel"]', e => e.checked), JSON.stringify(await marks(page)));
     await audit('with a selection'); await shoot(page, `dialog-selection-${tag}`);
     await page.check('#dlgRender input[name="rnRange"][value="all"]');
     const dl = page.waitForEvent('download', { timeout: 90000 }); await page.tap('#rnGo');

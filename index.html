@@ -539,7 +539,12 @@ dialog::backdrop{background:var(--backdrop)}
 .rn-set input[type="radio"]{flex:none;font-size:var(--text-input);width:var(--icon-lg);height:var(--icon-lg);margin:0;accent-color:var(--accent);cursor:inherit}
 .rn-set .chk .tc{margin-left:auto;text-align:right}
 .rn-set .chk:has(input:disabled){opacity:var(--o-disabled);cursor:not-allowed}
-.rn-marks{margin-top:var(--sp-1)}
+#rnSelHint,.rn-cus{padding-left:calc(var(--icon-lg) + var(--sp-2))}
+#rnSelHint{margin-top:calc(var(--sp-1) * -1)}
+.rn-cus{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2) var(--sp-3);margin-top:var(--sp-1)}
+.rn-cus input{font-family:var(--font-mono);font-size:var(--text-input-mono);font-variant-numeric:tabular-nums}
+.rn-cus input[aria-invalid="true"]{border-color:var(--error)}
+.rn-err{grid-column:1/-1;color:var(--error)}
 .rn-frame{display:flex;align-items:center;gap:var(--sp-2)}
 .rn-frame .linkbtn{margin-left:var(--sp-2);font-size:var(--text-sm)}
 .rn-prog{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-2) var(--sp-3)}
@@ -817,8 +822,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #settingsb .ico:first-child{margin:0}
   #settingsb:is(:hover,:focus-visible)::after{display:block;visibility:visible}
 }
+/* up to 1023px the picker's floor is 120px: at 140 the left zone outgrows its half at 960 and pushes Side A/B 16px off centre */
+@media (max-width:1023px){:root{--w-project-min:120px}}
 @media (max-width:959px){
-  :root{--w-project-min:120px}
   .songops{display:none}
   #moremenu .mi.narrowest:not([hidden]){display:flex}
   .more:has(.mi.narrowest:not(:disabled,[hidden])){display:block}
@@ -895,7 +901,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   #play{min-width:0;padding:0 var(--sp-4)}
   #tc{flex:1;min-width:0}
   #speed{width:auto}
-  .transport .seg{position:absolute;right:calc(var(--sp-2) + var(--safe-r));bottom:calc(var(--tl-h) - var(--hairline) - var(--tl-ruler-h));z-index:2}
+  .transport .seg{position:absolute;right:calc(var(--sp-2) + var(--safe-r));bottom:calc(var(--tl-h) - var(--hairline) - var(--tl-ruler-h));z-index:3}
   /* the timeline: a native horizontal scroller under a fixed playhead. The canvas is the viewport's size */
   .timeline{flex:none;height:var(--tl-h);border-width:var(--hairline) 0;border-radius:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
   #tl-scroll{position:static;display:flex;height:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;scrollbar-width:none;touch-action:pan-x}
@@ -1004,10 +1010,12 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .m-row .ico{color:var(--ink-3)}
   .m-out{display:grid}
   #mFrame{width:auto;height:var(--h-sm);padding:0 var(--sp-3);background-color:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-input)}
-  .rn-marks .btn,.rn-frame .linkbtn,.rn-done .linkbtn{min-height:var(--hit);min-width:var(--hit)}
+  .rn-frame .linkbtn,.rn-done .linkbtn{min-height:var(--hit);min-width:var(--hit)}
   .rn-frame .linkbtn,.rn-done .linkbtn{display:inline-flex;align-items:center;justify-content:center}
   /* in/out marks: 44px grips on the ruler row, over the canvas that draws them */
-  .mkgrip{all:unset;position:absolute;top:0;width:var(--hit);height:var(--tl-ruler-h);margin-left:calc(var(--hit) / -2);pointer-events:auto;touch-action:none;cursor:ew-resize}
+  .mkgrip{all:unset;position:absolute;top:0;width:var(--hit);height:var(--tl-ruler-h);margin-left:calc(var(--hit) / -2);pointer-events:auto;touch-action:none;cursor:ew-resize;z-index:2}
+  /* Clear sits under the handles: one passing behind it stays draggable */
+  #mkClear{position:absolute;top:0;left:calc(var(--sp-2) + var(--safe-l));z-index:1;min-width:var(--hit);height:var(--tl-ruler-h)}
   .m-del,#mDelsong{justify-self:start}
   .m-del:hover,.m-del[data-armed],#mDelsong[data-armed]{color:var(--error);background:var(--error-subtle);border-color:transparent}
   .mpanel{position:fixed;top:auto;right:0;bottom:0;left:0;width:auto;max-width:none;max-height:calc(100dvh - var(--safe-t) - var(--appbar-h));padding:var(--inset-panel) calc(var(--gutter) + var(--safe-r)) calc(var(--sp-6) + var(--safe-b)) calc(var(--gutter) + var(--safe-l));border-width:var(--hairline) 0 0;border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-overlay)}
@@ -1184,7 +1192,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <button type="button" id="copylist" class="btn ghost">Copy shot list</button>
   </div>
 
-  <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="mSpace" class="m-only"></div><div id="ph" class="ph"></div></div><div id="mGrips" class="m-only"></div></div>
+  <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="mSpace" class="m-only"></div><div id="ph" class="ph"></div></div><div id="mGrips" class="m-only"></div><button type="button" id="mkClear" class="btn small m-only" aria-label="Clear selection" hidden>Clear</button></div>
   </section>
   <!-- phone: the selected shot in one row, then its tools at thumb height (hidden on desktop) -->
   <div id="mPeek" class="m-only m-peek"></div>
@@ -1355,9 +1363,15 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <h3 id="rnTitle" tabindex="-1">Render video</h3>
   <div class="rn-opts" id="rnOpts">
     <fieldset class="rn-set"><legend>Range</legend>
-      <label class="chk"><input type="radio" name="rnRange" value="all" checked><span>Whole song</span><span class="tc" id="rnAllT"></span></label>
-      <label class="chk" id="rnSelRow" hidden><input type="radio" name="rnRange" value="sel"><span>Selection</span><span class="tc" id="rnSelT"></span></label>
-      <div class="row rn-marks"><button type="button" class="btn small" id="rnIn">Set in</button><button type="button" class="btn small" id="rnOut">Set out</button><button type="button" class="btn small ghost" id="rnClear" hidden>Clear</button><span class="hint">at the playhead, <span class="tc" id="rnNow"></span></span></div>
+      <label class="chk"><input type="radio" name="rnRange" value="all" checked><span>All</span><span class="tc" id="rnAllT"></span></label>
+      <label class="chk"><input type="radio" name="rnRange" value="sel" aria-describedby="rnSelHint"><span>Current selection</span><span class="tc" id="rnSelT"></span></label>
+      <p class="hint" id="rnSelHint">Mark a range on the timeline first</p>
+      <label class="chk"><input type="radio" name="rnRange" value="custom"><span>Custom</span><span class="tc" id="rnCusT"></span></label>
+      <div class="rn-cus" id="rnCus" hidden>
+        <div class="field"><label for="rnStart">Start</label><input id="rnStart" class="tc" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="0:00.0" aria-describedby="rnCusMsg"></div>
+        <div class="field"><label for="rnEnd">End</label><input id="rnEnd" class="tc" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="1:15" aria-describedby="rnCusMsg"></div>
+        <p class="hint rn-err" id="rnCusMsg" role="alert"></p>
+      </div>
     </fieldset>
     <fieldset class="rn-set"><legend>Resolution</legend>
       <label class="chk"><input type="radio" name="rnRes" value="720" checked><span>720p</span><span class="tc" id="rn720"></span></label>
@@ -1663,9 +1677,10 @@ function ioLoad(){io={in:null,out:null};try{const o=JSON.parse(ls(IO_KEY+cur.id)
 function ioRange(){if(!cur||(io.in==null&&io.out==null))return null;const d=dur(),a=Math.min(d,io.in??0),b=Math.min(d,io.out??d);return b-a>=.04?[a,b]:null}
 /* k "in" or "out" at time t; no k clears both. A mark set past the other one takes it out; a dragged one (hold) stops short of it */
 function ioSet(k,t,hold){if(!cur)return;
-  if(k){const o=k==="in"?"out":"in";t=Math.max(0,Math.min(dur(),t));
-    if(io[o]!=null&&(k==="in"?t>io[o]-.1:t<io[o]+.1)){if(hold)t=Math.max(0,k==="in"?io[o]-.1:io[o]+.1);else io[o]=null}
-    io[k]=r2(t)}
+  if(k){const o=k==="in"?"out":"in",d=dur(),ot=io[o]??(k==="in"?d:0);t=Math.max(0,Math.min(d,t));
+    /* a dragged handle stops short of the other one (resting at its end if unset); dragged back to its own end, it's unset */
+    if(hold){t=k==="in"?Math.min(t,ot-.1):Math.max(t,ot+.1);io[k]=(k==="in"?t<=.05:t>=d-.05)?null:r2(t)}
+    else{if(io[o]!=null&&(k==="in"?t>io[o]-.1:t<io[o]+.1))io[o]=null;io[k]=r2(t)}}
   else io={in:null,out:null};
   try{if(io.in==null&&io.out==null)localStorage.removeItem(IO_KEY+cur.id);else ls(IO_KEY+cur.id,JSON.stringify(io))}catch(e){}
   renderTimeline();rnDraw()}
@@ -2934,7 +2949,7 @@ function renderMiss(){const els=[...document.querySelectorAll("[data-miss]")],sp
   /* the song bar: the room's song file while it isn't here, nothing otherwise */
   if(sp)sp.hidden=!fill(sp,l.find(x=>x.song&&x.state!=="here"),"",false)}
 /* design/media-check.mjs reaches in through this; the object exists only when a test defines it before load */
-if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,io:()=>io,seek,rendering:()=>!!rjob,doUndo,pollTake,polling:()=>!!pollTimer,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
+if(window.__CUE_MEDIA_TEST)window.__CUE_MEDIA_TEST.app={mLayout:h=>mBand(h),cmedia,hist:()=>hist,parked:()=>parked,io:()=>io,ioSet,seek,rendering:()=>!!rjob,doUndo,pollTake,polling:()=>!!pollTimer,assets:()=>assets,cur:()=>cur,S,scheduleSave,renderAll,mediaBlob,mediaURL,dev:()=>deviceId,store:()=>store,flushNow,setStatus,cset:()=>cset,renderCollabBtns,
   song:async()=>({stale:songStale,playing:hasAudio,playingName:audioName,rec:cur?await idbDo("readonly",st=>st.get(cur.id)):null})};
 
 /* who is in the room, you included: your bubble first, then up to four others (two on a narrow bar), then +N.
@@ -3227,10 +3242,13 @@ function mDraw(){
   g.font="500 11px 'JetBrains Mono', monospace";g.textBaseline="middle";g.textAlign="left";g.lineWidth=1;
   for(let t=Math.floor(t0/st)*st;t<=t1+1e-6;t+=st){const x=Math.round(X(t))+.5;g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(x,RU-8);g.lineTo(x,RU);g.stroke();g.fillStyle=T["--tl-label"];g.fillText(fmtS(t),x+4,RU/2-1)}
   if(cur)ioDraw(g,X,RU);
-  /* the marks' grips: 44px buttons on the ruler row (the cuts' grips are in #mGrips, on the strip) */
+  /* the selection's handles: 44px buttons on the ruler row, always there; an unset one rests at its end of the song,
+     drawn dim (the cuts' grips are in #mGrips, on the strip) */
   for(const k of ["in","out"]){let b=tlBox.querySelector(`[data-mk="${k}"]`);
-    if(!b){b=document.createElement("button");b.type="button";b.className="mkgrip m-only";b.dataset.mk=k;b.setAttribute("aria-label",k==="in"?"In mark":"Out mark");tlBox.appendChild(b)}
-    b.hidden=!cur||io[k]==null;if(!b.hidden)b.style.left=X(io[k])+"px"}
+    if(!b){b=document.createElement("button");b.type="button";b.className="mkgrip m-only";b.dataset.mk=k;b.setAttribute("aria-label",k==="in"?"Selection start":"Selection end");tlBox.appendChild(b)}
+    b.hidden=!cur;if(!cur)continue;const x=Math.round(X(io[k]??(k==="in"?0:d))),s=k==="in"?1:-1;b.style.left=x+"px";
+    if(io[k]==null){g.fillStyle=T["--tl-label"];g.fillRect(x-1,0,2,RU);g.fillRect(s>0?x:x-6,0,6,2);g.fillRect(s>0?x:x-6,RU-2,6,2)}}
+  $("mkClear").hidden=!cur||(io.in==null&&io.out==null);
   const grips=[];
   if(cur){const s=S(),mid=b.wave+(H-8-b.wave)/2,wh=(H-8-b.wave)/2;
     s.forEach((x,i)=>{const a=X(x.start),e=X(secEnd(i));if(e<0||a>cw)return;const sel=x.id===selId,lift=mLift&&mLift.id===x.id;
@@ -3321,6 +3339,7 @@ function mNudge(dt){const s=S(),i=mCutI();if(i<1||!s[i])return;const lo=s[i-1].s
 tlBox.addEventListener("pointerdown",e=>{const b=e.target.closest(".mkgrip");if(!b||!cur)return;try{b.setPointerCapture(e.pointerId)}catch(_){}ioDrag=b.dataset.mk});
 tlBox.addEventListener("pointermove",e=>{if(ioDrag&&e.target.closest(".mkgrip"))ioSet(ioDrag,mTimeAt(e.clientX),true)});
 ["pointerup","pointercancel"].forEach(n=>tlBox.addEventListener(n,e=>{if(e.target.closest(".mkgrip"))ioDrag=""}));
+$("mkClear").onclick=()=>ioSet();
 /* Fit means the whole song; the zoom buttons sit on the timeline's corner */
 {const zf=$("zfit").onclick,zo=$("zout").onclick,zi=$("zin").onclick;
   $("zfit").onclick=()=>{mFit=true;zf()};$("zout").onclick=()=>{mFit=true;zo()};$("zin").onclick=()=>{mFit=false;zi()}}
@@ -3463,23 +3482,33 @@ const rnDrain=async enc=>{while(enc.state==="configured"&&enc.encodeQueueSize>4)
 function rnMode(m){rnDlg.dataset.mode=m;const run=m==="run",done=m==="done";$("rnOpts").hidden=run||done;$("rnProg").hidden=!run;$("rnDone").hidden=!done;$("rnGo").hidden=run||done;
   $("rnCancel").textContent=done?"Close":"Cancel";if(!done)$("rnMsg").textContent=""}
 /* the idle dialog: what there is to choose, from the project as it is now (marks, ratio, account) */
+/* a typed time: m:ss, m:ss.d or plain seconds (a decimal comma reads as a point); NaN for anything else */
+const rnParse=v=>{const m=/^(?:(\d{1,3}):([0-5]\d(?:\.\d*)?)|(\d{1,5}(?:\.\d*)?))$/.exec(String(v).trim().replace(",","."));return m?(m[3]!=null?+m[3]:+m[1]*60+ +m[2]):NaN};
+const rnSpan=r=>`${fmt(r[0])} to ${fmt(r[1])} · ${fmt(r[1]-r[0])}`;
+/* the chosen range as [start, end], or {err, f}: what's wrong and which field */
+function rnRange(){const F=$("rnForm").elements,d=dur(),v=F.rnRange.value;if(v==="sel")return ioRange()||{err:"Mark a range on the timeline first"};if(v!=="custom")return[0,d];
+  const a=rnParse($("rnStart").value),b=rnParse($("rnEnd").value);
+  if(!(a>=0))return{err:"Type a time like 1:15 or 75",f:"rnStart"};if(!(b>=0))return{err:"Type a time like 1:15 or 75",f:"rnEnd"};
+  if(a>d+.05)return{err:`The song ends at ${fmt(d)}`,f:"rnStart"};if(b>d+.05)return{err:`The song ends at ${fmt(d)}`,f:"rnEnd"};
+  if(b<=a)return{err:"End must be after Start",f:"rnEnd"};const e=Math.min(b,d);return e-a<.2?{err:"Make it at least 0.2 s long",f:"rnEnd"}:[a,e]}
 function rnDraw(){if(!rnDlg.open||rnDlg.dataset.mode!=="idle"||!cur)return;const F=$("rnForm").elements,r=ioRange(),d=dur(),acct=!!account.get();
   if(!r&&F.rnRange.value==="sel")F.rnRange.value="all";
-  $("rnSelRow").hidden=!r;$("rnClear").hidden=io.in==null&&io.out==null;$("rnAllT").textContent=fmt(d);$("rnSelT").textContent=r?`${fmt(r[0])} to ${fmt(r[1])} · ${fmt(r[1]-r[0])}`:"";$("rnNow").textContent=fmt(now());
+  F.rnRange[1].disabled=!r;$("rnSelHint").hidden=!!r;$("rnAllT").textContent=fmt(d);$("rnSelT").textContent=r?rnSpan(r):"";
+  const cus=F.rnRange.value==="custom",rg=rnRange(),bad=!Array.isArray(rg);$("rnCus").hidden=!cus;
+  $("rnCusT").textContent=cus&&!bad?rnSpan(rg):"";$("rnCusMsg").textContent=bad?rg.err:"";$("rnGo").disabled=bad;
+  for(const f of["rnStart","rnEnd"])$(f).setAttribute("aria-invalid",String(bad&&rg.f===f));
   F.rnRes[1].disabled=!acct;if(!acct)F.rnRes.value="720";$("rnResHint").textContent=acct?"":"Log in or use your invite code for 1080p without watermark";
   [720,1080].forEach(v=>$("rn"+v).textContent=rnSize(v).join("×"));$("rnFrameT").textContent=ratioOf(cur);
-  const len=F.rnRange.value==="sel"&&r?r[1]-r[0]:d;
-  $("rnNote").textContent=rnFast===false?`This browser renders in real time: about ${fmtS(len)}. Keep this tab in front until it's done.`:""}
-async function openRender(){if(!cur||rnDlg.open)return;rnFrom=document.activeElement;rnMode("idle");$("rnForm").elements.rnRange.value=ioRange()?"sel":"all";
+  $("rnNote").textContent=rnFast===false&&!bad?`This browser renders in real time: about ${fmtS(rg[1]-rg[0])}. Keep this tab in front until it's done.`:""}
+async function openRender(){if(!cur||rnDlg.open)return;rnFrom=document.activeElement;rnMode("idle");const r=ioRange();$("rnForm").elements.rnRange.value=r?"sel":"all";
+  /* Custom starts from the selection, else the whole song; it never moves the timeline's marks */
+  $("rnStart").value=fmt(r?r[0]:0);$("rnEnd").value=fmt(r?r[1]:Math.floor(dur()*10)/10);
   rnDlg.showModal();rnDraw();(phone()?$("rnTitle"):$("rnGo")).focus();
   const pid=cur.id,[w,h]=rnSize(720),p=await rnProbe(w,h,true);if(cur&&cur.id===pid){rnFast=!!p;rnDraw()}}
 const rnSave=()=>{if(!rnFile)return;const a=document.createElement("a");a.href=rnFile.url;a.download=rnFile.name;document.body.appendChild(a);a.click();a.remove()};
 const rnRelease=()=>{if(rnFile){URL.revokeObjectURL(rnFile.url);rnFile=null}};
 $("renderb").onclick=openRender;$("mRender").onclick=()=>{mProj.close();openRender()};
-$("rnForm").addEventListener("change",rnDraw);
-$("rnIn").onclick=()=>{ioSet("in",now());if(ioRange())$("rnForm").elements.rnRange.value="sel";rnDraw()};
-$("rnOut").onclick=()=>{ioSet("out",now());if(ioRange())$("rnForm").elements.rnRange.value="sel";rnDraw()};
-$("rnClear").onclick=()=>ioSet();
+$("rnForm").addEventListener("change",rnDraw);$("rnForm").addEventListener("input",rnDraw);
 /* Change: to where the frame is set, the Projects sheet on a phone, More's Frame group on the desktop */
 $("rnFrame").onclick=()=>{rnFrom=null;rnDlg.close();if(phone()){openProjSheet();$("mFrame").focus()}else openMenu($("moreb"),$("moremenu"),"frame")};
 $("rnAgain").onclick=rnSave;
@@ -3563,8 +3592,8 @@ async function rnRealTime(job,o){const c=document.createElement("canvas");c.widt
   return{blob:new Blob(parts,{type:mime.split(";")[0]}),ext:/mp4/.test(mime)?"mp4":"webm"}}
 /* one render: everything it needs is read from the project now, so what happens to the project while it runs (a
    collaborator deleting a take, a replaced song) can't change it halfway; a file that's gone by its turn is a note */
-async function rnStart(){if(rjob||!cur||rnDlg.dataset.mode!=="idle")return;
-  const F=$("rnForm").elements,sel=F.rnRange.value==="sel"?ioRange():null,t0=sel?sel[0]:0,t1=sel?sel[1]:dur(),acct=!!account.get(),[w,h]=rnSize(acct&&F.rnRes.value==="1080"?1080:720),pid=cur.id;
+async function rnStart(){const rg=rnRange();if(rjob||!cur||rnDlg.dataset.mode!=="idle"||!Array.isArray(rg))return;
+  const F=$("rnForm").elements,sel=F.rnRange.value!=="all",[t0,t1]=rg,acct=!!account.get(),[w,h]=rnSize(acct&&F.rnRes.value==="1080"?1080:720),pid=cur.id;
   const shots=S().map((x,i)=>({n:i+1,a:x.start,id:x.img,video:x.kind==="video",take:(x.takes||[]).some(t=>t.media&&t.media===x.img)}));
   const name=`${rnName(cur.title)} - ${ratioOf(cur).replace(":","x")} - ${sel?t0.toFixed(1)+"s-"+t1.toFixed(1)+"s":"full"}`,named=!!(cur.song&&cur.song.name),stale=songStale;
   const job=rjob={cancel:false,notes:[],clean:[]},clean=()=>job.clean.splice(0).forEach(f=>{try{f()}catch(e){}});
@@ -3577,6 +3606,8 @@ async function rnStart(){if(rjob||!cur||rnDlg.dataset.mode!=="idle")return;
     if(ab&&stale)job.notes.push("The song was replaced and the new one hasn't arrived yet; this render has the previous one");
     if(job.cancel)throw RN_CANCEL;
     const codecs=await rnProbe(w,h,!!ab);progress(0,codecs?"Rendering…":"Rendering in real time. Keep this tab in front.");
+    /* no AAC encoder in this browser, and no permissive one to ship (export-render-notes.md): say what that means */
+    if(codecs&&codecs.a==="opus")job.notes.push("Audio is Opus: plays in Chrome and VLC, not in iPhone Photos or QuickTime");
     const o={w,h,t0,t1,shots,ab,codecs,wm:!acct,progress};ab=null;
     return codecs?rnFastPath(job,o):rnRealTime(job,o)})();
   work.catch(()=>{}).finally(clean);
