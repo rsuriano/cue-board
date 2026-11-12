@@ -483,7 +483,7 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
   @media (max-width:1199px){.iolen{display:none}}
   @media (max-width:1099px){.transport .btn kbd{display:none}.iojoin .btn{width:var(--h-md);padding:0}
     #copylist,.transport>.grow{display:none}.transport>.seg{margin-left:auto}#moremenu #mCopyl:not(:disabled){display:flex}}
-  @media (max-width:899px){.transport{column-gap:var(--sp-3)}.iosel{gap:var(--gap-tight)}.transport select{padding-left:var(--sp-2);padding-right:var(--sp-6)!important;background-position:calc(100% - var(--sp-3)) 50%,calc(100% - var(--sp-2)) 50%!important}}
+  @media (max-width:899px){.transport{column-gap:var(--sp-2)}.iosel{gap:var(--gap-tight)}.transport select{padding-left:var(--sp-2);padding-right:var(--sp-6)!important;background-position:calc(100% - var(--sp-3)) 50%,calc(100% - var(--sp-2)) 50%!important}}
 }
 /* the phone has its own handles (no group); its inputs stay 16px all the same, against iOS's zoom on focus */
 @media not all and (min-width:820px){#iosel{display:none!important}.iot{font-size:var(--text-input)}}
@@ -1247,12 +1247,14 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <div class="tgroup">
       <button type="button" id="mark" class="btn"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>Cut <kbd>M</kbd></button>
       <button type="button" id="loop" class="btn" aria-pressed="false">Loop shot <kbd>L</kbd></button>
-      <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="0.75">0.75×</option><option value="0.5">0.5×</option></select>
     </div>
     <div class="tgroup iosel" id="iosel" role="group" aria-label="Selection">
       <span class="iojoin"><button type="button" id="ioInB" class="btn" aria-label="Set In at the playhead" title="Set In at the playhead"><svg class="ico" aria-hidden="true"><use href="#i-in"/></svg><kbd>I</kbd></button><input id="ioIn" class="iot" placeholder="In" aria-label="In" autocomplete="off" autocapitalize="off" spellcheck="false"><input id="ioOut" class="iot" placeholder="Out" aria-label="Out" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" id="ioOutB" class="btn" aria-label="Set Out at the playhead" title="Set Out at the playhead"><svg class="ico" aria-hidden="true"><use href="#i-out"/></svg><kbd>O</kbd></button></span>
       <span id="ioLen" class="iolen"></span>
       <button type="button" id="ioClr" class="btn icon" aria-label="Clear selection" title="Clear selection (Alt+X)" hidden><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="tgroup">
+      <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="0.75">0.75×</option><option value="0.5">0.5×</option></select>
     </div>
     <span class="grow"></span>
     <button type="button" id="copylist" class="btn ghost">Copy shot list</button>

@@ -96,10 +96,10 @@ try {
       for (const st of ['none', 'full']) {
         if (st === 'full') await page.evaluate(() => { const a = __A(); a.ioSet('in', 1.2); a.ioSet('out', 4.7); }); else await clearMarks(page);
         await sleep(120); const L = await layout(page);
-        const order = !!(L.speed && L.sel && L.zoom) && L.speed.r <= L.sel.l && L.sel.r <= L.zoom.l;
+        const order = !!(L.speed && L.sel && L.zoom) && L.sel.r <= L.speed.l && L.speed.r <= L.zoom.l;
         const last = !!L.zoom && L.kids.every(k => k.r <= L.zoom.r + .5) && L.zoom.r <= L.row.r + .5;
         const oneRow = L.kids.every(k => Math.abs(k.t - L.row.t) < 2 && k.b <= L.row.t + 34) && L.row.b - L.row.t <= 34;
-        if (w !== 820) check(`1 · ${w}, ${st}: Selection sits between speed and zoom; zoom is last and inside the row`, order && last, JSON.stringify({ speed: L.speed, sel: L.sel, zoom: L.zoom, row: L.row }));
+        if (w !== 820) check(`1 · ${w}, ${st}: Selection sits right after Loop shot, then speed, then zoom; zoom is last and inside the row`, order && last, JSON.stringify({ speed: L.speed, sel: L.sel, zoom: L.zoom, row: L.row }));
         check(`1 · ${w}, ${st}: one row, no overflow, nothing clipped`, oneRow && L.sw <= L.cw + 1 && L.docw <= L.vw && last && !L.clipped.length, JSON.stringify({ h: L.row.b - L.row.t, sw: L.sw, cw: L.cw, clipped: L.clipped, kids: L.kids.map(k => [k.id, Math.round(k.l), Math.round(k.r), Math.round(k.t)]) }));
         if (st === 'full' && w === 1440) check('1 · 1440, full selection: the length shows after Out in dim text', !!L.len && (await page.$eval('#ioLen', e => e.textContent.trim())) === '3.5s', JSON.stringify(L.len));
       }
