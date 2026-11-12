@@ -39,7 +39,7 @@ const DEMO_FILES = { '/demo/': ['index.html', 'text/html'], '/demo/dist/client.j
  * @param {{ port?: number, host?: string, dataDir?: string, maxMessageBytes?: number, maxConnsPerIp?: number,
  *   compactEvery?: number, compactIntervalMs?: number, unloadAfterMs?: number, pingMs?: number,
  *   maxBufferedBytes?: number, trustProxy?: boolean, trustedProxyHops?: number, serveDemo?: boolean, logLevel?: string,
- *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, maxPendingBytes?: number, createPerHour?: number,
+ *   corsOrigins?: string[], maxRooms?: number, maxRoomBytes?: number, maxPendingBytes?: number, maxAwarenessIds?: number, maxAwarenessBytes?: number, createPerHour?: number,
  *   authPublicKey?: import('node:crypto').KeyObject | null, reportsPerHour?: number, reportsPerDay?: number, maxReports?: number,
  *   log?: ReturnType<typeof createLogger>, media?: Partial<typeof import('./media-relay.mjs').RELAY_DEFAULTS> }} [opts]
  */
@@ -48,7 +48,7 @@ export async function startServer(opts = {}) {
     port: 3300, host: '127.0.0.1', dataDir: './data', maxMessageBytes: 2 * 1024 * 1024, maxConnsPerIp: 16,
     compactEvery: 500, compactIntervalMs: 60_000, unloadAfterMs: 30_000, pingMs: 30_000, maxBufferedBytes: 8 * 1024 * 1024,
     trustProxy: false, trustedProxyHops: 1, serveDemo: false, logLevel: 'info',
-    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, maxPendingBytes: 4 * 1024 * 1024, createPerHour: 30, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
+    corsOrigins: [], maxRooms: 10_000, maxRoomBytes: 64 * 1024 * 1024, maxPendingBytes: 4 * 1024 * 1024, maxAwarenessIds: 4, maxAwarenessBytes: 8 * 1024, createPerHour: 30, reportsPerHour: 5, reportsPerDay: 200, maxReports: 500, ...opts,
   };
   const log = o.log || createLogger(o.logLevel), store = new ProjectStore(o.dataDir, log);
   /** @type {Map<string, Room>} */ const rooms = new Map();
@@ -92,7 +92,7 @@ export async function startServer(opts = {}) {
     });
     awareness.on('update', (/** @type {any} */ { added, updated, removed }, /** @type {any} */ origin) => {
       const ids = r.conns.get(origin);
-      if (ids) { added.forEach((/** @type {number} */ c) => ids.add(c)); removed.forEach((/** @type {number} */ c) => ids.delete(c)); }
+      if (ids) { [...added, ...updated].forEach((/** @type {number} */ c) => ids.add(c)); removed.forEach((/** @type {number} */ c) => ids.delete(c)); }
       const enc = encoding.createEncoder();
       encoding.writeVarUint(enc, MSG_AWARENESS);
       encoding.writeVarUint8Array(enc, awarenessProtocol.encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]));
@@ -300,7 +300,8 @@ export async function startServer(opts = {}) {
           }
           if (encoding.length(enc) > 1) send(ws, encoding.toUint8Array(enc));
         } else if (type === MSG_AWARENESS) {
-          awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(dec), ws);
+          const update = ownAwareness(room, ws, decoding.readVarUint8Array(dec));
+          if (update) awarenessProtocol.applyAwarenessUpdate(room.awareness, update, ws);
         } else if (type === MSG_QUERY_AWARENESS) {
           sendAwareness(ws, room);
         } else if (type === MSG_MEDIA) {
@@ -331,6 +332,36 @@ export async function startServer(opts = {}) {
     encoding.writeVarUint(enc, MSG_SYNC); syncProtocol.writeSyncStep1(enc, room.doc);
     send(ws, encoding.toUint8Array(enc));
     sendAwareness(ws, room);
+  }
+
+  /** A presence (awareness) update from `ws`, checked before it's applied. Entries for a client id that another
+      connection of the room already holds (or the server's own) are left out: a member can't add entries for someone
+      else or rewrite their name or cursor. Throws (the caller closes with 4400) when the socket would hold more than
+      maxAwarenessIds ids (the app uses one) or a state is over maxAwarenessBytes. Returns the update to apply (the same
+      bytes when nothing was left out), or null when nothing is left.
+      @param {Room} room @param {import('ws').WebSocket} ws @param {Uint8Array} update */
+  function ownAwareness(room, ws, update) {
+    const dec = decoding.createDecoder(update), mine = room.conns.get(ws) || new Set(), held = new Set(mine);
+    /** @type {[number, number, string][]} */ const keep = [];
+    let n = decoding.readVarUint(dec), dropped = 0;
+    if (n > o.maxAwarenessIds * 4) throw new Error('too many presence entries');
+    while (n--) {
+      const clientID = decoding.readVarUint(dec), clock = decoding.readVarUint(dec), state = decoding.readVarString(dec);
+      if (state.length > o.maxAwarenessBytes) throw new Error('presence state too big');
+      let foreign = clientID === room.awareness.clientID;
+      if (!mine.has(clientID)) for (const [c, ids] of room.conns) if (c !== ws && ids.has(clientID)) { foreign = true; break; }
+      if (foreign) { dropped++; continue; }
+      keep.push([clientID, clock, state]);
+      if (state === 'null') held.delete(clientID); else held.add(clientID);
+    }
+    if (held.size > o.maxAwarenessIds) throw new Error('too many presence entries');
+    if (!dropped) return update;
+    log.debug('presence entries for another connection ignored', { room: room.id, ip: /** @type {any} */ (ws).ip, entries: dropped });
+    if (!keep.length) return null;
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, keep.length);
+    for (const [c, k, s] of keep) { encoding.writeVarUint(enc, c); encoding.writeVarUint(enc, k); encoding.writeVarString(enc, s); }
+    return encoding.toUint8Array(enc);
   }
 
   /** @param {import('ws').WebSocket} ws @param {Room} room */
