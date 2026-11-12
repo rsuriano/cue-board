@@ -5,6 +5,8 @@
    TRUSTED_PROXY_HOPS (1: how many of your own proxies append to X-Forwarded-For; the client IP is that many entries from the right)
    MAX_BUFFERED_BYTES (8 MiB: a client whose unsent queue would pass this is dropped)
    RELAY_ROOM_BYTES_PER_SEC (8 MiB) · RELAY_IP_BYTES_PER_SEC (4 MiB) · RELAY_MAX_TRANSFER_BYTES (2 GiB: largest file relayed, sent to clients): media relay caps
+   RELAY_TOTAL_BYTES_PER_SEC (16 MiB: the whole server) · RELAY_ACCOUNT_BYTES_PER_DAY (20 GiB: all rooms one account
+     created; rooms without an account each have their own) · RELAY_ACCOUNT_TRANSFERS (32 files relayed at once per account)
    CORS_ORIGINS (comma-separated app origins allowed to call the HTTP API, e.g. https://cue.bedrocklabs.dev; empty: no
      browser origin is allowed, so rooms can't be created from the app) · MAX_ROOMS (10000: rooms on disk, then 507)
    MAX_ROOM_BYTES (64 MiB: a room's update log; an update that would pass it is refused with 4413)
@@ -45,6 +47,9 @@ srv = await startServer({
   media: {
     relayRoomBytesPerSec: num(env.RELAY_ROOM_BYTES_PER_SEC, 8 * 1024 * 1024), relayIpBytesPerSec: num(env.RELAY_IP_BYTES_PER_SEC, 4 * 1024 * 1024),
     relayMaxTransferBytes: num(env.RELAY_MAX_TRANSFER_BYTES, RELAY_MAX_FILE),
+    relayTotalBytesPerSec: num(env.RELAY_TOTAL_BYTES_PER_SEC, 16 * 1024 * 1024),
+    relayAccountBytesPerDay: num(env.RELAY_ACCOUNT_BYTES_PER_DAY, 20 * 1024 * 1024 * 1024),
+    relayAccountTransfers: num(env.RELAY_ACCOUNT_TRANSFERS, 32),
   },
 });
 for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, async () => {

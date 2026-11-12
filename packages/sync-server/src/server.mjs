@@ -63,9 +63,10 @@ export async function startServer(opts = {}) {
       doc (maybe with a torn tail); nothing more is appended until a compaction rewrites it, and new joins get 4500.
       bytes: the update log's size on disk (the room-size cap, MAX_ROOM_BYTES, is checked against it before an update is
       applied). deleted: the owner deleted the room while it was loaded: nothing is appended, broadcast or compacted anymore.
-      pendingBy: the connection whose message last grew the doc's pending updates (see dropPending).
+      pendingBy: the connection whose message last grew the doc's pending updates (see dropPending). account: the
+      creator's account hash from project.json (the media relay's per-account totals), absent on older rooms.
       @typedef {{ id: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness, conns: Map<import('ws').WebSocket, Set<number>>, records: number, bytes: number, unloadTimer: NodeJS.Timeout | null,
-        failing: boolean, degraded: boolean, deleted: boolean, pendingBy: import('ws').WebSocket | null }} Room */
+        failing: boolean, degraded: boolean, deleted: boolean, pendingBy: import('ws').WebSocket | null, account?: string }} Room */
 
   /** @param {string} id */
   function getRoom(id) {
@@ -75,7 +76,9 @@ export async function startServer(opts = {}) {
     if (torn) log.warn('dropped torn tail of update log (original kept as updates.bin.torn-*)', { room: id, bytes: torn });
     const awareness = new awarenessProtocol.Awareness(doc);
     awareness.setLocalState(null);
-    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, bytes, unloadTimer: null, failing: false, degraded: false, deleted: false, pendingBy: null });
+    const account = store.readProject(id).account;
+    const r = /** @type {Room} */ ({ id, doc, awareness, conns: new Map(), records, bytes, unloadTimer: null, failing: false, degraded: false, deleted: false, pendingBy: null,
+      account: typeof account === 'string' ? account : undefined });
     rooms.set(id, r);
     doc.on('update', (/** @type {Uint8Array} */ update, /** @type {any} */ origin) => {
       // on disk before anyone hears about it. Nothing may throw from here: it would escape the Yjs transaction mid-cleanup.
