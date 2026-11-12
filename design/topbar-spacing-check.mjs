@@ -56,7 +56,7 @@ page.on('pageerror', e => errs.push(e.message));
 const GUTTER = w => (w > 1180 ? 20 : 16);
 const EXPECT = { 'logo→picker': 32, 'picker→pencil': 4, 'pencil→op': 16, 'op→op': 4, 'op→song': 24,
   'room→bubble': 8, 'bubble→bubble': -4, 'bubble→sync': 8, 'room→saved': 24, 'sync→saved': 24, 'saved→report': 24, 'report→settings': 4 };
-const KIND = { new: 'op', import: 'op', export: 'op', more: 'op', join: 'room', leave: 'room', you: 'bubble' };
+const KIND = { new: 'op', import: 'op', export: 'op', render: 'op', more: 'op', join: 'room', leave: 'room', you: 'bubble' };
 const kind = n => KIND[n] || (/^p\d/.test(n) ? 'bubble' : n);
 
 // the bar's visible items, left to right, and the gap from each to the next (from the bar's edge for the ends)
@@ -68,7 +68,7 @@ const measure = () => page.evaluate(() => {
   add('logo', document.querySelector('.brand'));
   add('picker', document.querySelector('.projpick'));
   add('pencil', document.getElementById('renamep'));
-  for (const id of ['newp', 'importb', 'exportb', 'moreb']) add(id.replace(/b$|p$/, ''), document.getElementById(id));
+  for (const id of ['newp', 'importb', 'exportb', 'renderb', 'moreb']) add(id.replace(/b$|p$/, ''), document.getElementById(id));
   add('song', document.getElementById('songlbl'));
   add('sides', document.querySelector('.sides'));
   add('join', document.getElementById('joinb')); add('room', document.getElementById('roomb'));

@@ -7,12 +7,12 @@ The app (`index.html`) still has no build step and no dependencies; the repo now
 
 The live copy is at https://cue.bedrocklabs.dev. It's served by the
 [hephaestus](https://github.com/rsuriano/hephaestus) repo, as a copy of this
-repo's `index.html`, `collab.js`, `manifest.webmanifest`, `icons/`, `example/` and `fonts/` at `pages/cue/`. Pushing here does **not** update the live site.
+repo's `index.html`, `collab.js`, `mp4-muxer.js`, `manifest.webmanifest`, `icons/`, `example/` and `fonts/` at `pages/cue/`. Pushing here does **not** update the live site.
 
 After changing any of those here (`collab.js` is built from `packages/collab-client` with `npm run build:collab` and committed; rebuild it after changing that package):
 
 1. Commit and push this repo.
-2. Copy `index.html`, `collab.js`, `manifest.webmanifest`, `icons/`, `example/` and `fonts/` into `hephaestus/pages/cue/` (clone `rsuriano/hephaestus` if needed).
+2. Copy `index.html`, `collab.js`, `mp4-muxer.js`, `manifest.webmanifest`, `icons/`, `example/` and `fonts/` into `hephaestus/pages/cue/` (clone `rsuriano/hephaestus` if needed).
    **Then set the sync URL in the copied file** (this repo's `index.html` has it empty, and copying it as is would silently turn collaboration off on the live site):
    `sed -i 's|<meta name="cue-sync-url" content="[^"]*">|<meta name="cue-sync-url" content="wss://sync.bedrocklabs.dev">|' hephaestus/pages/cue/index.html`
    **And set the build id** to this repo's short sha (problem reports carry it; empty means `dev`):
@@ -20,7 +20,9 @@ After changing any of those here (`collab.js` is built from `packages/collab-cli
 3. Commit in hephaestus, e.g. `cue: sync with rsuriano/cue-board <short sha>`, and push to `main`.
 4. A webhook deploys it on the VPS in about 30 s. Check that https://cue.bedrocklabs.dev serves the new version **and** that `curl -s https://cue.bedrocklabs.dev/ | grep cue-sync-url` shows `wss://sync.bedrocklabs.dev`, and `grep cue-build` shows the sha.
 
-`manifest.webmanifest` and `icons/` are the phone install: without them the app can't be added to a home screen as an app, and iOS may clear a phone's projects after a week. Their paths are all relative (`start_url`, `scope` and `id` are `./`, resolved against the manifest's URL), so they work at the host's root, where `pages/cue/` is served, or under any subpath. Only `index.html`, `collab.js`, `manifest.webmanifest`, `icons/`, `example/` and `fonts/` go to hephaestus (without `fonts/` the hosted copy falls back to system fonts; without `collab.js` joining a room fails, everything else works).
+`manifest.webmanifest` and `icons/` are the phone install: without them the app can't be added to a home screen as an app, and iOS may clear a phone's projects after a week. Their paths are all relative (`start_url`, `scope` and `id` are `./`, resolved against the manifest's URL), so they work at the host's root, where `pages/cue/` is served, or under any subpath. Only `index.html`, `collab.js`, `mp4-muxer.js`, `manifest.webmanifest`, `icons/`, `example/` and `fonts/` go to hephaestus (without `fonts/` the hosted copy falls back to system fonts; without `collab.js` joining a room fails, everything else works; without `mp4-muxer.js` the video render falls back to real time).
+
+`mp4-muxer.js` is vendored (mp4-muxer 5.2.2, MIT; `docs/specs/export-render-notes.md` says how to update it): the render dialog loads it, nothing else does. The render (`docs/specs/export-render.md`) is static: no server change, no new meta value. After a deploy, also check `curl -sI https://cue.bedrocklabs.dev/mp4-muxer.js` answers 200 and `curl -s https://cue.bedrocklabs.dev/ | grep -c renderb` is not 0.
 
 Media between collaborators (`docs/media-p2p.md`) uses `<meta name="cue-ice-urls" content="">` for WebRTC ICE servers. Empty (this repo and, until the owner picks an option, the hosted copy) means no STUN/TURN: peers on one network connect directly, everyone else goes through the sync server's encrypted relay. If the owner picks STUN or coturn, set it in the hephaestus copy only, like the sync URL: `sed -i 's|<meta name="cue-ice-urls" content="[^"]*">|<meta name="cue-ice-urls" content="stun:…">|' hephaestus/pages/cue/index.html`.
 
