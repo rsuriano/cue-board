@@ -3641,6 +3641,88 @@ function mRelayout(){closeDetails();[mProj,mMore].forEach(d=>{if(d.open)d.close(
 phoneMQ.addEventListener("change",mRelayout);landMQ.addEventListener("change",mRelayout);mRotHint();
 window.addEventListener("resize",()=>{if(document.body.classList.contains("m-ed"))mSheetTop()});
 
+/* ================= CODE TAKES (docs/specs/generate-with-code.md) =================
+   The model's code is a stranger's code and runs only in the sandbox, three walls that each hold alone: a new iframe
+   per job, sandbox="allow-scripts" only (opaque origin: no storage, no parent); a CSP with no network in it; a Worker
+   in that, whose globals the prelude strips (and whose loops terminate() stops). The job carries the numbers and the
+   code: never the key, the project or media. Never run model code anywhere else. */
+const CG_MAX=32768,CG_KINDS=["syntax","contract","throw","hang","slow","crash"];
+const CG_CSP=n=>`default-src 'none'; script-src 'nonce-${n}'; worker-src blob:; connect-src 'none'; img-src 'none'; media-src 'none'; font-src 'none'; style-src 'none'; frame-src 'none'; child-src blob:; form-action 'none'; base-uri 'none'`;
+const CG_ALLOW="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; display-capture 'none'; usb 'none'; serial 'none'; bluetooth 'none'; payment 'none'; fullscreen 'none'";
+const b64u=a=>btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+/* runs first in the worker (its source goes in as text): keeps private what it needs, then strips the rest */
+function cgPrelude(){const G=self,post=G.postMessage.bind(G),on=G.addEventListener.bind(G),OC=G.OffscreenCanvas,FF=G.FontFace,FS=G.fonts;
+  let T=0,s=1,anim=null,draw=null,cv=null,ctx=null,first=true,n=0,ns=1,R=30;
+  const rnd=()=>{s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+  const hs=(x,y,z)=>{let h=Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(z,1274126177)+ns|0;h=Math.imul(h^h>>>13,1274126177);return((h^h>>>16)>>>0)/4294967296};
+  const sm=t=>t*t*(3-2*t),lib=Object.freeze({lerp:(a,b,t)=>a+(b-a)*t,clamp:(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),
+    ease:Object.freeze({in:t=>t*t*t,out:t=>1-(1-t)**3,inOut:t=>t<.5?4*t*t*t:1-(-2*t+2)**3/2}),
+    noise:(x,y=0,z=0)=>{const X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z),a=sm(x-X),b=sm(y-Y),c=sm(z-Z);let v=0;for(let k=0;k<8;k++){const i=k&1,j=k>>1&1,l=k>>2&1;v+=hs(X+i,Y+j,Z+l)*(i?a:1-a)*(j?b:1-b)*(l?c:1-c)}return v},
+    grid:(d,st)=>{const r=[];for(let k=0;st>0&&k*st<d-1e-9&&k<1e5;k++)r.push(Math.round(k*st*1e4)/1e4);return r}});
+  const line=e=>{const m=/blob:[^\s)]*?:(\d+):\d+/.exec(String(e&&e.stack||""));return m?Math.max(1,m[1]-1):null};
+  const fail=(kind,e,frame)=>post({type:"error",kind,message:String(e&&e.name&&e.message!=null?e.name+": "+e.message:e).slice(0,500),line:kind==="throw"?line(e):null,frame:frame??null});
+  on("message",async m=>{const d=m.data;if(!d)return;
+    if(d.type==="job"){s=d.seed|0||1;ns=s;
+      try{for(const[name,buf]of d.fonts||[]){const f=new FF(name,buf);await f.load();FS.add(f)}}catch(e){}
+      if(typeof anim!=="function")return fail("contract","No animation function");
+      cv=new OC(d.width,d.height);ctx=cv.getContext("2d",{alpha:false});const E=d.energy;R=d.fps;
+      const energy=E?t=>{const k=Math.max(0,Math.min(E.length-1,t*10)),i=Math.floor(k),f=k-i;return(E[i]??0)*(1-f)+(E[i+1]??E[i]??0)*f}:null;
+      try{draw=anim({canvas:cv,ctx,width:d.width,height:d.height,fps:R,duration:d.duration,random:rnd,beats:(d.beats||[]).slice(),energy,lib})}catch(e){return fail("throw",e,null)}
+      if(typeof draw!=="function")return fail("contract","animation() did not return a function");
+      ctx.save();post({type:"setup"})}
+    else if(d.type==="frame"&&draw){const i=d.i;T=i/R;s=ns^Math.imul(i+1,0x9E3779B1)|0;if(!first){ctx.restore();ctx.save()}first=false;
+      try{draw(T,i)}catch(e){return fail("throw",e,i)}const b=cv.transferToImageBitmap();post({type:"frame",i,bitmap:b},[b])}});
+  for(const k of["fetch","XMLHttpRequest","WebSocket","WebTransport","EventSource","importScripts","indexedDB","caches","BroadcastChannel","Worker","SharedWorker","setTimeout","setInterval","requestAnimationFrame","queueMicrotask","postMessage","close","onmessage","addEventListener","removeEventListener","dispatchEvent","FileReaderSync","location"]){
+    for(let o=G;o;o=Object.getPrototypeOf(o))try{delete o[k]}catch(e){}try{Object.defineProperty(G,k,{value:undefined,writable:false,configurable:false})}catch(e){}}
+  Date.now=()=>T*1000;if(G.performance)G.performance.now=()=>T*1000;Math.random=rnd;
+  G.OffscreenCanvas=function(w,h){if(++n>4)throw new Error("At most 4 extra canvases");if(!(w>0&&h>0&&w<=4096&&h<=4096))throw new Error("A canvas can be at most 4096 px on a side");return new OC(w,h)};
+  return a=>{anim=a}}
+/* the iframe's one script: starts the worker, times setup and frames, passes checked messages on the port */
+function cgRunner(PRE){let port=null,w=null,url="",timer=0,setup=false,busy=-1,first=true;const want=[],P=parent;
+  const stop=()=>{clearTimeout(timer);if(w){w.terminate();w=null}if(url){URL.revokeObjectURL(url);url=""}};
+  const err=(kind,message,line,frame)=>{if(!port)return;stop();port.postMessage({type:"error",kind,message:String(message||"").slice(0,500),line:Number.isInteger(line)?line:null,frame:Number.isInteger(frame)?frame:null});port=null};
+  const arm=(ms,fr)=>{clearTimeout(timer);timer=setTimeout(()=>err("hang","timeout",null,fr),ms)};
+  const next=()=>{if(!w||!setup||busy>=0||!want.length)return;busy=want.shift();arm(first?2000:1000,busy);first=false;w.postMessage({type:"frame",i:busy})};
+  addEventListener("message",e=>{if(port||e.source!==P||!e.ports||!e.ports[0])return;const d=e.data;port=e.ports[0];
+    port.onmessage=m=>{const c=m.data;if(!c)return;if(c.type==="stop")stop();else if(c.type==="frame"&&Number.isInteger(c.i)){want.push(c.i);next()}};
+    if(!d||d.type!=="job"||typeof d.code!=="string")return err("crash","bad job");
+    const src='(function(run){run((function(){"use strict";\n'+d.code+'\n;return typeof animation==="function"?animation:null})())})(('+PRE+')());';
+    try{url=URL.createObjectURL(new Blob([src],{type:"text/javascript"}));w=new Worker(url)}catch(x){return err("crash","no worker")}
+    w.onmessage=m=>{const x=m.data;if(!x||!port)return;
+      if(x.type==="setup"&&!setup){setup=true;clearTimeout(timer);port.postMessage({type:"setup"});next()}
+      else if(x.type==="frame"&&x.i===busy){clearTimeout(timer);busy=-1;port.postMessage({type:"frame",i:x.i,bitmap:x.bitmap},[x.bitmap]);next()}
+      else if(x.type==="error")err(x.kind==="contract"?"contract":"throw",x.message,x.line,x.frame);else err("crash","bad message")};
+    w.onerror=e=>{e.preventDefault();const m=String(e.message||"").replace(/^Uncaught /,"");err(!setup&&/SyntaxError/.test(m)?"syntax":m?"throw":"crash",m,e.lineno>1?e.lineno-1:null,busy>=0?busy:null)};
+    arm(3000,null);w.postMessage({type:"job",width:d.width,height:d.height,fps:d.fps,duration:d.duration,seed:d.seed,beats:d.beats,energy:d.energy,fonts:d.fonts})});
+  P.postMessage({type:"ready"},"*")}
+/* one job = one iframe: frame(i) answers an ImageBitmap of exactly width x height or rejects with {kind,message,line,frame};
+   anything unexpected (a wrong message, a reload, 5 s of silence while waiting) removes the iframe */
+function cgOpen(job){const nonce=b64u(crypto.getRandomValues(new Uint8Array(18))),f=document.createElement("iframe");
+  f.setAttribute("sandbox","allow-scripts");f.setAttribute("allow",CG_ALLOW);f.setAttribute("referrerpolicy","no-referrer");f.setAttribute("aria-hidden","true");f.tabIndex=-1;
+  f.style.cssText="position:fixed;left:-20px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0";
+  f.srcdoc=`<!doctype html><meta http-equiv="Content-Security-Policy" content="${CG_CSP(nonce)}"><script nonce="${nonce}">(${cgRunner})(${JSON.stringify("("+cgPrelude+")")})<\/script>`;
+  let port=null,dead=null,loads=0,quiet=0,ok,no;const q=new Map(),ready=new Promise((a,b)=>{ok=a;no=b});ready.catch(()=>{});
+  const kill=e=>{if(dead)return;dead=e;clearTimeout(quiet);removeEventListener("message",onWin);try{if(port){port.postMessage({type:"stop"});port.close()}}catch(x){}f.remove();no(e);q.forEach(p=>p.no(e));q.clear()};
+  const poke=()=>{clearTimeout(quiet);quiet=setTimeout(()=>kill({kind:"crash"}),5000)};
+  const bad=()=>kill({kind:"crash",message:"The sandbox sent a wrong message."});
+  const onWin=e=>{if(port||!f.contentWindow||e.source!==f.contentWindow||!e.data||e.data.type!=="ready")return;removeEventListener("message",onWin);
+    const ch=new MessageChannel();port=ch.port1;port.onmessage=m=>onMsg(m.data);f.contentWindow.postMessage({type:"job",code:job.code,width:job.width,height:job.height,fps:job.fps,duration:job.duration,seed:job.seed,beats:job.beats,energy:job.energy,fonts:job.fonts},"*",[ch.port2]);poke()};
+  const onMsg=d=>{if(dead)return;if(!d||typeof d!=="object")return bad();
+    if(d.type==="setup"){clearTimeout(quiet);if(q.size)poke();return ok()}
+    if(d.type==="frame"){const p=q.get(d.i),b=d.bitmap;if(!p||!(b instanceof ImageBitmap)||b.width!==job.width||b.height!==job.height){try{b.close()}catch(x){}return bad()}
+      q.delete(d.i);if(q.size)poke();else clearTimeout(quiet);return p.ok(b)}
+    if(d.type==="error"&&CG_KINDS.includes(d.kind)&&typeof d.message==="string")return kill({kind:d.kind,message:d.message.slice(0,500),line:Number.isInteger(d.line)?d.line:null,frame:Number.isInteger(d.frame)?d.frame:null});
+    bad()};
+  f.onload=()=>{if(++loads>1)kill({kind:"crash",message:"The sandbox reloaded itself."})};
+  addEventListener("message",onWin);document.body.appendChild(f);poke();
+  return{frame:i=>dead?Promise.reject(dead):ready.then(()=>new Promise((a,b)=>{if(dead)return b(dead);q.set(i,{ok:a,no:b});poke();port.postMessage({type:"frame",i})})),
+    kill,get dead(){return dead}}}
+/* the answer's one code block, or why not (these are clear messages, not a security control) */
+function cgExtract(text){const m=[...String(text||"").matchAll(/```[ \t]*(?:js|javascript)?[ \t]*\r?\n([\s\S]*?)```/g)];
+  if(m.length!==1||!/\banimation\b/.test(m[0][1]))return{err:{kind:"contract"}};const code=m[0][1];
+  return new Blob([code]).size>CG_MAX?{err:{kind:"contract",message:"The code is longer than 32 KB."}}:{code}}
+if(globalThis.__CUE_CG_TEST)Object.assign(globalThis.__CUE_CG_TEST,{open:cgOpen,extract:cgExtract,CSP:CG_CSP,ALLOW:CG_ALLOW});
+
 /* ================= RENDER (docs/specs/export-render.md) =================
    The timeline, or its marked section, as an MP4 in the project's frame ratio, made in this browser and downloaded.
    Fast path: WebCodecs (H.264; AAC, or Opus where the browser has no AAC encoder) into mp4-muxer.js, a vendored file
