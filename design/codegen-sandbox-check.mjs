@@ -176,6 +176,20 @@ const fixture = attacks => `function animation({ ctx, width, height }) {
   const c = await run(code, [0], { w: 320, h: 180, seed: 8 });
   check('7 determinism: another seed gives another picture', c.frames[0] && c.frames[0].hash !== ha[0]);
 }
+// ---- 11. beat: a 120 BPM click track ----
+{
+  const r = await page.evaluate(() => {
+    const T = window.__CUE_CG_TEST, sr = 22050, x = new Float32Array(sr * 30); let s = 3;
+    const clicks = []; for (let t = 0.25; t < 29.9; t += 0.5) clicks.push(t);
+    for (const c of clicks) { const k0 = Math.round(c * sr); for (let k = 0; k < 220; k++) { s = (s * 16807) % 2147483647; x[k0 + k] += (s / 2147483647 * 2 - 1) * Math.exp(-k / 60) * 0.8; } }
+    const a = T.analyse(x, sr), hit = clicks.filter(c => a.beats.some(b => Math.abs(b - c) <= 0.03)).length / clicks.length;
+    const sh = T.shot(a, 10, 15);
+    return { hit, bpm: a.bpm, n: a.beats.length, sh: sh.beats, loud: sh.energy.length };
+  });
+  check('11 beat: at least 90 % of the clicks have a beat within 30 ms', r.hit >= 0.9, `${Math.round(r.hit * 100)} % · ${r.bpm} BPM · ${r.n} beats`);
+  check('11 beat: the shot’s beats are relative to its start', r.sh.length >= 9 && r.sh.length <= 11 && Math.abs(r.sh[0] - 0.25) <= 0.03 && r.sh.every(b => b >= 0 && b < 5), JSON.stringify(r.sh));
+  check('11 loudness: 10 values per second over the shot', r.loud === 50, String(r.loud));
+}
 // ---- 5. memory (last: it can take the renderer down) ----
 {
   const r = await page.evaluate(async () => {

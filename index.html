@@ -121,11 +121,11 @@ function where(p,c){if(c.k==="meta")return c.f==="song"?"the song":c.f==="refs"?
   const id=c.k==="shot"||c.k==="sf"?c.id:c.sid,i=(p.sections||[]).findIndex(x=>x.id===id);
   if(i<0)return c.k==="shot"?"the shot":"a deleted shot";return (c.k==="take"||c.k==="tf"?"a take of ":"")+"shot "+String(i+1).padStart(2,"0")}
 /* every media id a step's values point at (both sides), so their files can be kept while the step exists */
-function mediaOf(step){const ids=new Set(),add=v=>{if(typeof v==="string"&&v)ids.add(v)},obj=o=>{if(!o)return;add(o.img);add(o.key);add(o.endKey);add(o.media);(o.takes||[]).forEach(t=>add(t.media))};
+function mediaOf(step){const ids=new Set(),add=v=>{if(typeof v==="string"&&v)ids.add(v)},obj=o=>{if(!o)return;add(o.img);add(o.key);add(o.endKey);add(o.media);(o.takes||[]).forEach(t=>{add(t.media);add(t.code&&t.code.asset)})};
   for(const c of step.changes)for(const v of [c.b,c.a]){
     if(c.k==="meta"){if(c.f==="refs"&&Array.isArray(v))v.forEach(add)}
     else if(c.k==="shot"||c.k==="take")obj(v);
-    else if((c.k==="sf"&&MEDIA.has(c.f))||(c.k==="tf"&&c.f==="media"))add(v)}
+    else if((c.k==="sf"&&MEDIA.has(c.f))||(c.k==="tf"&&c.f==="media"))add(v);else if(c.k==="tf"&&c.f==="code"&&v)add(v.asset)}
   return [...ids]}
 /* merge: the newer step's changes land on the older one's locations (the first `b` stays, `a` moves on); a change
    whose two sides read the same is dropped */
@@ -1084,6 +1084,60 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   .mscrub b{width:0;background:var(--accent)}
   .mrot:not([hidden]){display:block;position:absolute;left:50%;top:calc(var(--sp-3) + env(safe-area-inset-top,0px));transform:translateX(-50%);padding:var(--sp-1) var(--sp-3);border-radius:var(--r-sm);background:var(--scrim);color:var(--ink);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);pointer-events:none}
 }
+/* code takes (docs/specs/generate-with-code.md) */
+.cg-mode{display:grid;gap:var(--gap-label)}
+.cg-mode>span{font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-medium);color:var(--ink-2)}
+.cg-mode .sides{width:max-content}
+.genbox.code>.gprompt,.genbox.code>.genrow,.genbox.code>.genfoot,.genbox:not(.code)>.cgform{display:none}
+.cgform{display:grid;gap:var(--gap-block)}
+.cg-hint{margin:0;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm)}
+.cg-genrow{grid-template-columns:minmax(0,1fr)}.cg-genrow .chk{grid-column:1/-1}
+.cg-tokens{color:var(--ink-3)}
+.cg-steps{display:grid;gap:var(--sp-2);width:min(100%,320px);padding:var(--sp-4);margin:0;list-style:none;font-size:var(--text-sm);line-height:var(--lh-sm)}
+.cg-steps li{display:grid;grid-template-columns:var(--icon-lg) minmax(0,1fr) auto;align-items:center;gap:var(--sp-2);color:var(--ink-4)}
+.cg-steps li.done{color:var(--ink-3)}.cg-steps li.now{color:var(--ink)}
+.cg-steps li .ico{width:var(--icon-lg);height:var(--icon-lg)}.cg-steps li.done .ico{color:var(--ok)}
+.cg-steps .tc{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-3)}
+.cg-steps .dot{justify-self:center;width:var(--icon-sm);height:var(--icon-sm);border-radius:var(--r-round);background:var(--border-strong)}
+.cg-bar{grid-column:2/-1;height:var(--sp-1);border-radius:var(--r-xs);background:var(--surface-3);overflow:hidden}
+.cg-bar b{display:block;width:0;height:100%;background:var(--accent)}
+.cg-vers{display:grid;gap:var(--sp-0-5);margin:0;padding:0;list-style:none}
+.cg-vhrow{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);margin-bottom:calc(var(--sp-1) * -1)}
+.cg-vh{font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-medium);color:var(--ink-2)}
+.cg-v{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--sp-3);width:100%;min-height:var(--h-md);padding:0 var(--sp-2);border:var(--hairline) solid transparent;border-radius:var(--r-sm);font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-2);cursor:pointer}
+.cg-v:hover{background:var(--surface-2)}.cg-v:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.cg-v[aria-current="true"]{background:var(--accent-subtle);border-color:var(--accent-border);color:var(--ink)}
+.cg-v[aria-current="true"] .cg-vn{color:var(--accent)}
+.cg-vn{font:var(--w-semibold) var(--text-sm)/var(--lh-sm) var(--font-mono);color:var(--ink-3)}
+.cg-vt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cg-vc{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-3)}
+.cg-v .ok{color:var(--ok);font-family:var(--font-ui);font-weight:var(--w-medium)}
+.cg-ask{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-2);align-items:center}
+.cg-ask input{width:100%;height:var(--h-md);padding:0 var(--sp-3);background:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-input)}
+.cg-ask input::placeholder{color:var(--ink-3)}
+.cg-ask input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 var(--hairline) var(--accent)}
+.cg-ask .muted{grid-column:1/-1;margin:0;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm)}
+.cg-err{display:grid;gap:var(--sp-2);justify-items:center;padding:var(--sp-4);text-align:center}
+.cg-err b{display:inline-flex;align-items:center;gap:var(--sp-1-5);color:var(--error);font:var(--w-semibold) var(--text-md)/var(--lh-md) var(--font-ui)}
+.cg-err b .ico{width:var(--icon-lg);height:var(--icon-lg)}
+.cg-err code{max-width:100%;padding:var(--sp-1) var(--sp-2);background:var(--inset);border:var(--hairline) solid var(--border-subtle);border-radius:var(--r-xs);font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);color:var(--ink-2);overflow-wrap:anywhere}
+.cg-why{margin:0;font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-2)}
+.cg-or{display:grid;gap:var(--gap-label)}
+.cg-or>.cg-lbl{font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-medium);color:var(--ink-2)}
+.cg-orrow{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3)}.cg-orrow .grow{flex:1}
+.cg-key{font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);color:var(--ink-3)}
+.cg-mstart{display:grid;gap:var(--gap-label)}.cg-mstart .btn{width:100%}
+#cgSheet .sh{display:grid;gap:var(--gap-block)}
+#cgSheet .gprompt>.field{display:flex;flex-wrap:wrap;gap:var(--gap-label);margin-bottom:var(--gap-label);font-weight:var(--w-semibold);color:var(--ink)}
+#cgSheet textarea{width:100%;min-height:var(--h-prompt);font-size:var(--text-input);background:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink)}
+#cgSheet .genfoot .btn{flex:1 0 100%}
+#cgSheet .chk{min-height:var(--hit)}
+#cgCode{max-height:60vh;overflow:auto;margin:0;padding:var(--sp-3);background:var(--inset);border:var(--hairline) solid var(--border-subtle);border-radius:var(--r-sm);font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);color:var(--ink-2);white-space:pre}
+@media not all and (min-width:820px){
+  .cg-mode .sides{width:100%}.cg-mode .sidetab{flex:1;justify-content:center}
+  .cg-ask input{height:var(--hit)}.cg-v{min-height:var(--hit)}
+  .take .row .btn.small,.cg-ask .btn,.cg-vhrow .btn{min-height:var(--hit)}
+}
 </style>
 </head>
 <body>
@@ -1119,6 +1173,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3 6.5h7.25a3 3 0 0 1 0 6H8M5.5 4L3 6.5 5.5 9"/></symbol>
   <symbol id="i-loop" viewBox="0 0 16 16"><path d="M10.5 2l2.5 2.5L10.5 7M13 4.5H5.5A2.5 2.5 0 0 0 3 7v.5M5.5 14L3 11.5 5.5 9M3 11.5h7.5A2.5 2.5 0 0 0 13 9v-.5"/></symbol>
   <symbol id="i-frame" viewBox="0 0 16 16"><path d="M2.5 4.5h11v7h-11z"/></symbol>
+  <symbol id="i-code" viewBox="0 0 16 16"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></symbol>
   <symbol id="i-copy" viewBox="0 0 16 16"><path d="M5.5 5.5h7v7h-7zM10.5 5.5v-2h-7v7h2"/></symbol>
 </defs></svg>
 <div class="app">
@@ -1287,6 +1342,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
           <span id="bConn" class="status"></span>
           <p class="bnotes" id="bNotes"></p>
         </div>
+        <div class="cg-mstart m-only"><button type="button" class="btn" id="cgMGo"><svg class="ico" aria-hidden="true"><use href="#i-code"/></svg>Generate with code</button><p class="cg-hint" id="cgMHint">Writes an animation for this shot. The video records on this phone.</p></div>
 
         <div class="frames">
           <div class="frame" id="fStart">
@@ -1315,7 +1371,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 
         <div class="refs" id="bRefs"></div><input type="file" id="refIn" accept="image/*" multiple hidden>
 
-        <div class="genbox">
+        <div class="genbox" id="genbox">
+          <div class="cg-mode"><span id="cgModeL">Make the take with</span><div class="sides" role="tablist" aria-labelledby="cgModeL"><button type="button" class="sidetab" role="tab" data-mk="ai" aria-selected="true">AI video</button><button type="button" class="sidetab" role="tab" data-mk="code" aria-selected="false" id="cgTab"><svg class="ico" aria-hidden="true"><use href="#i-code"/></svg>&nbsp;Code</button></div></div>
           <div class="gprompt">
           <label class="field" for="bPrompt">Video prompt <span class="muted">(same as the Video prompt on side A)</span></label>
           <textarea id="bPrompt" rows="5" placeholder="Describe only the motion: what moves, how the camera behaves. The frames already set the look."></textarea>
@@ -1339,6 +1396,13 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
             <span class="muted" id="gFit"></span>
             <span class="est" id="gEst"></span>
             <button type="button" id="gGo" class="btn primary">Generate take</button>
+          </div>
+          <div class="cgform" id="cgForm">
+            <div class="gprompt"><label class="field" for="cgPrompt">What the animation shows</label><textarea id="cgPrompt" rows="4" placeholder="Shapes, colours, motion, words on screen"></textarea>
+              <div class="chips" id="cgChips"><button type="button" class="chip" data-add="Things move on the beat.">on the beat</button><button type="button" class="chip" data-add="The lyrics on screen, large and easy to read.">lyrics on screen</button><button type="button" class="chip" data-add="Flat shapes, solid colours.">flat shapes</button><button type="button" class="chip" data-add="A thin line drawing on a plain background.">line drawing</button><button type="button" class="chip" data-add="Slow and calm motion.">slow and calm</button></div></div>
+            <p class="cg-hint" id="cgHint"></p>
+            <div class="genrow cg-genrow"><label>Model<select id="cgModel"></select></label><label class="chk"><input type="checkbox" id="cgBeat" checked> <span id="cgBeatL">Follow the song’s beat</span></label></div>
+            <div class="genfoot"><span class="muted cg-tokens" id="cgTok"></span><span class="est" id="cgEst"></span><button type="button" id="cgGo" class="btn primary"><svg class="ico" aria-hidden="true"><use href="#i-code"/></svg>Generate with code</button></div>
           </div>
         </div>
 
@@ -1406,6 +1470,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <i data-row="mDelp|trash|Delete project|=Asks again"></i>
 </div></dialog>
 <!-- phone: the rare actions for the selected shot (the bar's More opens it); Delete shot last and apart -->
+<dialog id="cgSheet" class="sheet" aria-labelledby="cgSheetH"><div class="sh">
+  <div class="sh-top"><span class="grab" aria-hidden="true"></span><h3 id="cgSheetH">Generate with code</h3><span class="grow"></span><button type="button" class="btn ghost icon" data-close aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+</div></dialog>
+<dialog id="dlgCode" aria-labelledby="cgCodeH"><div class="dlg"><h3 id="cgCodeH">Code</h3><pre id="cgCode" tabindex="0"></pre>
+  <div class="row"><button type="button" class="btn" id="cgCopy"><svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg>Copy</button><span class="grow"></span><button type="button" class="btn ghost" id="cgCodeClose">Close</button></div></div></dialog>
 <dialog id="mMore" class="sheet" aria-labelledby="mMoreH"><div class="sh">
   <div class="sh-top"><span class="grab" aria-hidden="true"></span><h3 id="mMoreH"></h3><span class="grow"></span><button type="button" class="btn ghost icon" data-close aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
   <div class="m-sec"><i data-row="mmLoop|loop|Loop this shot|mmLoopV"></i><i data-row="mmSpeed|play|Playback speed|mmSpeedV"></i></div>
@@ -1420,7 +1489,12 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <h3>Settings</h3>
   <nav class="setTabs" role="tablist" aria-label="Settings"><button type="button" class="setTab" role="tab" id="setTabModel" aria-controls="setPaneModel" aria-selected="true">Model</button><button type="button" class="setTab" role="tab" id="setTabAcct" aria-controls="setPaneAcct" aria-selected="false" hidden>Account</button></nav>
   <div id="setPaneModel" role="tabpanel" aria-labelledby="setTabModel">
-  <div class="field"><label for="setKey">OpenRouter API key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
+  <div class="cg-or" id="orRow"><span class="cg-lbl">OpenRouter</span>
+    <div class="cg-orrow" id="orOff"><button type="button" class="btn" id="orConnect">Connect with OpenRouter</button><span class="muted">No key yet</span></div>
+    <p class="hint" id="orOffHint">Opens OpenRouter. You log in and approve there, then you come back here with a key. You do not copy anything.</p>
+    <div class="cg-orrow" id="orOn" hidden><span class="status ok">Connected</span><span class="cg-key" id="orKey"></span><span class="grow"></span><button type="button" class="btn small ghost" id="orDisc">Disconnect</button></div>
+    <p class="hint" id="orOnHint" hidden>The key is only in this browser. To set a spending limit or delete the key, go to <a id="orLink" href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/keys</a>.</p></div>
+  <div class="field" id="setKeyF"><label for="setKey">Or paste a key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
   <p class="muted" id="setConn"></p>
   <div class="row"><label class="field" for="setImg">Frame model<select id="setImg"></select></label><label class="field" for="setImgRes">Frame size<select id="setImgRes"><option value="1K">1K (drafts, 720p)</option><option value="2K">2K (1080p)</option></select></label><label class="field" for="setImgN">Versions per Generate<select id="setImgN"><option value="1">1 (half the cost)</option><option value="2">2 (pick the best)</option></select></label></div>
   <label class="chk"><input type="checkbox" id="setAll"> Show every video model OpenRouter offers, not just Wan and Seedance</label>
@@ -1585,7 +1659,7 @@ const mediaMissing=new Set();
 const isMissing=id=>!!id&&mediaMissing.has(id);
 async function ensureMedia(ids){const need=[...new Set(ids.filter(x=>x&&!mediaCache.has(x)&&!mediaMissing.has(x)))];let n=0;
   await Promise.all(need.map(async id=>{const b=await mediaBlob(id);if(b)mediaCache.set(id,URL.createObjectURL(b));else mediaMissing.add(id);n++}));return n}
-function sectionMediaIds(s){return [s.img,s.key,s.endKey,...(s.takes||[]).map(t=>t.media)].filter(Boolean)}
+function sectionMediaIds(s){return [s.img,s.key,s.endKey,...(s.takes||[]).flatMap(t=>[t.media,t.code&&t.code.asset])].filter(Boolean)}
 function projectMediaIds(p){return [...new Set([...((p&&p.refs)||[]),...((p&&p.sections)||[]).flatMap(sectionMediaIds)])]}
 const loadProjectMedia=p=>ensureMedia(projectMediaIds(p));
 assets={
@@ -2398,7 +2472,7 @@ async function importData(data,quiet){
   const re=id=>id&&map[id]?map[id]:"";
   p.refs=(p.refs||[]).map(re).filter(Boolean);
   p.sections.forEach(s=>{Object.assign(s,{img:re(s.img),key:re(s.key),endKey:re(s.endKey)});
-    s.takes=(s.takes||[]).map(t=>({...t,media:re(t.media)}));if(!s.img){s.kind="";s.clipDur=0}
+    s.takes=(s.takes||[]).map(t=>({...t,media:re(t.media),...(t.code?{code:{...t.code,asset:re(t.code.asset)}}:{})}));if(!s.img){s.kind="";s.clipDur=0}
     ["title","shot","notes","imgPrompt","vidPrompt"].forEach(k=>{if(typeof s[k]!=="string")s[k]=""})});
   if(projects.some(x=>x.id===p.id)){p.id=uid("p");p.title=(p.title||"Project")+" (imported)"}
   p.updated=Date.now();
@@ -2458,11 +2532,11 @@ function visibleModels(){const fav=FAV.map(id=>catalog.find(m=>m.id===id)||BUILT
   return showAll?[...fav,...catalog.filter(m=>!FAV.includes(m.id))]:fav}
 const hasAuth=()=>!!apiKey||(viaProxy&&proxyHasKey);
 const fmtUSD=v=>v==null||!isFinite(v)?"—":(v<0.995?v.toFixed(2):v.toFixed(2))+" USD";
-const isBusy=t=>["submitting","pending","in_progress","downloading"].includes(t.status);
+const isBusy=t=>["submitting","pending","in_progress","downloading","writing","testing","recording","saving"].includes(t.status);
 const errText=e=>typeof e==="string"?e:e&&(e.message||e.code)?String(e.message||e.code):e?JSON.stringify(e):"";
 
 function apiFetch(path,o={}){const h={};if(o.auth!==false&&apiKey&&!(viaProxy&&proxyHasKey))h.Authorization="Bearer "+apiKey;if(o.body)h["Content-Type"]="application/json";
-  return fetch(apiBase+path,{method:o.method||"GET",headers:h,body:o.body?JSON.stringify(o.body):undefined})}
+  return fetch(apiBase+path,{method:o.method||"GET",headers:h,body:o.body?JSON.stringify(o.body):undefined,signal:o.signal})}
 async function detectProxy(){if(!/^https?:$/.test(location.protocol)||!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))return;   /* server.mjs only listens locally */
   try{const r=await fetch("api/health",{cache:"no-store"});if(r.ok){const j=await r.json();if(j&&j.cueboard){viaProxy=true;proxyHasKey=!!j.hasKey;apiBase="api/openrouter"}}}catch(e){}}
 async function refreshCatalog(){try{const r=await apiFetch("/videos/models");if(!r.ok)return;const j=await r.json();
@@ -2502,7 +2576,7 @@ function renderB(){
   if(!cur||!S().length){$("bEmpty").hidden=false;$("bMain").hidden=true;$("bList").innerHTML="";return}
   $("bEmpty").hidden=true;$("bMain").hidden=false;
   if(!selSec())selId=S()[0].id;
-  renderBList();renderBShot();renderBHead();mBSeek();
+  cgStale();renderBList();renderBShot();renderBHead();mBSeek();
 }
 function renderBHead(){
   if(!cur)return;
@@ -2522,7 +2596,7 @@ function renderBShot(){
   $("bN").textContent=pad(i+1);$("bTitle").textContent=s.title||"Untitled";
   $("bTime").innerHTML=`${fmt(s.start)} → ${fmt(secEnd(i))} · ${d.toFixed(1)} s${s.shot?` · <span class="tw">${esc(s.shot)}</span>`:""}`;
   $("bNotes").textContent=s.notes||"";$("bNotes").hidden=!s.notes;
-  setVal("bPrompt",s.vidPrompt);renderGen();renderFrames();renderRefs();renderPanels();renderBTakes();
+  setVal("bPrompt",s.vidPrompt);renderGen();renderCg();renderFrames();renderRefs();renderPanels();renderBTakes();
 }
 function fillFrame(pre,id,note,enabled,clearLabel){
   const box=$(pre),img=$(pre+"Img");box.classList.toggle("has",!!id);box.classList.toggle("off",!enabled);
@@ -2556,9 +2630,10 @@ function updateEst(){
   $("gGo").textContent=gen.count>1?`Generate ${gen.count} takes`:"Generate take";
 }
 const statusLabel=t=>({submitting:"Sending",pending:"Queued",in_progress:"Rendering",downloading:"Downloading",failed:"Failed",cancelled:"Cancelled",expired:"Expired"}[t.status]||t.status);
-function takeSig(s,t){return [t.status,t.media,!!mediaURL(t.media),t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1]].join("|")}
+function takeSig(s,t){return [t.status,t.media,!!mediaURL(t.media),t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1]].join("|")+(t.kind==="code"&&t.code?"|"+cgSig(s,t):"")}
 function takeHTML(s,t,num){
   const incut=!!t.media&&s.img===t.media,busy=isBusy(t);
+  if(t.kind==="code"&&t.code){const[v,b,n]=cgCard(s,t,s.takes||[]);return `<div class="tv">${v}<span class="badge">take ${n}</span>${incut?'<span class="incut-badge">in cut</span>':""}</div><div class="tbody">${b}</div>`}
   const vis=t.media&&mediaURL(t.media)?`<video src="${mediaURL(t.media)}" muted loop playsinline preload="metadata" controls></video>`:
     isMissing(t.media)?missHTML("div","tbusy",t.media,"Video not on this device yet"):
     busy?`<div class="tbusy"><span class="spin"></span><span>${statusLabel(t)}</span><span class="tc" data-since="${t.created}"></span></div>`:
@@ -2580,10 +2655,10 @@ function takeHTML(s,t,num){
 }
 function renderBTakes(){
   const s=selSec(),el=$("bTakes");if(!s){el.innerHTML="";return}
-  const tk=s.takes||[];
+  const all=s.takes||[],tk=cgShown(all);
   if(!tk.length){el.innerHTML=`<p class="muted">No takes yet. Every generation lands here. Mark the one you like with “Use in cut” and it plays in the animatic on side A.</p>`;return}
   const nodes=[...el.querySelectorAll(".take")],sameOrder=nodes.length===tk.length&&nodes.every((n,i)=>n.dataset.id===tk[i].id);
-  const build=(t,i)=>{const n=document.createElement("div");n.className="take"+(t.media&&s.img===t.media?" incut":"");n.dataset.id=t.id;n.dataset.sig=takeSig(s,t);n.innerHTML=takeHTML(s,t,tk.length-i);return n};
+  const build=(t,i)=>{const n=document.createElement("div");n.className="take"+(t.media&&s.img===t.media?" incut":"");n.dataset.id=t.id;n.dataset.sig=takeSig(s,t);n.innerHTML=takeHTML(s,t,all.length-all.indexOf(t));return n};
   if(sameOrder){tk.forEach((t,i)=>{if(nodes[i].dataset.sig!==takeSig(s,t))nodes[i].replaceWith(build(t,i))})}
   else el.replaceChildren(...tk.map(build));
   tickElapsed();missSoon();
@@ -2647,7 +2722,7 @@ async function submitTake(s,o){
 }
 $("gGo").onclick=()=>{
   const s=selSec();if(!s)return;
-  if(!hasAuth()){openSettings("Add your OpenRouter API key to generate takes.");return}
+  if(!hasAuth()){openSettings("Connect OpenRouter to generate takes.");return}
   const prompt=$("bPrompt").value.trim();if(!prompt){toast("Write a video prompt first");$("bPrompt").focus();return}
   const m=modelById(gen.model),dd=+$("gDur").value,r=ratePerSec(m,gen.res,gen.audio&&m.audio,!!startFrameId(s));
   const base={model:m.id,prompt,dur:dd,res:gen.res,audio:gen.audio,startId:startFrameId(s),endId:m.frames.includes("last_frame")?s.endKey:"",est:r==null?null:r*dd};
@@ -2702,7 +2777,7 @@ function lastFrameBlob(id){return new Promise(res=>{const v=document.createEleme
 function playInCut(s){setSide("a");select(s.id,true);if(hasAudio)audio.play().catch(()=>{});else toast("Load the song on side A to play the cut")}
 $("bTakes").addEventListener("click",async e=>{
   const b=e.target.closest("[data-act]");if(!b)return;const card=b.closest(".take"),s=selSec();if(!s||!card)return;
-  const t=(s.takes||[]).find(x=>x.id===card.dataset.id);if(!t)return;const act=b.dataset.act;
+  const t=(s.takes||[]).find(x=>x.id===card.dataset.id);if(!t)return;const act=b.dataset.act;if(act.startsWith("cg"))return cgAct(act,s,t,b,card);
   if(act==="use"){
     const old=s.img;hRec("take in cut for shot "+shotNo(s),()=>{
       if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff)s.key=s.img;   /* keep side A's keyframe as this shot's start frame */
@@ -2724,7 +2799,7 @@ $("bTakes").addEventListener("click",async e=>{
     if(b.dataset.armed!=="1"){b.dataset.armed="1";const lbl=b.textContent;b.textContent="Tap again";setTimeout(()=>{if(b.isConnected){b.dataset.armed="";b.textContent=lbl}},2600);return}
     hRec("delete take from shot "+shotNo(s),()=>{s.takes=s.takes.filter(x=>x!==t);
       if(t.media&&s.img===t.media){s.img="";s.kind="";s.clipDur=0}});
-    scheduleSave();releaseMedia(t.media);renderBTakes();renderBList();renderBHead();
+    scheduleSave();releaseMedia(t.media);if(t.code){cgStop(t);releaseMedia(t.code.asset)}renderBTakes();renderBList();renderBHead();
   }
 });
 
@@ -2840,7 +2915,7 @@ function openSettings(msg){
   $("setKey").value=apiKey;$("setAll").checked=showAll;$("setMsg").textContent=msg||"";
   $("setImg").innerHTML=IMG_MODELS.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");$("setImg").value=imgSet.model;$("setImgRes").value=imgSet.res;$("setImgN").value=String(imgSet.n);
   $("setConn").textContent=viaProxy?(proxyHasKey?"Running through the local server, which already has an API key. You can leave the field empty.":"Running through the local server. Requests go through it to OpenRouter."):"This page calls OpenRouter directly from your browser.";
-  $("setTabAcct").hidden=!AUTH_URL;setSetTab("model");
+  $("setTabAcct").hidden=!AUTH_URL;setSetTab("model");renderOr();
   $("dlgSettings").showModal();setTimeout(()=>{if(!phone())$("setKey").focus()},30);
 }
 /* Settings tabs: Model (API key, models) is the default; Account (login) only where an auth service is set up */
@@ -3706,7 +3781,8 @@ function cgOpen(job){const nonce=b64u(crypto.getRandomValues(new Uint8Array(18))
   const poke=()=>{clearTimeout(quiet);quiet=setTimeout(()=>kill({kind:"crash"}),5000)};
   const bad=()=>kill({kind:"crash",message:"The sandbox sent a wrong message."});
   const onWin=e=>{if(port||!f.contentWindow||e.source!==f.contentWindow||!e.data||e.data.type!=="ready")return;removeEventListener("message",onWin);
-    const ch=new MessageChannel();port=ch.port1;port.onmessage=m=>onMsg(m.data);f.contentWindow.postMessage({type:"job",code:job.code,width:job.width,height:job.height,fps:job.fps,duration:job.duration,seed:job.seed,beats:job.beats,energy:job.energy,fonts:job.fonts},"*",[ch.port2]);poke()};
+    const ch=new MessageChannel(),msg={type:"job",code:job.code,width:job.width,height:job.height,fps:job.fps,duration:job.duration,seed:job.seed,beats:job.beats,energy:job.energy,fonts:job.fonts};port=ch.port1;port.onmessage=m=>onMsg(m.data);
+    if(globalThis.__CUE_CG_TEST)(__CUE_CG_TEST.sent=__CUE_CG_TEST.sent||[]).push(msg);f.contentWindow.postMessage(msg,"*",[ch.port2]);poke()};
   const onMsg=d=>{if(dead)return;if(!d||typeof d!=="object")return bad();
     if(d.type==="setup"){clearTimeout(quiet);if(q.size)poke();return ok()}
     if(d.type==="frame"){const p=q.get(d.i),b=d.bitmap;if(!p||!(b instanceof ImageBitmap)||b.width!==job.width||b.height!==job.height){try{b.close()}catch(x){}return bad()}
@@ -3722,6 +3798,250 @@ function cgExtract(text){const m=[...String(text||"").matchAll(/```[ \t]*(?:js|j
   if(m.length!==1||!/\banimation\b/.test(m[0][1]))return{err:{kind:"contract"}};const code=m[0][1];
   return new Blob([code]).size>CG_MAX?{err:{kind:"contract",message:"The code is longer than 32 KB."}}:{code}}
 if(globalThis.__CUE_CG_TEST)Object.assign(globalThis.__CUE_CG_TEST,{open:cgOpen,extract:cgExtract,CSP:CG_CSP,ALLOW:CG_ALLOW});
+/* the beat, found on this device: loudness every 100 ms, an onset curve over 4 bands, the tempo by autocorrelation
+   (60-180 BPM) and the beats by dynamic programming. Only these numbers go to the model, never the song */
+function cgAnalyse(x,sr){const hop=256,n=Math.floor(x.length/hop),fps=sr/hop,on=new Float32Array(n),W=Math.round(sr/10),loud=[];
+  const[a0,a1,a2]=[200,800,3000].map(f=>1-Math.exp(-2*Math.PI*f/sr)),pr=[0,0,0,0];let l0=0,l1=0,l2=0;
+  for(let i=0,k=0;i<n;i++){let e0=0,e1=0,e2=0,e3=0;for(let j=0;j<hop;j++,k++){const v=x[k];l0+=a0*(v-l0);l1+=a1*(v-l1);l2+=a2*(v-l2);const b1=l1-l0,b2=l2-l1,b3=v-l2;e0+=l0*l0;e1+=b1*b1;e2+=b2*b2;e3+=b3*b3}
+    let o=0;[e0,e1,e2,e3].forEach((e,q)=>{const g=Math.log1p(1e3*e/hop);o+=Math.max(0,g-pr[q]);pr[q]=g});on[i]=o}
+  let mx=0;for(let k=0;k+W<=x.length;k+=W){let s=0;for(let j=k;j<k+W;j++)s+=x[j]*x[j];const r=Math.sqrt(s/W);loud.push(r);mx=Math.max(mx,r)}
+  const L=loud.map(v=>mx?Math.round(v/mx*100)/100:0);
+  let m=0,sd=0;on.forEach(v=>m+=v/n);on.forEach(v=>sd+=(v-m)**2/n);sd=Math.sqrt(sd)||1;const z=on.map(v=>(v-m)/sd);
+  let P=fps/2,best=-1e9;for(let lag=Math.floor(fps*60/180);lag<=Math.ceil(fps*60/60);lag++){let s=0;for(let i=0;i+lag<n;i++)s+=z[i]*z[i+lag];
+    s=s/(n-lag)*Math.exp(-.5*(Math.log2(fps*60/lag/120)/.9)**2);if(s>best){best=s;P=lag}}
+  const sc=new Float32Array(n),bk=new Int32Array(n).fill(-1);
+  for(let i=0;i<n;i++){let b=0,bj=-1;for(let j=i-Math.round(2*P);j<=i-Math.round(P/2);j++){if(j<0)continue;const v=sc[j]-100*Math.log((i-j)/P)**2;if(bj<0||v>b){b=v;bj=j}}const u=on[i]/sd;sc[i]=u+(bj>=0&&b>0?b:0);bk[i]=bj>=0&&b>0?bj:-1}
+  let i=-1,b=-1e9;for(let k=Math.max(0,n-Math.round(P));k<n;k++)if(sc[k]>b){b=sc[k];i=k}
+  const beats=[];for(;i>=0;i=bk[i])beats.push(Math.round(i/fps*1000)/1000);return{beats:beats.reverse(),loud:L,bpm:Math.round(fps*60/P)}}
+const cgShot=(r,a,b)=>r?{beats:r.beats.filter(t=>t>=a&&t<b).map(t=>Math.round((t-a)*100)/100),energy:r.loud.slice(Math.floor(a*10),Math.ceil(b*10))}:null;
+/* decoded once per song in this browser (the same decode Render uses, at 22,050 Hz mono); not synced */
+const cgSongs=new Map(),cgSongKey=p=>p&&p.song&&p.song.duration>0?p.id+"|"+p.song.name+"|"+p.song.duration:"";
+function cgSong(p){const k=cgSongKey(p);if(!k)return Promise.resolve(null);if(!cgSongs.has(k)){const e={r:undefined};e.p=(async()=>{const rec=await idbDo("readonly",st=>st.get(p.id));if(!rec||!rec.blob)return null;
+  const ab=await new OfflineAudioContext(1,1,22050).decodeAudioData(await rec.blob.arrayBuffer());return cgAnalyse(ab.getChannelData(0),22050)})().catch(()=>null).then(r=>e.r=r);cgSongs.set(k,e)}return cgSongs.get(k).p}
+const cgSongNow=p=>{const e=cgSongs.get(cgSongKey(p));return e?e.r:undefined};
+let cgFontP=null;const cgFonts=()=>cgFontP||(cgFontP=Promise.all([["Instrument Sans","InstrumentSans-latin"],["JetBrains Mono","JetBrainsMono-latin"]].map(async([n,f])=>{const r=await fetch("fonts/"+f+".woff2");if(!r.ok)throw 0;return[n,await r.arrayBuffer()]})).catch(()=>[]));
+
+/* the request: one fixed system prompt (tuned on the example's shots), the shot, the numbers */
+const CG_SYS=`You write one animation for one shot of a music video. It runs as JavaScript in a browser sandbox and is recorded frame by frame as a video.
+
+Answer with exactly one fenced code block (\`\`\`js) that holds exactly one function named animation. Text outside the block is ignored.
+
+function animation({ canvas, ctx, width, height, fps, duration, random, beats, energy, lib }) {
+  // setup: runs once, may precompute
+  return function draw(t, i) {
+    // draws the full frame for time t (seconds from the shot's start); i = frame number
+  };
+}
+
+Inputs:
+- canvas, ctx: an OffscreenCanvas of width x height and its 2D context.
+- fps is 30. duration is the shot's length in seconds. t goes from 0 to duration.
+- random(): seeded random number in [0, 1). Use it in setup to make data (positions, sizes, colours). Math.random is the same seeded function.
+- beats: sorted beat times in seconds from the shot's start; [] when the beat is off.
+- energy(t): loudness from 0 to 1 at time t; null when the beat is off. Always check for null.
+- lib.lerp(a, b, t), lib.clamp(v, min = 0, max = 1), lib.ease.in / lib.ease.out / lib.ease.inOut (t from 0 to 1), lib.noise(x, y, z) (smooth seeded noise, 0 to 1), lib.grid(duration, step) (times 0, step, 2 step, ... below duration: use it as a stand-in for beats when beats is []).
+- Fonts: "Instrument Sans" (text) and "JetBrains Mono" (numbers, code). Add sans-serif or monospace as the fallback, e.g. ctx.font = '600 96px "Instrument Sans", sans-serif'.
+
+Rules:
+1. draw(t) gives the same picture for the same t, in any order of calls. The frames are drawn out of order as a test. Compute every position from t (and from data made in setup), never from the previous frame. Do not keep state that changes between frames.
+2. Canvas 2D only. No WebGL, no DOM, no document, no window, no network, no timers, no async, no import, no images or fonts from URLs.
+3. Use random, not Math.random. Call random only in setup.
+4. Draw the whole frame each time: fill the background first.
+5. Keep the code short and under 32 KB. Every frame must draw in well under 100 ms: at most a few thousand shapes, no per-pixel loops over the full canvas, no getImageData in draw.
+6. Sizes come from width and height (the frame can be 16:9, 9:16, 1:1 or 4:3). Keep important things inside the middle 90%.
+
+How to make it look good:
+- Follow the shot's words first: what the animation shows, then the video prompt, the frame prompt and the notes. Do not add things they do not ask for. Never draw people or faces unless asked; suggest them with shapes.
+- One clear idea, a strong composition, a small palette (2 to 4 colours plus a background) taken from the words. Flat colour, soft gradients and thin lines look better than many effects.
+- Motion is smooth and continuous over the whole duration: ease in and out, no sudden jumps (except on beats, when asked). Start with a full picture at t = 0, not an empty screen. Something should still move in the last second.
+- On the beat: make an accent at each beat time (a pulse, a step, a flash) that decays over about 0.2 to 0.4 s; find the last beat before t with a loop over beats. Use energy(t) for size or brightness when it is not null.
+- Text on screen: large, high contrast, inside the frame, at most a few words at a time, with a short fade in and out.
+
+Example (the shape of a good answer):
+\`\`\`js
+function animation({ canvas, ctx, width, height, fps, duration, random, beats, energy, lib }) {
+  const steps = 5, stepH = height / steps;
+  const prints = (beats.length ? beats : lib.grid(duration, 0.5)).map((t, i) => ({
+    t, x: width * (0.18 + 0.64 * (i % 8) / 7) + (i % 2 ? 26 : -26), y: height * (0.9 - 0.11 * (i % 8)), r: random() * 0.3 - 0.15 }));
+  return function draw(t) {
+    ctx.fillStyle = '#10141f'; ctx.fillRect(0, 0, width, height);
+    for (let i = 0; i < steps; i++) { ctx.fillStyle = i % 2 ? '#1a2133' : '#161c2b'; ctx.fillRect(0, i * stepH, width, stepH - 3); }
+    const sway = 0.5 + 0.5 * Math.sin(t * 1.3), e = energy ? energy(t) : 0.5;
+    const g = ctx.createRadialGradient(width * 0.08, height * 0.45, 10, width * 0.08, height * 0.45, width * (0.55 + 0.1 * sway));
+    g.addColorStop(0, \`rgba(240,150,60,\${0.35 + 0.3 * e})\`); g.addColorStop(1, 'rgba(240,150,60,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, width, height);
+    for (const p of prints) {
+      if (t < p.t) break;
+      const a = Math.min(1, (t - p.t) * 6) * Math.max(0.25, 1 - (t - p.t) / 6);
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = \`rgba(236,226,206,\${a})\`;
+      ctx.beginPath(); ctx.ellipse(0, 0, width * 0.012, width * 0.026, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+  };
+}
+\`\`\`
+
+When you get earlier code and a change: keep what works, change what is asked, and return the whole new function. When you get an error: fix its cause and keep the rest.`;
+function cgUser(s,o){const i=S().indexOf(s),[w,h]=rnSize(1080),L=[`Shot ${pad(i+1)} of ${S().length}${s.title?": "+s.title:""}${s.shot?` (shot type: ${s.shot})`:""}.`];
+  for(const[k,v]of[["Notes",s.notes],["Frame prompt",s.imgPrompt],["Video prompt",s.vidPrompt],["What the animation shows",o.prompt]])if(v&&String(v).trim())L.push(k+": "+String(v).trim());
+  L.push(`duration: ${+slotDur(s).toFixed(2)} s · fps: 30 · size: ${w}x${h} · seed: ${o.seed}`);
+  L.push(o.bt?`beats (seconds from the shot's start): ${JSON.stringify(o.bt.beats)}\nloudness (10 values per second, 0 to 1): ${JSON.stringify(o.bt.energy)}`:"The beat is off: beats is [] and energy is null.");
+  if(o.from!=null)L.push("",`Change this code. The user asks: ${o.ask}`,...(o.err?["This version failed: "+o.err]:[]),"```js\n"+o.from+"\n```");
+  return L.join("\n")}
+const CG_MODELS=[{id:"anthropic/claude-sonnet-5.5",name:"Claude Sonnet 5.5",pp:2e-6,pc:1e-5},{id:"anthropic/claude-opus-5.5",name:"Claude Opus 5.5",pp:4e-6,pc:2e-5},{id:"anthropic/claude-haiku-5.5",name:"Claude Haiku 5.5",pp:1e-7,pc:5e-7}];
+const cgSet={mode:"ai",model:CG_MODELS[0].id,beat:true};let cgCat=null;
+const cgModels=()=>showAll&&cgCat?[...CG_MODELS,...cgCat.filter(m=>!CG_MODELS.some(f=>f.id===m.id))]:CG_MODELS;
+const cgModel=()=>cgModels().find(m=>m.id===cgSet.model)||CG_MODELS[0];
+async function cgCatalog(){if(cgCat||!showAll)return;try{const r=await apiFetch("/models");if(!r.ok)return;const j=await r.json();
+  cgCat=(j.data||[]).filter(m=>m.pricing&&((m.architecture||{}).output_modalities||["text"]).includes("text")).map(m=>({id:m.id,name:String(m.name||m.id).replace(/^[^:]+:\s*/,""),pp:+m.pricing.prompt,pc:+m.pricing.completion})).filter(m=>m.pp>=0&&m.pc>=0);renderCg()}catch(e){}}
+const cgEstOf=(m,user,code)=>{const tin=1800+Math.ceil(user.length/4)+Math.ceil((code||0)/4),k=m.pp!=null&&isFinite(m.pp);return{tok:tin+4000,usd:k?tin*m.pp+4000*m.pc:null,worst:k?tin*m.pp+8000*m.pc:null}};
+const cgEstTxt=e=>`about ${e.tok.toLocaleString("en-US")} tokens, ${e.usd==null?"price unknown":"≈ "+fmtUSD(e.usd)}`;
+const cgOk=typeof Worker==="function"&&typeof OffscreenCanvas==="function"&&!!OffscreenCanvas.prototype.transferToImageBitmap;
+const CG_OFF="This browser cannot run code takes safely. Update the browser.";
+const CG_ERR={contract:"The model did not return code in the right form.",syntax:"The code has a syntax error",throw:"The code failed",hang:"One frame took more than 1 s. The code can have an endless loop.",slow:"The animation is too slow to record. Ask for a simpler version.",crash:"The code stopped with no error message. It can use too much memory."};
+function cgFail(t,e){const k=e&&CG_KINDS.includes(e.kind)?e.kind:"crash";t.status="failed";t.error=k==="contract"&&e.message&&/32 KB/.test(e.message)?"The code is longer than 32 KB. Ask for a simpler version.":CG_ERR[k];
+  t.code.err=k==="syntax"||k==="throw"?[e.message,e.line?"line "+e.line:"",k==="throw"&&e.frame!=null?`frame ${e.frame} (${(e.frame/30).toFixed(1)} s)`:""].filter(Boolean).join(" · "):""}
+/* most frames one colour: 8x8 samples of a test frame, or "" when it has detail */
+function cgFlat(b){const c=new OffscreenCanvas(8,8),g=c.getContext("2d");g.drawImage(b,0,0,8,8);const d=g.getImageData(0,0,8,8).data;
+  for(let i=4;i<d.length;i+=4)if(Math.abs(d[i]-d[0])+Math.abs(d[i+1]-d[1])+Math.abs(d[i+2]-d[2])>9)return"";return d.slice(0,3).join()}
+
+const cgJobs=new Map(),cgSel={};
+const cgDone=(s,t,pid)=>{if(!cur||cur.id!==pid)return;scheduleSave();if(!isBusy(t))flushNow();if(selSec()===s)renderBTakes();renderBList();renderBHead()};
+function cgProg(t){const c=document.querySelector(`#bTakes .take[data-id="${t.id}"]`);if(!c)return;const n=Math.max(1,Math.round(t.dur*30));
+  const w=c.querySelector("[data-cgw]"),r=c.querySelector("[data-cgr]"),b=c.querySelector("[data-cgb]");if(w)w.textContent=(t.code.tokensOut||0).toLocaleString("en-US");if(r)r.textContent=`${t.prog||0} / ${n}`;if(b)b.style.width=Math.round(100*(t.prog||0)/n)+"%"}
+function cgStop(t){const J=cgJobs.get(t.id);if(!J)return;J.cancel=true;if(J.ctl)J.ctl.abort();if(J.sb)J.sb.kill({kind:"stopped"})}
+/* a new take (o.parent: the version it starts from): the estimate was on screen; the project is saved before the job */
+async function cgStart(s,o){if(!hasAuth()){openSettings("Connect OpenRouter to generate takes.");return}
+  const pid=cur.id,m=cgModel(),par=o.parent||null,i=S().indexOf(s);if(i<0)return;
+  const so=cgSet.beat&&!par||par&&par.code.beats?await cgSong(cur):null,bt=cgShot(so,s.start,secEnd(i));
+  let from=null;if(par){const bl=par.code.asset&&await mediaBlob(par.code.asset);from=bl?await bl.text():null;if(from==null){toast("This version’s code is not on this device yet");return}}
+  if(!cur||cur.id!==pid||!S().includes(s))return;
+  const seed=par?par.code.seed:1+Math.floor(Math.random()*2147483646),thread=par?par.code.thread:"";
+  const user=cgUser(s,{prompt:par?par.prompt:o.prompt,seed,bt,from,ask:o.ask,err:par&&par.status==="failed"?[par.error,par.code.err].filter(Boolean).join(" · "):""});
+  const vs=(s.takes||[]).filter(x=>x.code&&thread&&x.code.thread===thread);
+  const t={id:uid("t"),kind:"code",model:m.id,modelName:m.name,res:"1080p",dur:+slotDur(s).toFixed(2),audio:false,prompt:par?par.prompt:o.prompt,status:"writing",est:cgEstOf(m,user).usd,cost:null,created:Date.now(),media:"",error:"",note:"",dev:deviceId,
+    code:{asset:"",thread,v:vs.length?Math.max(...vs.map(x=>x.code.v||1))+1:1,parent:par?par.id:"",ask:o.ask||"",seed,beats:!!bt,tokensIn:0,tokensOut:0}};
+  if(!thread)t.code.thread=t.id;
+  await flush();if(!cur||cur.id!==pid||!S().includes(s))return;
+  (s.takes=s.takes||[]).unshift(t);cgSel[t.code.thread]=t.id;scheduleSave();renderBTakes();renderBList();
+  const J={ctl:new AbortController(),cancel:false};cgJobs.set(t.id,J);let text="";
+  try{const r=await apiFetch("/chat/completions",{method:"POST",signal:J.ctl.signal,body:{model:m.id,messages:[{role:"system",content:CG_SYS},{role:"user",content:user}],max_tokens:8000,stream:true,usage:{include:true}}});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw{http:errText(j.error)||"HTTP "+r.status}}
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf="",u=null;
+    for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let k;
+      while((k=buf.indexOf("\n"))>=0){const ln=buf.slice(0,k).trim();buf=buf.slice(k+1);if(!ln.startsWith("data:"))continue;let j;try{j=JSON.parse(ln.slice(5))}catch(e){continue}
+        if(j.error)throw{http:errText(j.error)};const c=j.choices&&j.choices[0];if(c&&c.delta&&typeof c.delta.content==="string")text+=c.delta.content;if(j.usage)u=j.usage}
+      t.code.tokensOut=Math.round(text.length/4);cgProg(t)}
+    if(u){t.code.tokensIn=u.prompt_tokens|0;t.code.tokensOut=u.completion_tokens|0;t.costEst=u.cost==null;t.cost=u.cost!=null?+u.cost:m.pp!=null?t.code.tokensIn*m.pp+t.code.tokensOut*m.pc:null}
+  }catch(e){cgJobs.delete(t.id);const st=J.ctl.signal.aborted;t.status=st?"cancelled":"failed";t.error=st?"Stopped. OpenRouter can still bill the tokens written before the stop.":e&&e.http?e.http:corsHint(e);return cgDone(s,t,pid)}
+  const x=cgExtract(text);if(x.err){cgJobs.delete(t.id);cgFail(t,x.err);return cgDone(s,t,pid)}
+  const up=await assets.upload(new Blob([x.code],{type:"text/javascript"}),{type:"text/javascript"});cgJobs.delete(t.id);
+  if(!cur||cur.id!==pid||!s.takes.includes(t)||J.cancel)return;t.code.asset=up.id;scheduleSave();cgRecord(s,t,x.code)}
+/* the saved code into a take: 3 test frames, then every frame (WebCodecs through Render's fast path, else real time) */
+async function cgRecord(s,t,code){const pid=cur.id,[w,h]=rnSize(1080),n=Math.max(1,Math.round(t.dur*30)),J={cancel:false,clean:[]};
+  if(cgJobs.has(t.id))return;cgJobs.set(t.id,J);Object.assign(t,{status:"testing",error:"",note:"",prog:0});t.code.err="";cgDone(s,t,pid);
+  const i=S().indexOf(s),bt=t.code.beats&&i>=0?cgShot(await cgSong(cur),s.start,secEnd(i)):null;
+  const sb=J.sb=cgOpen({code,width:w,height:h,fps:30,duration:t.dur,seed:t.code.seed,beats:bt?bt.beats:[],energy:bt?bt.energy:null,fonts:await cgFonts()});
+  if(J.cancel)sb.kill({kind:"stopped"});const tm=setTimeout(()=>sb.kill({kind:"slow"}),Math.max(60,8*t.dur)*1000);
+  try{const fl=[];for(const k of new Set([0,n>>1,n-1])){const b=await sb.frame(k);fl.push(cgFlat(b));b.close()}
+    if(fl.every(f=>f&&f===fl[0]))t.note="Most frames are one colour. Ask for a change if this is wrong.";
+    const codecs=await rnProbe(w,h,false);if(!codecs)t.note=(t.note+" Records in real time: this browser has no fast video encoder.").trim();
+    if(J.cancel)throw RN_CANCEL;t.status="recording";cgDone(s,t,pid);let last=-1;
+    const o={t0:0,t1:n/30,w,h,codecs,ab:null,br:.1,progress:()=>{},src:(j,oo,g)=>async x=>{const k=Math.min(n-1,Math.round(x*30));if(k===last)return;const b=await sb.frame(k);g.drawImage(b,0,0);b.close();last=k;t.prog=k+1;cgProg(t)}};
+    const out=codecs?await rnFastPath(J,o):await rnRealTime(J,o);if(J.cancel)throw RN_CANCEL;
+    t.status="saving";cgDone(s,t,pid);if(!cur||cur.id!==pid||!s.takes.includes(t))throw RN_CANCEL;
+    const up=await assets.upload(out.blob,{type:out.blob.type||"video/mp4"});if(!cur||cur.id!==pid||!s.takes.includes(t)){releaseMedia(up.id);throw RN_CANCEL}
+    Object.assign(t,{media:up.id,clipDur:(await probeDur(out.blob))||t.dur,status:"completed",done:Date.now()});toast(`Take ready for shot ${pad(S().indexOf(s)+1)}`)}
+  catch(e){if(e===RN_CANCEL||J.cancel){t.status="cancelled";t.error="Stopped."}else cgFail(t,e)}
+  finally{clearTimeout(tm);sb.kill({kind:"done"});J.clean.splice(0).forEach(f=>{try{f()}catch(e){}});cgJobs.delete(t.id)}
+  cgDone(s,t,pid)}
+/* a job this browser started and no longer runs (the page closed): the code is saved, so Record again costs nothing */
+function cgStale(){if(!cur)return;let ch=false;S().forEach(s=>(s.takes||[]).forEach(t=>{if(t.kind!=="code"||!isBusy(t)||cgJobs.has(t.id)||(cset.rooms[cur.id]&&t.dev!==deviceId))return;
+  ch=true;Object.assign(t,t.code&&t.code.asset?{status:"failed",error:"Recording stopped"}:{status:"cancelled",error:"Stopped before the code arrived."});if(t.code)t.code.err=""}));if(ch)scheduleSave()}
+/* the takes list shows one card per animation: in the place of its newest version, the version picked on screen */
+function cgShown(all){const seen=new Set();return all.flatMap(t=>{if(t.kind!=="code"||!t.code)return[t];const th=t.code.thread;if(seen.has(th))return[];seen.add(th);
+  return[all.find(x=>x.id===cgSel[th]&&x.code&&x.code.thread===th)||t]})}
+const cgSig=(s,t)=>(s.takes||[]).filter(x=>x.code&&x.code.thread===t.code.thread).map(x=>[x.id,x.status,x.cost,x.media,s.img===x.media,x.note].join(",")).join(";")+"|"+t.code.asset;
+const CG_STEPS=[["writing","Writing the code"],["testing","Testing in the sandbox"],["recording","Recording"],["saving","Saving the take"]];
+function cgCard(s,t,all){const vs=all.filter(x=>x.code&&x.code.thread===t.code.thread).sort((a,b)=>b.code.v-a.code.v),busy=isBusy(t),incut=!!t.media&&s.img===t.media,num=all.length-all.indexOf(t);
+  const n=Math.max(1,Math.round(t.dur*30)),k=CG_STEPS.findIndex(x=>x[0]===t.status),usd=x=>x.cost!=null?(x.costEst?"≈ ":"")+fmtUSD(+x.cost):x.est!=null?"≈ "+fmtUSD(x.est):"—";
+  const vis=t.media&&mediaURL(t.media)?`<video src="${mediaURL(t.media)}" muted loop playsinline preload="metadata" controls></video>`:isMissing(t.media)?missHTML("div","tbusy",t.media,"Video not on this device yet"):
+    busy?`<ol class="cg-steps" aria-label="Progress">${CG_STEPS.map(([,l],j)=>`<li class="${j<k?"done":j===k?"now":""}">${j<k?ico("check"):j===k?'<span class="spin"></span>':'<span class="dot"></span>'}<span>${l}</span><span class="tc">${j===0?`<span data-cgw>${(t.code.tokensOut||0).toLocaleString("en-US")}</span> tokens`:j===1&&j<k?"3 frames":j===2&&j<=k?`<span data-cgr>${t.prog||0} / ${n}</span>`:""}</span>${j===2&&j===k?`<span class="cg-bar"><b data-cgb style="width:${Math.round(100*(t.prog||0)/n)}%"></b></span>`:""}</li>`).join("")}</ol>`:
+    `<div class="cg-err"><b>${ico("alert")}${esc(t.error||"Stopped.")}</b>${t.code.err?`<code>${esc(t.code.err)}</code>`:""}</div>`;
+  const show=t.code.asset?`<button type="button" class="btn small ghost" data-act="cgcode">${ico("code")}Show code</button>`:"";
+  let b=`<div class="tmeta"><span><b>Code</b> · ${esc(t.modelName||t.model)} · v${t.code.v} · ${t.dur} s</span><span>${usd(t)}</span></div>${t.note?`<div class="cv">${esc(t.note)}</div>`:""}`;
+  if(busy)return[vis,b+`<div class="tp">${esc(t.code.ask||t.prompt)}</div><div class="row"><span class="muted cg-tokens"><span class="tc" data-since="${t.created}"></span></span><span class="grow"></span><button type="button" class="btn small ghost" data-act="cgstop">Stop</button></div>`,num];
+  if(t.status==="completed"||vs.length>1)b+=`<div class="cg-vhrow"><span class="cg-vh" id="vh-${esc(t.id)}">Versions</span>${show}</div><ul class="cg-vers" aria-labelledby="vh-${esc(t.id)}">${vs.map(x=>`<li><button type="button" class="cg-v" data-act="cgsel" data-v="${esc(x.id)}" aria-current="${x===t}"><span class="cg-vn">v${x.code.v}</span><span class="cg-vt">${esc(x.code.ask||"first version")}${x.status==="failed"?" · failed":isBusy(x)?" · working":""}</span><span class="cg-vc">${x.media&&s.img===x.media?'<span class="ok">in cut</span> · ':""}${usd(x)}</span></button></li>`).join("")}</ul>`;
+  const fixEst=cgEstTxt(cgEstOf(cgModel(),cgUser(s,{prompt:t.prompt,seed:t.code.seed,bt:null}),(t.code.tokensOut||1000)*4)),nv=Math.max(...vs.map(x=>x.code.v||1))+1;
+  if(t.status==="completed"&&t.media){
+    b+=`<div class="cg-ask"><input class="cgask" aria-label="Ask for a change" placeholder="Ask for a change" enterkeyhint="send" autocomplete="off"><button type="button" class="btn" data-act="cgask">Send</button><p class="muted">For example “slower” or “warmer colours”. Makes v${nv} from v${t.code.v}: ${fixEst}.</p></div>`;
+    b+=`<div class="row">${incut?`<button type="button" class="btn small" data-act="play">${ico("play")}Play in cut</button>`:`<button type="button" class="btn small primary" data-act="use">Use in cut</button>`}<button type="button" class="btn small ghost" data-act="dl">Download</button><button type="button" class="btn small ghost" data-act="del">Delete</button></div>`}
+  else{const again=t.code.asset&&(t.error==="Recording stopped"||t.status==="cancelled"),fix=t.status==="failed"&&t.code.asset&&!again;
+    b+=`<p class="cg-why">${fix?`The app recorded nothing. “Fix it” sends the code and the error to the model for a new try (${fixEst}).`:again?"The code is saved. Record again costs nothing.":"The app recorded nothing."}</p><div class="tp">${esc(t.code.ask?"Asked: "+t.code.ask:t.prompt)}</div>
+    <div class="row">${fix?`<button type="button" class="btn small primary" data-act="cgfix">Fix it</button>`:again?`<button type="button" class="btn small primary" data-act="cgagain">Record again</button>`:`<button type="button" class="btn small" data-act="cgretry">Try again</button>`}${t.status!=="completed"&&vs.length>1?"":show}<button type="button" class="btn small ghost" data-act="del">Remove</button></div>`}
+  return[vis,b,num]}
+async function cgAct(act,s,t,b,card){
+  if(act==="cgsel"){cgSel[t.code.thread]=b.dataset.v;renderBTakes();const c=document.querySelector(`#bTakes .take[data-id="${b.dataset.v}"] .cg-v[aria-current="true"]`);if(c)c.focus()}
+  else if(act==="cgstop")cgStop(t);
+  else if(act==="cgask"){const i=card.querySelector(".cgask"),w=i.value.trim();if(!w){i.focus();return}cgStart(s,{ask:w,parent:t})}
+  else if(act==="cgfix")cgStart(s,{ask:"Fix the error.",parent:t});
+  else if(act==="cgretry"){const p=(s.takes||[]).find(x=>x.id===t.code.parent);s.takes=s.takes.filter(x=>x!==t);delete cgSel[t.code.thread];cgStart(s,{prompt:t.prompt,ask:t.code.ask,parent:p})}
+  else if(act==="cgcode"||act==="cgagain"){const bl=await mediaBlob(t.code.asset),txt=bl?await bl.text():null;if(txt==null){toast("This version’s code is not on this device yet");return}
+    if(act==="cgagain")return cgRecord(s,t,txt);$("cgCode").textContent=txt;$("dlgCode").showModal();$("cgCodeClose").focus()}}
+$("cgCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("cgCode").textContent);toast("Code copied")}catch(e){const g=document.createRange();g.selectNodeContents($("cgCode"));getSelection().removeAllRanges();getSelection().addRange(g)}};
+$("cgCodeClose").onclick=()=>$("dlgCode").close();
+$("bTakes").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".cgask")){e.preventDefault();const s=e.target.closest(".take").querySelector('[data-act="cgask"]');if(s)s.click()}});
+
+/* the box: desktop in the generation box, phone in its sheet (the same fields, moved) */
+function renderCg(){const s=selSec();if(!s||!cur)return;const code=cgSet.mode==="code"&&cgOk;
+  $("genbox").classList.toggle("code",code);document.querySelectorAll("[data-mk]").forEach(b=>b.setAttribute("aria-selected",String((b.dataset.mk==="code")===code)));
+  $("cgTab").disabled=!cgOk;$("cgTab").title=cgOk?"":CG_OFF;$("cgMGo").disabled=!cgOk;$("cgMHint").textContent=cgOk?"Writes an animation for this shot. The video records on this phone.":CG_OFF;
+  setVal("cgPrompt",s.codePrompt||"");const ms=cgModels();$("cgModel").innerHTML=ms.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");$("cgModel").value=cgModel().id;
+  $("cgHint").textContent=`The model also gets this shot’s frame prompt, notes and frame size. The take fills the full shot (${slotDur(s).toFixed(1)} s) and records on this device.`;
+  const song=!!cgSongKey(cur),so=cgSongNow(cur),i=S().indexOf(s);$("cgBeat").disabled=!song;$("cgBeat").checked=song&&cgSet.beat;
+  $("cgBeatL").textContent=!song?"No song in this project":"Follow the song’s beat"+(so?` (${cgShot(so,s.start,secEnd(i)).beats.length} beats in this shot)`:"");
+  if(song&&cgSet.beat&&so===undefined&&(code||$("cgSheet").open))cgSong(cur).then(()=>{if(selSec()===s)renderCg()});cgEst()}
+function cgEst(){const s=selSec();if(!s)return;const i=S().indexOf(s),bt=cgSet.beat?cgShot(cgSongNow(cur),s.start,secEnd(i)):null,e=cgEstOf(cgModel(),cgUser(s,{prompt:$("cgPrompt").value,seed:1234567890,bt}));
+  $("cgTok").textContent=`About ${e.tok.toLocaleString("en-US")} tokens`;$("cgEst").textContent=e.usd==null?"price unknown":"≈ "+fmtUSD(e.usd);$("cgEst").title=e.worst==null?"":`At most ${fmtUSD(e.worst)} (8,000 output tokens)`}
+const cgSave=()=>putSetting("codegen",{...cgSet});
+document.querySelectorAll("[data-mk]").forEach(b=>b.onclick=()=>{cgSet.mode=b.dataset.mk;cgSave();renderCg();if(cgSet.mode==="code")cgCatalog()});
+$("cgPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;hText("animation words of shot "+shotNo(s),s,"codePrompt",e.target.value);scheduleSave(true);cgEst()});
+$("cgChips").addEventListener("click",e=>{const c=e.target.closest("[data-add]");if(!c)return;const ta=$("cgPrompt"),add=c.dataset.add;ta.value=ta.value.trim()?ta.value.replace(/\s*$/,"")+" "+add:add;ta.dispatchEvent(new Event("input"));ta.focus()});
+$("cgModel").onchange=e=>{cgSet.model=e.target.value;cgSave();cgEst()};
+$("cgBeat").onchange=e=>{cgSet.beat=e.target.checked;cgSave();renderCg()};
+$("cgGo").onclick=()=>{const s=selSec();if(!s||!cgOk)return;if(!hasAuth()){$("cgSheet").close();openSettings("Connect OpenRouter to generate takes.");return}
+  const p=$("cgPrompt").value.trim();if(!p){toast("Write what the animation shows first");$("cgPrompt").focus();return}
+  const sheet=$("cgSheet").open;$("cgSheet").close();cgStart(s,{prompt:p}).catch(()=>{});
+  if(sheet)setTimeout(()=>{const sb=$("sideB"),c=$("bTakes").firstElementChild;if(c)sb.scrollTop+=c.getBoundingClientRect().top-sb.getBoundingClientRect().top-12},80)};
+$("cgMGo").onclick=()=>{if(!cgOk)return;const d=$("cgSheet");d.querySelector(".sh").appendChild($("cgForm"));d.showModal();renderCg();cgCatalog();d.querySelector("[data-close]").focus()};
+$("cgSheet").addEventListener("close",()=>$("genbox").appendChild($("cgForm")));
+sheetDrag($("cgSheet").querySelector(".sh-top"),$("cgSheet"),()=>$("cgSheet").close());
+$("cgSheet").addEventListener("click",e=>{if(e.target===$("cgSheet")||e.target.closest("[data-close]"))$("cgSheet").close()});
+
+/* Connect with OpenRouter (PKCE): the key arrives in this tab and is stored as a pasted key. Nothing to register:
+   the callback is this page. The code leaves the address bar before anything else reads it */
+const OR_PKCE="cueboard-or-pkce",orCan=()=>/^https?:$/.test(location.protocol)&&!(viaProxy&&proxyHasKey);
+async function orConnect(){const v=b64u(crypto.getRandomValues(new Uint8Array(64))),st=b64u(crypto.getRandomValues(new Uint8Array(16)));
+  const ch=b64u(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v)));
+  try{sessionStorage.setItem(OR_PKCE,JSON.stringify({verifier:v,state:st,created:Date.now()}))}catch(e){$("setMsg").textContent="This browser blocks session storage. Paste a key instead.";return}
+  await flush();
+  location.assign(`https://openrouter.ai/auth?callback_url=${encodeURIComponent(location.origin+location.pathname)}&code_challenge=${ch}&code_challenge_method=S256&state=${st}&key_label=${encodeURIComponent(`Cue Board (${location.host})`)}`)}
+async function orReturn(){const u=new URL(location.href),code=u.searchParams.get("code");if(!code)return;const st=u.searchParams.get("state");
+  u.searchParams.delete("code");u.searchParams.delete("state");history.replaceState(history.state,"",u.pathname+u.search+u.hash);
+  let p=null;try{p=JSON.parse(sessionStorage.getItem(OR_PKCE)||"null");sessionStorage.removeItem(OR_PKCE)}catch(e){}
+  /* PKCE ties the code to this tab's verifier; state, when OpenRouter sends it back, must match too */
+  if(!p||typeof p.verifier!=="string"||(st!=null&&st!==p.state)||!(Date.now()-p.created<6e5))return openSettings("The OpenRouter sign-in did not match. Try Connect again.");
+  let msg;try{const r=await fetch(OR_DIRECT+"/auth/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code,code_verifier:p.verifier,code_challenge_method:"S256"}),credentials:"omit",cache:"no-store"});
+    const j=await r.json().catch(()=>({}));
+    if(r.ok&&typeof j.key==="string"&&/^[\w-]{8,200}$/.test(j.key)){apiKey=j.key;await putSetting("apiKey",apiKey);toast("Connected to OpenRouter");renderBHead();refreshCredits();refreshCatalog();return}
+    msg=r.status===400||r.status===403?"OpenRouter refused the sign-in: the code is old or used. Try Connect again.":"Could not reach OpenRouter. Try again, or paste a key."}
+  catch(e){msg="Could not reach OpenRouter. Try again, or paste a key."}openSettings(msg)}
+async function renderOr(){const on=!!apiKey,can=orCan();$("orRow").hidden=!on&&!can;$("orOff").hidden=$("orOffHint").hidden=on;$("orOn").hidden=$("orOnHint").hidden=!on;$("setKeyF").hidden=on;
+  $("setKeyF").querySelector("label").textContent=can?"Or paste a key":"OpenRouter API key";$("setTest").textContent=on?"Test connection":"Test key";
+  if(on){$("orKey").textContent="key "+(apiKey.startsWith("sk-or-v1-")?"sk-or-v1-":"")+"…"+apiKey.slice(-4);const k=apiKey;
+    try{const hx=[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(k)))].map(x=>x.toString(16).padStart(2,"0")).join("");if(k===apiKey)$("orLink").href="https://openrouter.ai/keys/"+hx}catch(e){}}}
+$("orConnect").onclick=orConnect;
+$("orDisc").onclick=async()=>{apiKey="";$("setKey").value="";await putSetting("apiKey","");credits=null;renderOr();renderBHead();$("setMsg").textContent="Disconnected. The key still exists at OpenRouter until you delete it there."};
+if(globalThis.__CUE_CG_TEST)Object.assign(globalThis.__CUE_CG_TEST,{analyse:cgAnalyse,shot:cgShot,user:cgUser,sys:CG_SYS});
 
 /* ================= RENDER (docs/specs/export-render.md) =================
    The timeline, or its marked section, as an MP4 in the project's frame ratio, made in this browser and downloaded.
@@ -3829,8 +4149,8 @@ async function rnFastPath(job,o){const M=window.Mp4Muxer,n=Math.max(1,Math.round
     await ae.flush();ae.close()}
   o.ab=null;
   const ve=new VideoEncoder({output:(c,m)=>mux.addVideoChunk(c,m),error:onErr});job.clean.push(shut(ve));
-  ve.configure({codec:o.codecs.v,width:o.w,height:o.h,bitrate:Math.round(o.w*o.h*RN_FPS*.18),framerate:RN_FPS});
-  const c=document.createElement("canvas");c.width=o.w;c.height=o.h;const draw=rnSource(job,o,c.getContext("2d",{alpha:false}));
+  ve.configure({codec:o.codecs.v,width:o.w,height:o.h,bitrate:Math.round(o.w*o.h*RN_FPS*(o.br||.18)),framerate:RN_FPS});
+  const c=document.createElement("canvas");c.width=o.w;c.height=o.h;const draw=(o.src||rnSource)(job,o,c.getContext("2d",{alpha:false}));
   for(let f=0;f<n;f++){if(job.cancel)throw RN_CANCEL;if(fail)throw fail;
     await draw(o.t0+f/RN_FPS,true);if(job.cancel)throw RN_CANCEL;
     const vf=new VideoFrame(c,{timestamp:Math.round(f*1e6/RN_FPS),duration:Math.round(1e6/RN_FPS)});
@@ -3843,7 +4163,7 @@ async function rnFastPath(job,o){const M=window.Mp4Muxer,n=Math.max(1,Math.round
   let blob=new Blob(parts,{type:"video/mp4"});for(const[p,d]of patches)blob=new Blob([blob.slice(0,p),d,blob.slice(p+d.byteLength)],{type:"video/mp4"});
   return{blob,ext:"mp4"}}
 /* real time: the canvas and the song's range into MediaRecorder, as MP4 where the browser records it, else WebM */
-async function rnRealTime(job,o){const c=document.createElement("canvas");c.width=o.w;c.height=o.h;const draw=rnSource(job,o,c.getContext("2d",{alpha:false}));
+async function rnRealTime(job,o){const c=document.createElement("canvas");c.width=o.w;c.height=o.h;const draw=(o.src||rnSource)(job,o,c.getContext("2d",{alpha:false}));
   const stream=c.captureStream(RN_FPS),ac=new(window.AudioContext||window.webkitAudioContext)(),len=o.t1-o.t0,parts=[];
   job.clean.push(()=>{stream.getTracks().forEach(t=>t.stop());ac.close().catch(()=>{})});
   let node=null;if(o.ab){const dest=ac.createMediaStreamDestination();node=ac.createBufferSource();node.buffer=o.ab;node.connect(dest);dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t))}
@@ -3947,7 +4267,8 @@ renderAll();
   store=localStore();
   if(!(await idb())){setStatus("err","Browser storage unavailable");toast("This browser blocks local storage, so nothing will be saved")}
   else setStatus("ok","Saved locally");
-  try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im)}catch(e){}
+  try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im);const cg=await getSetting("codegen");if(cg)Object.assign(cgSet,cg)}catch(e){}
+  orReturn();
   try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms};
     deviceId=(await getSetting("deviceId"))||"";if(!deviceId){deviceId=uid("d");await putSetting("deviceId",deviceId)}}catch(e){}
   /* takes and clips only on Wi-Fi: on by default on a phone, set in its Files sheet */
