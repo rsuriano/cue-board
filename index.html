@@ -579,6 +579,15 @@ dialog::backdrop{background:var(--backdrop)}
 .rn-done{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-1) var(--sp-3)}
 #rnFile{min-width:0;color:var(--ink-2);overflow-wrap:anywhere}
 #dlgRender .hint:empty{display:none}
+/* reframe: the image moves and zooms under a fixed box in the project's ratio; outside the box is dimmed */
+@media (min-width:820px){#dlgFrame{max-width:min(var(--dialog-w-wide),calc(100vw - var(--sp-8)))}}
+.rf-stage{position:relative;height:min(56vh,480px);overflow:hidden;background:var(--screen);border-radius:var(--r-sm);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.rf-stage:active{cursor:grabbing}
+.rf-stage img{position:absolute;max-width:none;pointer-events:none;-webkit-user-drag:none}
+.rf-box{position:absolute;box-shadow:0 0 0 100vmax var(--backdrop);outline:var(--hairline) solid var(--ink);pointer-events:none}
+.rf-zoom{display:flex;align-items:center;gap:var(--sp-3);color:var(--ink-2)}
+.rf-zoom input{flex:1;min-height:var(--hit);accent-color:var(--ink-2)}
+@media not all and (min-width:820px){.rf-stage{height:min(44dvh,400px)}}
 
 /* ---------- side B ---------- */
 .sideB{display:grid;grid-template-columns:var(--list-w) minmax(0,1fr);gap:var(--gap-block);align-items:start}
@@ -1224,7 +1233,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
         <div class="row">
           <label class="btn small" for="f-img" id="f-imglbl">Upload image, GIF or clip</label>
           <input id="f-img" type="file" accept="image/*,video/mp4,video/webm" hidden>
-          <button type="button" id="f-imgdel" class="btn ghost small" hidden>Remove</button>
+          <button type="button" id="f-imgrf" class="btn ghost small" hidden>Reframe</button><button type="button" id="f-imgdel" class="btn ghost small" hidden>Remove</button>
           <span id="f-imgmsg" class="muted"></span>
         </div>
         <details class="prompts" id="f-prompts">
@@ -1292,7 +1301,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
           <div class="frame" id="fStart">
             <div class="fhead"><b>Start frame</b><span class="muted" id="fStartNote"></span></div>
             <div class="fimg" id="fStartImg"></div>
-            <div class="row"><label class="btn small" for="fStartIn">Upload</label><input type="file" id="fStartIn" accept="image/*" hidden><button type="button" class="btn small" id="fStartGen" aria-pressed="false">Generate</button><button type="button" class="btn ghost small" id="fStartClr">Clear</button><span class="muted" id="fStartWarn"></span></div>
+            <div class="row"><label class="btn small" for="fStartIn">Upload</label><input type="file" id="fStartIn" accept="image/*" hidden><button type="button" class="btn small" id="fStartGen" aria-pressed="false">Generate</button><button type="button" class="btn ghost small" id="fStartRf" hidden>Reframe</button><button type="button" class="btn ghost small" id="fStartClr">Clear</button><span class="muted" id="fStartWarn"></span></div>
             <div class="fgen" id="fStartPanel" hidden>
               <span class="muted" id="fStartLead"></span>
               <textarea id="fStartPrompt" rows="3" aria-label="Frame prompt"></textarea>
@@ -1303,7 +1312,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
           <div class="frame" id="fEnd">
             <div class="fhead"><b>End frame <span class="muted">(optional)</span></b><span class="muted" id="fEndNote"></span></div>
             <div class="fimg" id="fEndImg"></div>
-            <div class="row"><label class="btn small" for="fEndIn" id="fEndUp">Upload</label><input type="file" id="fEndIn" accept="image/*" hidden><button type="button" class="btn small" id="fEndFrom" aria-pressed="false" title="Edit the start frame: keep everything, change one thing">From start</button><button type="button" class="btn small ghost" id="fEndGen" aria-pressed="false">Generate</button><button type="button" class="btn ghost small" id="fEndClr">Clear</button><span class="muted" id="fEndWarn"></span></div>
+            <div class="row"><label class="btn small" for="fEndIn" id="fEndUp">Upload</label><input type="file" id="fEndIn" accept="image/*" hidden><button type="button" class="btn small" id="fEndFrom" aria-pressed="false" title="Edit the start frame: keep everything, change one thing">From start</button><button type="button" class="btn small ghost" id="fEndGen" aria-pressed="false">Generate</button><button type="button" class="btn ghost small" id="fEndRf" hidden>Reframe</button><button type="button" class="btn ghost small" id="fEndClr">Clear</button><span class="muted" id="fEndWarn"></span></div>
             <div class="fgen" id="fEndPanel" hidden>
               <span class="muted" id="fEndLead"></span>
               <textarea id="fEndPrompt" rows="3" aria-label="Frame prompt"></textarea>
@@ -1465,6 +1474,13 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <div class="rn-done" id="rnDone" hidden><b>Done</b><span id="rnFile"></span><button type="button" class="linkbtn" id="rnAgain">Download again</button></div>
   <p class="hint" id="rnMsg" role="status"></p>
   <div class="row"><span class="grow"></span><button type="button" id="rnCancel" class="btn ghost">Cancel</button><button type="submit" id="rnGo" class="btn primary">Render</button></div>
+</form></dialog>
+<dialog id="dlgFrame" aria-labelledby="rfTitle"><form class="dlg" id="rfForm">
+  <h3 id="rfTitle">Reframe</h3>
+  <p class="muted">Drag to move it. Pinch, scroll or use the slider to zoom.</p>
+  <div class="rf-stage" id="rfStage" tabindex="0" aria-label="Framing. Arrow keys move it"><img id="rfImg" alt=""><div class="rf-box" id="rfBox"></div></div>
+  <label class="rf-zoom"><span>Zoom</span><input type="range" id="rfZoom" min="1" max="4" step="0.01" value="1"></label>
+  <div class="row"><span class="grow"></span><button type="button" id="rfAsIs" class="btn ghost">Use as is</button><button type="submit" id="rfOk" class="btn primary">Use this framing</button></div>
 </form></dialog>
 <dialog id="dlgJoin"><form class="dlg" id="joinForm" novalidate>
   <h3 id="jTitle">Collaborate</h3>
@@ -1749,7 +1765,7 @@ function renderFrame(){const r=ratioOf(cur),[w,h]=RATIOS[r];$("monitor").style.s
   if(!s.options.length){s.innerHTML=ks.map(k=>`<option>${k}</option>`).join("");box.insertAdjacentHTML("beforeend",ks.map(k=>`<button type="button" class="mi" role="menuitemradio" tabindex="-1" data-ratio="${k}">${ico("check")}<span>${k}</span></button>`).join(""))}
   s.value=r;s.disabled=!cur;$("mFrameV").textContent=r;box.querySelectorAll("[data-ratio]").forEach(b=>{b.setAttribute("aria-checked",String(b.dataset.ratio===r));b.disabled=!cur});
   $("renderb").disabled=!cur;rnDraw()}
-function setRatio(v){if(!cur||!RATIOS.hasOwnProperty(v)||v===ratioOf(cur))return;hRec("frame "+v,()=>{cur.ratio=v});scheduleSave();renderFrame();if(side==="b")renderFrames()}
+function setRatio(v){if(!cur||!RATIOS.hasOwnProperty(v)||v===ratioOf(cur))return;hRec("frame "+v,()=>{cur.ratio=v});scheduleSave();renderFrame();refreshFrames()}
 $("mFrame").onchange=e=>setRatio(e.target.value);
 
 /* ---------- in/out marks: the section to render. This tab's view of the project, kept per project in localStorage:
@@ -1938,7 +1954,7 @@ function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
   const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
   const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
-    const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${mediaURL(s.img)}" alt="">`;
+    const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${frameURL(s,"img")}" alt="">`;
     return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${esc(s.shot||clipHint(d))}</div>${clipLine(s,d)}</div></button>`});
   const cards=[...el.children],fresh=[];
   if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
@@ -1964,7 +1980,7 @@ function renderEditor(){
   renderPeek();renderMTool();
   const s=selSec();$("ed-empty").hidden=!!s;$("ed-body").hidden=!s;$("ed-body").style.display=s?"grid":"none";if(!s)return;
   renderEdHead();mShotChips();setVal("f-title",s.title);setVal("f-shot",s.shot);setVal("f-notes",s.notes);setVal("f-imgp",s.imgPrompt);setVal("f-vidp",s.vidPrompt);
-  $("f-imgdel").hidden=!s.img;$("f-imglbl").hidden=!assets;$("f-imglbl").textContent=s.img?(s.kind==="video"?"Replace clip":"Replace image"):"Upload image, GIF or clip";
+  $("f-imgdel").hidden=!s.img;$("f-imgrf").hidden=!s.img||s.kind==="video"||!mediaURL(s.img);$("f-imglbl").hidden=!assets;$("f-imglbl").textContent=s.img?(s.kind==="video"?"Replace clip":"Replace image"):"Upload image, GIF or clip";
 
   resetDel();resetMtDel();
 }
@@ -1975,14 +1991,14 @@ function renderMonitor(force){
     if(lastKey!=="empty"){lastKey="empty";sl.className="slate";sl.innerHTML=`<div class="shot">Animatic</div><div class="t">Load a song to start</div><p>Hit play, press M at every change in the music, and each stretch becomes a shot with its own notes and keyframe.</p>`}return}
   const i=secAt(t),s=S()[i],a=s.start,b=secEnd(i);
   $("mprog").style.width=Math.min(100,Math.max(0,(t-a)/Math.max(.01,b-a)*100))+"%";
-  const miss=isMissing(s.img),key=[s.id,i,s.img,s.kind,s.title,s.shot,s.notes,miss].join("|");
+  const miss=isMissing(s.img),fu=frameURL(s,"img"),key=[s.id,i,s.img,s.kind,s.title,s.shot,s.notes,miss,fu].join("|");
   if(force||key!==lastKey){lastKey=key;
     const vd=$("mvid");
     sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?missHTML("div","miss",s.img,(s.kind==="video"?"Clip":"Image")+" not on this device yet"):""}`;missSoon();
     if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
     else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
     else{vd.hidden=true;try{vd.pause()}catch(e){}
-      if(s.img){im.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&im.getAttribute("src")!==u)im.src=u}}
+      if(s.img){im.hidden=false;sl.className="slate cap";{const u=fu;if(u&&im.getAttribute("src")!==u)im.src=u}}
       else{im.hidden=true;sl.className="slate"}}
   }
   syncVideo(t,a);
@@ -2310,12 +2326,13 @@ async function uploadMedia(f){
     if(f.size>MAX){msg.textContent="The GIF is over 500 MB.";return}
     type="image/gif";msg.textContent="Uploading GIF…";
   }else{msg.textContent="Uploading…";blob=await shrink(f);type=blob.type||"image/jpeg"}
-  try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img;hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur});scheduleSave();
+  try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img;hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur;delete s.imgCrop});scheduleSave();
     releaseMedia(old);msg.textContent="";renderStrip();renderEditor();renderMonitor(true)}
   catch(e){const c=e&&e.code;msg.textContent=c==="too_large"?"The file is too big (20 MB max).":c==="unsupported_type"?"That format can't be uploaded: use JPG, PNG, GIF, MP4 or WebM.":c==="quota_or_state"?"The board is out of storage.":c==="rate_limited"?"Too many uploads in a row, wait a moment.":"Couldn't upload the file."}
 }
 $("f-img").onchange=e=>{const f=e.target.files[0];e.target.value="";uploadMedia(f).then(()=>{const t=$("f-imgmsg").textContent;if(phone()&&t)toast(t)})};
-$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;hRec(`remove ${s.kind==="video"?"clip":"image"} from shot ${shotNo(s)}`,()=>{s.img="";s.kind="";s.clipDur=0});scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
+$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;hRec(`remove ${s.kind==="video"?"clip":"image"} from shot ${shotNo(s)}`,()=>{s.img="";s.kind="";s.clipDur=0;delete s.imgCrop});scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
+$("f-imgrf").onclick=()=>openReframe(selSec(),"img");
 document.addEventListener("dragover",e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes("Files"))e.preventDefault()});
 document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(!f)return;e.preventDefault();
   if(side!=="a"){if(/\.json$/i.test(f.name))importFile(f);return}
@@ -2513,7 +2530,7 @@ function renderBHead(){
 }
 function renderBList(){
   $("bList").innerHTML=S().map((s,i)=>{const d=slotDur(s),st=startFrameId(s),tk=s.takes||[],busy=tk.some(isBusy),cut=s.img&&s.kind==="video";
-    const th=cut&&mediaURL(s.img)?`<video src="${mediaURL(s.img)}#t=0.1" muted preload="metadata"></video>`:st&&mediaURL(st)?`<img src="${mediaURL(st)}" alt="">`:"";
+    const th=cut&&mediaURL(s.img)?`<video src="${mediaURL(s.img)}#t=0.1" muted preload="metadata"></video>`:st&&mediaURL(st)?`<img src="${frameURL(s,startSlot(s))}" alt="">`:"";
     return `<button type="button" class="bitem${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><span class="bt">${th||`<span class="bph m-only">${s.title?esc(s.title):"Untitled"}</span>`}</span><span class="bi"><span class="tc">${pad(i+1)}<span class="bd"> · ${d.toFixed(1)} s</span></span><span class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="cv">${tk.length?tk.length+(tk.length>1?" takes":" take"):"no takes"}${busy?" · rendering":""}${cut?" · in cut":""}</span></span></button>`}).join("");
   renderMarks();if(csess)csess.select(selId);
 }
@@ -2524,17 +2541,17 @@ function renderBShot(){
   $("bNotes").textContent=s.notes||"";$("bNotes").hidden=!s.notes;
   setVal("bPrompt",s.vidPrompt);renderGen();renderFrames();renderRefs();renderPanels();renderBTakes();
 }
-function fillFrame(pre,id,note,enabled,clearLabel){
-  const box=$(pre),img=$(pre+"Img");box.classList.toggle("has",!!id);box.classList.toggle("off",!enabled);
-  img.innerHTML=id&&mediaURL(id)?`<img src="${mediaURL(id)}" alt="">`:isMissing(id)?missHTML("span","",id,"Not on this device yet"):`<span>${enabled?"Drop an image here":"This model can't take an end frame"}</span>`;missSoon();
+function fillFrame(pre,id,note,enabled,clearLabel,slot){
+  const box=$(pre),img=$(pre+"Img"),s=selSec(),fc=s&&s[CROPF[slot]];box.classList.toggle("has",!!id);box.classList.toggle("off",!enabled);$(pre+"Rf").hidden=!id||!mediaURL(id);
+  img.innerHTML=id&&mediaURL(id)?`<img src="${frameURL(s,slot)}" alt="">`:isMissing(id)?missHTML("span","",id,"Not on this device yet"):`<span>${enabled?"Drop an image here":"This model can't take an end frame"}</span>`;missSoon();
   $(pre+"Note").textContent=note;$(pre+"Clr").hidden=!id;$(pre+"Clr").textContent=clearLabel||"Clear";$(pre+"Warn").textContent="";
-  const im=img.querySelector("img");if(im)im.onload=()=>{const r=im.naturalWidth/im.naturalHeight;const k=ratioOf(cur),[w,h]=RATIOS[k];$(pre+"Warn").textContent=Math.abs(r/(w/h)-1)>.034?`${im.naturalWidth}×${im.naturalHeight}, not ${k}: it may get cropped`:""};
+  const im=img.querySelector("img"),k=ratioOf(cur);if(im)im.onload=()=>{$(pre+"Warn").textContent=cropOf(s,slot)||!offRatio(im.naturalWidth,im.naturalHeight)?"":fc?`Framed for ${fc.split(" ")[0]}: reframe it for ${k}`:`${im.naturalWidth}×${im.naturalHeight}, not ${k}: it may get cropped`};
 }
 function renderFrames(){
   const s=selSec();if(!s)return;const m=modelById(gen.model),st=startFrameId(s),fromA=!s.key&&!!st;
-  fillFrame("fStart",st,fromA?"from side A":(s.keyOff?"not used":""),true,fromA?"Don't use":"Clear");
+  fillFrame("fStart",st,fromA?"from side A":(s.keyOff?"not used":""),true,fromA?"Don't use":"Clear",startSlot(s));
   const endOk=m.frames.includes("last_frame");
-  fillFrame("fEnd",s.endKey,s.endKey&&!endOk?"ignored by this model":"",endOk||!!s.endKey);
+  fillFrame("fEnd",s.endKey,s.endKey&&!endOk?"ignored by this model":"",endOk||!!s.endKey,"","endKey");
   $("fEndFrom").disabled=!st;$("fEndFrom").title=st?"Edit the start frame: keep everything, change one thing":"Add a start frame first";
 }
 function renderGen(){
@@ -2612,19 +2629,66 @@ async function shrinkTo(f,max){
 async function setFrame(slot,f){
   const s=selSec();if(!s||!f)return;if(!/^image\//.test(f.type)){toast("Frames have to be images");return}
   const b=await shrinkTo(f,1920);const r=await assets.upload(b,{type:b.type||"image/jpeg"});if(!cur||!S().includes(s))return;
-  const old=s[slot];hRec(FRAME_LABEL[slot]+" of shot "+shotNo(s),()=>{s[slot]=r.id;if(slot==="key")s.keyOff=false});scheduleSave();releaseMedia(old);renderFrames();renderBList();updateEst();
+  const old=s[slot];hRec(FRAME_LABEL[slot]+" of shot "+shotNo(s),()=>{s[slot]=r.id;delete s[CROPF[slot]];if(slot==="key")s.keyOff=false});scheduleSave();releaseMedia(old);renderFrames();renderBList();updateEst();
+  const d=await createImageBitmap(b).then(x=>{const v=[x.width,x.height];x.close();return v},()=>null);if(d&&offRatio(...d)&&selSec()===s&&s[slot]===r.id)openReframe(s,slot);
 }
 const FRAME_LABEL={key:"start frame",endKey:"end frame"};
 $("fStartIn").onchange=e=>{const f=e.target.files[0];e.target.value="";setFrame("key",f)};
 $("fEndIn").onchange=e=>{const f=e.target.files[0];e.target.value="";setFrame("endKey",f)};
-$("fStartClr").onclick=()=>{const s=selSec();if(!s)return;const o=s.key;hRec("clear start frame of shot "+shotNo(s),()=>{s.key="";s.keyOff=true});scheduleSave();if(o)releaseMedia(o);renderFrames();renderBList();updateEst()};
-$("fEndClr").onclick=()=>{const s=selSec();if(!s||!s.endKey)return;const o=s.endKey;hRec("clear end frame of shot "+shotNo(s),()=>{s.endKey=""});scheduleSave();releaseMedia(o);renderFrames()};
+$("fStartClr").onclick=()=>{const s=selSec();if(!s)return;const o=s.key;hRec("clear start frame of shot "+shotNo(s),()=>{s.key="";s.keyOff=true;delete s.keyCrop});scheduleSave();if(o)releaseMedia(o);renderFrames();renderBList();updateEst()};
+$("fEndClr").onclick=()=>{const s=selSec();if(!s||!s.endKey)return;const o=s.endKey;hRec("clear end frame of shot "+shotNo(s),()=>{s.endKey="";delete s.endCrop});scheduleSave();releaseMedia(o);renderFrames()};
 [["fStart","key"],["fEnd","endKey"]].forEach(([id,slot])=>{const el=$(id);
   el.addEventListener("dragover",e=>{e.preventDefault();e.stopPropagation();el.classList.add("over")});
   el.addEventListener("dragleave",()=>el.classList.remove("over"));
   el.addEventListener("drop",e=>{e.preventDefault();e.stopPropagation();el.classList.remove("over");const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)setFrame(slot,f)})});
 
-async function frameDataURL(id){const b=await mediaBlob(id);if(!b)throw new Error("frame image missing");
+/* ---------- reframe: a frame keeps its original image; what shows is a crop saved next to its media field,
+   "<ratio> x y w h" (0..1 of the image). A crop made for another ratio stays, unused, until the frame is reframed ---------- */
+const CROPF={img:"imgCrop",key:"keyCrop",endKey:"endCrop"},startSlot=s=>s.key?"key":"img";
+const offRatio=(w,h)=>{const[a,b]=RATIOS[ratioOf(cur)];return Math.abs(w/h/(a/b)-1)>.034};
+function cropOf(s,slot){const v=s&&s[CROPF[slot]];if(typeof v!=="string"||slot==="img"&&s.kind==="video")return null;const p=v.split(" "),n=p.slice(1).map(Number);
+  return p[0]===ratioOf(cur)&&n.length===4&&n.every(x=>x>=0&&x<=1)&&n[2]>0&&n[3]>0&&n[0]+n[2]<1.001&&n[1]+n[3]<1.001?n:null}
+const cropFor=(s,id)=>{const k=["key","img","endKey"].find(k=>id&&s[k]===id);return k?cropOf(s,k):null};
+async function cropBlob(id,c){const b=await mediaBlob(id);if(!b)throw new Error("frame image missing");const bm=await createImageBitmap(b),sw=c[2]*bm.width,sh=c[3]*bm.height,k=Math.min(1,1920/Math.max(sw,sh));
+  const cv=document.createElement("canvas");cv.width=Math.max(1,Math.round(sw*k));cv.height=Math.max(1,Math.round(sh*k));cv.getContext("2d").drawImage(bm,c[0]*bm.width,c[1]*bm.height,sw,sh,0,0,cv.width,cv.height);bm.close();
+  return new Promise((ok,no)=>cv.toBlob(x=>x?ok(x):no(new Error("crop failed")),"image/jpeg",.92))}
+/* what the monitor, the strip and the frame cards show: the cropped picture once it's made (the original until then) */
+const cropURLs=new Map();
+function frameURL(s,slot){const id=s&&s[slot],u=mediaURL(id),c=u&&cropOf(s,slot);if(!c)return u;const k=id+" "+c.join(" "),v=cropURLs.get(k);if(typeof v==="string")return v;
+  if(v===undefined){cropURLs.set(k,null);cropBlob(id,c).then(b=>{if(cropURLs.size>60){const[k0,u0]=cropURLs.entries().next().value;if(u0)URL.revokeObjectURL(u0);cropURLs.delete(k0)}cropURLs.set(k,URL.createObjectURL(b));refreshFrames()},()=>{})}
+  return u}
+function refreshFrames(){lastKey="";renderMonitor();renderStrip();if(side==="b"){renderBList();renderFrames()}}
+/* the dialog: a fixed box in the project's ratio; the image under it moves (drag, arrows) and zooms (wheel, pinch,
+   slider) from "covers the box" up to 4×. State is the crop's centre and the zoom, so a resize keeps the framing */
+const rfDlg=$("dlgFrame"),rfSt=$("rfStage");let rf=null;
+function openReframe(s,slot){const u=s&&mediaURL(s[slot]);if(!u||rfDlg.open)return;const c=cropOf(s,slot),im=$("rfImg");
+  rf={s,slot,id:s[slot],z:1,cx:.5,cy:.5,ptr:new Map()};$("rfTitle").textContent="Reframe for "+ratioOf(cur);
+  im.onload=()=>{if(!rf)return;rf.iw=im.naturalWidth;rf.ih=im.naturalHeight;if(c){rf.z=rfClamp(rfGeo().cw/c[2]);rf.cx=c[0]+c[2]/2;rf.cy=c[1]+c[3]/2}rfDraw()};
+  rfDlg.showModal();im.src=u;rfSt.focus()}
+const rfClamp=z=>Math.min(4,Math.max(1,z));
+function rfGeo(){const W=rfSt.clientWidth,H=rfSt.clientHeight,[a,b]=RATIOS[ratioOf(cur)],bw=Math.max(1,Math.min(W-32,(H-32)*a/b)),bh=bw*b/a,sc=Math.max(bw/rf.iw,bh/rf.ih)*rf.z;
+  return{W,H,bw,bh,sc,cw:bw/(rf.iw*sc),ch:bh/(rf.ih*sc)}}
+function rfDraw(){if(!rf||!rf.iw)return null;const g=rfGeo(),cl=(v,h)=>Math.min(1-h,Math.max(h,v));rf.cx=cl(rf.cx,g.cw/2);rf.cy=cl(rf.cy,g.ch/2);
+  const bx=(g.W-g.bw)/2,by=(g.H-g.bh)/2,px=v=>v+"px";Object.assign($("rfBox").style,{left:px(bx),top:px(by),width:px(g.bw),height:px(g.bh)});
+  Object.assign($("rfImg").style,{width:px(rf.iw*g.sc),height:px(rf.ih*g.sc),left:px(bx+g.bw/2-rf.cx*rf.iw*g.sc),top:px(by+g.bh/2-rf.cy*rf.ih*g.sc)});$("rfZoom").value=rf.z;return g}
+rfSt.addEventListener("pointerdown",e=>{if(!rf)return;rfSt.setPointerCapture(e.pointerId);rf.ptr.set(e.pointerId,[e.clientX,e.clientY])});
+rfSt.addEventListener("pointermove",e=>{const o=rf&&rf.ptr.get(e.pointerId);if(!o||!rf.iw)return;const q=[...rf.ptr.values()].find(x=>x!==o);
+  if(q){const d0=Math.hypot(o[0]-q[0],o[1]-q[1]);if(d0>0)rf.z=rfClamp(rf.z*Math.hypot(e.clientX-q[0],e.clientY-q[1])/d0)}
+  else{const g=rfGeo();rf.cx-=(e.clientX-o[0])/(rf.iw*g.sc);rf.cy-=(e.clientY-o[1])/(rf.ih*g.sc)}
+  rf.ptr.set(e.pointerId,[e.clientX,e.clientY]);rfDraw()});
+["pointerup","pointercancel"].forEach(t=>rfSt.addEventListener(t,e=>{if(rf)rf.ptr.delete(e.pointerId)}));
+rfSt.addEventListener("wheel",e=>{if(!rf)return;e.preventDefault();rf.z=rfClamp(rf.z*Math.exp(-e.deltaY*.002));rfDraw()},{passive:false});
+rfSt.addEventListener("keydown",e=>{const d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!rf||!rf.iw||!d)return;e.preventDefault();const g=rfGeo();rf.cx+=d[0]*g.cw*.05;rf.cy+=d[1]*g.ch*.05;rfDraw()});
+$("rfZoom").oninput=e=>{if(rf){rf.z=rfClamp(+e.target.value);rfDraw()}};
+addEventListener("resize",()=>{if(rfDlg.open)rfDraw()});
+/* Use this framing saves the crop; Use as is keeps the whole image (and drops an earlier crop); Esc changes nothing */
+function rfSave(v){const{s,slot,id}=rf,f=CROPF[slot];if(cur&&S().includes(s)&&s[slot]===id&&s[f]!==v){hRec("framing of shot "+shotNo(s),()=>{if(v)s[f]=v;else delete s[f]});scheduleSave();refreshFrames()}rfDlg.close()}
+$("rfForm").onsubmit=e=>{e.preventDefault();const g=rfDraw();if(!g)return;const r4=v=>Math.round(v*1e4)/1e4;rfSave([ratioOf(cur),...[rf.cx-g.cw/2,rf.cy-g.ch/2,g.cw,g.ch].map(r4)].join(" "))};
+$("rfAsIs").onclick=()=>{if(rf)rfSave(undefined)};
+rfDlg.addEventListener("close",()=>{rf=null;$("rfImg").removeAttribute("src")});
+[["fStartRf",s=>startSlot(s)],["fEndRf",()=>"endKey"]].forEach(([b,slot])=>$(b).onclick=()=>{const s=selSec();if(s)openReframe(s,slot(s))});
+
+async function frameDataURL(id,c){if(c)return blobToDataURL(await cropBlob(id,c));const b=await mediaBlob(id);if(!b)throw new Error("frame image missing");
   const small=b.size>3.5e6?await shrinkTo(b,1920):b;return blobToDataURL(small)}
 const corsHint=e=>"Couldn't reach OpenRouter from this page"+(viaProxy?"":". If it keeps happening, start the app with node server.mjs (see README)")+(e&&e.message?` (${e.message})`:"");
 async function submitTake(s,o){
@@ -2636,8 +2700,8 @@ async function submitTake(s,o){
   (s.takes=s.takes||[]).unshift(t);if(selSec()===s)renderBTakes();renderBList();
   try{
     const fr=[];
-    if(o.startId)fr.push({type:"image_url",image_url:{url:await frameDataURL(o.startId)},frame_type:"first_frame"});
-    if(o.endId&&m.frames.includes("last_frame")){fr.push({type:"image_url",image_url:{url:await frameDataURL(o.endId)},frame_type:"last_frame"});t.end=true}
+    if(o.startId)fr.push({type:"image_url",image_url:{url:await frameDataURL(o.startId,cropFor(s,o.startId))},frame_type:"first_frame"});
+    if(o.endId&&m.frames.includes("last_frame")){fr.push({type:"image_url",image_url:{url:await frameDataURL(o.endId,cropFor(s,o.endId))},frame_type:"last_frame"});t.end=true}
     if(fr.length)body.frame_images=fr;
     const r=await apiFetch("/videos",{method:"POST",body});const j=await r.json().catch(()=>({}));
     if(!r.ok||!j.id){t.status="failed";t.error=errText(j.error)||("HTTP "+r.status)}else{t.jobId=j.id;t.status=j.status||"pending"}
@@ -2705,14 +2769,14 @@ $("bTakes").addEventListener("click",async e=>{
   const t=(s.takes||[]).find(x=>x.id===card.dataset.id);if(!t)return;const act=b.dataset.act;
   if(act==="use"){
     const old=s.img;hRec("take in cut for shot "+shotNo(s),()=>{
-      if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff)s.key=s.img;   /* keep side A's keyframe as this shot's start frame */
+      if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff){s.key=s.img;if(s.imgCrop)s.keyCrop=s.imgCrop}delete s.imgCrop;   /* keep side A's keyframe as this shot's start frame */
       s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0});scheduleSave();releaseMedia(old);
     renderBTakes();renderBList();renderFrames();toast(`Take is now in the cut for shot ${pad(S().indexOf(s)+1)}`);
   }else if(act==="play"){playInCut(s)}
   else if(act==="next"){
     const nx=S()[S().indexOf(s)+1];if(!nx)return;b.disabled=true;b.textContent="Grabbing…";
     const blob=await lastFrameBlob(t.media);if(!blob){toast("Couldn't grab the last frame");renderBTakes();return}
-    const r=await assets.upload(blob,{type:"image/jpeg"});if(!cur||!S().includes(nx))return;const old=nx.key;hRec("start frame of shot "+shotNo(nx),()=>{nx.key=r.id;nx.keyOff=false});scheduleSave();releaseMedia(old);
+    const r=await assets.upload(blob,{type:"image/jpeg"});if(!cur||!S().includes(nx))return;const old=nx.key;hRec("start frame of shot "+shotNo(nx),()=>{nx.key=r.id;nx.keyOff=false;delete nx.keyCrop});scheduleSave();releaseMedia(old);
     renderBList();toast(`Shot ${pad(S().indexOf(nx)+1)} now starts where this take ends`);b.disabled=false;b.innerHTML=NEXT_LABEL;
   }else if(act==="dl"){
     const bl=await mediaBlob(t.media);if(!bl){toast("This take's file is missing");return}
@@ -2830,7 +2894,7 @@ async function runPanel(){
   $(pre+"Prompt").addEventListener("input",e=>{const s=selSec();if(!s||!fpanel)return;
     const f=slot==="key"?"imgPrompt":fpanel.mode==="from"?"endChange":"endPrompt";hText(fieldLabel(f,s),s,f,e.target.value);scheduleSave(true)});
   $(pre+"Vars").addEventListener("click",async e=>{const b=e.target.closest("[data-vi]");if(!b||!fpanel)return;const v=fpanel.vars[+b.dataset.vi];const s=selSec();if(!v||!v.blob||!s)return;
-    const r=await assets.upload(v.blob,{type:v.blob.type||"image/png"});if(!cur||!S().includes(s))return;const old=s[slot];hRec(FRAME_LABEL[slot]+" of shot "+shotNo(s),()=>{s[slot]=r.id;if(slot==="key")s.keyOff=false});
+    const r=await assets.upload(v.blob,{type:v.blob.type||"image/png"});if(!cur||!S().includes(s))return;const old=s[slot];hRec(FRAME_LABEL[slot]+" of shot "+shotNo(s),()=>{s[slot]=r.id;delete s[CROPF[slot]];if(slot==="key")s.keyOff=false});
     scheduleSave();releaseMedia(old);closePanel();renderFrames();renderBList();updateEst();toast(slot==="key"?"Start frame set":"End frame set")});
 });
 $("fEndFrom").onclick=()=>openPanel("endKey","from");
@@ -3706,7 +3770,7 @@ rnDlg.addEventListener("close",()=>{if(rjob)rjob.abort();rnRelease();if(rnFrom&&
    black, with one note naming the shot. Only the current shot's media is open. exact: seek the clip frame by frame
    (fast path); otherwise it plays along (real time) */
 function rnSource(job,o,g){const W=o.w,H=o.h;let cs=null;
-  const cover=sh=>{const k=Math.max(W/sh.w,H/sh.h),dw=sh.w*k,dh=sh.h*k;g.drawImage(sh.el,(W-dw)/2,(H-dh)/2,dw,dh)};
+  const cover=sh=>{const c=!sh.video&&sh.crop;if(c){g.drawImage(sh.el,c[0]*sh.w,c[1]*sh.h,c[2]*sh.w,c[3]*sh.h,0,0,W,H);return}const k=Math.max(W/sh.w,H/sh.h),dw=sh.w*k,dh=sh.h*k;g.drawImage(sh.el,(W-dw)/2,(H-dh)/2,dw,dh)};
   const mark=()=>{if(!o.wm)return;const fs=Math.round(H*.03);g.save();g.globalAlpha=.55;g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=fs/3;
     g.font=`600 ${fs}px "Instrument Sans",system-ui,sans-serif`;g.textAlign="right";g.textBaseline="alphabetic";g.fillText("Cue Board",W-fs,H-fs);g.restore()};
   const black=()=>{g.fillStyle="#000";g.fillRect(0,0,W,H);mark()};
@@ -3779,7 +3843,7 @@ async function rnRealTime(job,o){const c=document.createElement("canvas");c.widt
    collaborator deleting a take, a replaced song) can't change it halfway; a file that's gone by its turn is a note */
 async function rnStart(){const rg=rnRange();if(rjob||!cur||rnDlg.dataset.mode!=="idle"||!Array.isArray(rg))return;
   const F=$("rnForm").elements,sel=F.rnRange.value!=="all",[t0,t1]=rg,acct=!!account.get(),[w,h]=rnSize(acct&&F.rnRes.value==="1080"?1080:720),pid=cur.id;
-  const shots=S().map((x,i)=>({n:i+1,a:x.start,id:x.img,video:x.kind==="video",take:(x.takes||[]).some(t=>t.media&&t.media===x.img)}));
+  const shots=S().map((x,i)=>({n:i+1,a:x.start,id:x.img,video:x.kind==="video",crop:cropOf(x,"img"),take:(x.takes||[]).some(t=>t.media&&t.media===x.img)}));
   const name=`${rnName(cur.title)} - ${ratioOf(cur).replace(":","x")} - ${sel?t0.toFixed(1)+"s-"+t1.toFixed(1)+"s":"full"}`,named=!!(cur.song&&cur.song.name),stale=songStale;
   const job=rjob={cancel:false,notes:[],clean:[]},clean=()=>job.clean.splice(0).forEach(f=>{try{f()}catch(e){}});
   const gone=new Promise((_,no)=>{job.abort=()=>{job.cancel=true;clean();no(RN_CANCEL)}});

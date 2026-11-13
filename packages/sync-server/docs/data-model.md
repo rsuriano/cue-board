@@ -29,6 +29,9 @@ doc.getMap('shots')                     shotId -> Y.Map (one per cut)
   clipDur     number                    length of img when it's a video
   key, endKey MediaRef | null           start / end frame for side B
   keyOff      boolean                   "don't use side A's keyframe as the start frame"
+  imgCrop, keyCrop, endCrop  string     the framing of img / key / endKey: "<ratio> x y w h" (0..1 of the
+                                        original image); used only while the project's ratio matches. Optional,
+                                        plain last-writer-wins strings (an older app keeps them as unknown keys)
   takes       Y.Array<Y.Map>            newest first
     id, jobId, model, modelName, res, dur, audio, seed, prompt, start, end,
     est, cost, status, created, done, error, note, clipDur     plain values
