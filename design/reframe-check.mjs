@@ -275,7 +275,8 @@ try {
     for (let i = 0; i < 3; i++) await touch(pg, [[c[0], c[1] - 150], [c[0], c[1] + 200]]);
     g = await geo(pg);
     check('8 · phone: a one-finger drag moves it and stops at the edge', g.covers && Math.abs(g.img[1] - g.box[1]) < .6, JSON.stringify(g));
-    await pg.tap('#rfOk'); await sleep(500);
+    /* a CDP two-finger pinch leaves the emulated touch state unreleased, so a later touch tap yields no click; a mouse click on the button tests the submit */
+    await pg.click('#rfOk'); await sleep(500);
     const s = await shotOf(pg, 's3');
     check('8 · phone: Use this framing saves the crop', cropOk(s.keyCrop, '16:9', 900, 900) && !(await dlgOpen(pg)), s.keyCrop);
     await shoot(pg, 'frame-card-phone-390x844');
