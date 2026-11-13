@@ -3,14 +3,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as Y from 'yjs';
-import { cueboardToDoc, docToCueboard, parseExampleJS } from '@cue-board/sync-server/import-cueboard';
+import { fileURLToPath } from 'node:url';
+import { cueboardToDoc, docToCueboard } from '@cue-board/sync-server/import-cueboard';
+import { loadCueboardFile } from '@cue-board/sync-server/load-example';
 import { shotsMap, metaMap } from '@cue-board/sync-server/schema';
 import { pushProject, keepPending, docToProject, sanitizeProject, isEmptyRoom, clearShots, initials, sanitizeName, LIMITS } from '../src/convert.mjs';
 
-const example = parseExampleJS(fs.readFileSync(new URL('../../../example/example.js', import.meta.url), 'utf8'));
-// the example has no keyframes or takes: give it some, so media refs, takes and refs are covered too
-example.media = { 'm-a': { type: 'image/png', data: 'data:image/png;base64,iVBORw0KGgo=' }, 'm-b': { type: 'video/mp4', data: 'data:video/mp4;base64,AAAAIGZ0eXA=' } };
-Object.assign(example.project.sections[0], { img: 'm-b', kind: 'video', clipDur: 4, key: 'm-a', takes: [{ id: 't1', status: 'completed', media: 'm-b', cost: 0.3, model: 'w' }, { id: 't0', status: 'failed', media: '', error: 'no' }] });
+// since #34 the example ships pictures and takes as files in example/media/ ({ type, url } entries): load them inlined,
+// like create-project --import, and add two small media of our own (merged, not replacing the example's: replacing
+// them left the example's keyframes pointing at ids with no payload, so they came back as '')
+const example = loadCueboardFile(fileURLToPath(new URL('../../../example/example.js', import.meta.url)));
+Object.assign(example.media, { 'm-a': { type: 'image/png', data: 'data:image/png;base64,iVBORw0KGgo=' }, 'm-b': { type: 'video/mp4', data: 'data:video/mp4;base64,AAAAIGZ0eXA=' } });
+// a shot with known takes and a reframed key (#36: crop rects ride along as plain string fields)
+Object.assign(example.project.sections[0], { img: 'm-b', kind: 'video', clipDur: 4, key: 'm-a', keyCrop: 'c 0.1 0.2 0.5 0.5', takes: [{ id: 't1', status: 'completed', media: 'm-b', cost: 0.3, model: 'w' }, { id: 't0', status: 'failed', media: '', error: 'no' }] });
 example.project.refs = ['m-a'];
 const bytes = u => Buffer.from(u.slice(u.indexOf(',') + 1), 'base64');
 const sha = b => createHash('sha256').update(b).digest('hex');
@@ -33,6 +38,9 @@ test('doc -> project -> doc round trip, media ids mapped back to local ids, and 
   const v = docToProject(doc, h => local.get(h));
   assert.equal(v.project.sections.length, p.sections.length);
   for (const [i, s] of p.sections.entries()) for (const k of ['id', 'start', 'title', 'notes', 'img', 'key', 'kind', 'imgPrompt', 'vidPrompt']) assert.deepEqual(v.project.sections[i][k], s[k] ?? '', `${s.id}.${k}`);
+  // crop rects: kept when set, still absent when not
+  for (const [i, s] of p.sections.entries()) for (const k of ['imgCrop', 'keyCrop', 'endCrop']) assert.deepEqual(v.project.sections[i][k], s[k], `${s.id}.${k}`);
+  assert.equal(v.project.sections[0].keyCrop, 'c 0.1 0.2 0.5 0.5');
   assert.deepEqual(v.project.sections[0].takes.map(t => [t.id, t.media]), [['t1', 'm-b'], ['t0', '']]);
   assert.deepEqual(v.project.refs, ['m-a']);
   assert.equal(v.songFile.sha256, songRef({}).sha256);

@@ -1,12 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as Y from 'yjs';
-import { cueboardToDoc, docToCueboard, withoutPayloads, parseExampleJS, mediaId } from '../src/import-cueboard.mjs';
+import { cueboardToDoc, docToCueboard, withoutPayloads, mediaId } from '../src/import-cueboard.mjs';
+import { loadCueboardFile } from '../src/load-example.mjs';
 import { orderedShots, useInCut, setInCut, cutRange } from '../src/schema.mjs';
 
-const example = parseExampleJS(fs.readFileSync(fileURLToPath(new URL('../../../example/example.js', import.meta.url)), 'utf8'));
+// since #34 the example's media are files in example/media/ ({ type, url } entries, not data URLs): load it the way
+// create-project --import does, with the files read and inlined, so its pictures and takes are in the round trip too
+const example = loadCueboardFile(fileURLToPath(new URL('../../../example/example.js', import.meta.url)));
 const viaWire = doc => { const d = new Y.Doc(); Y.applyUpdate(d, Y.encodeStateAsUpdate(doc)); return d; };
 
 test('(f) .cueboard.json round trip is lossless on the example (media payloads out, hashes in)', t => {
@@ -21,9 +24,12 @@ test('(f) .cueboard.json round trip is lossless on the example (media payloads o
   assert.deepEqual(back, withoutPayloads(example));
   assert.equal(back.song.sha256.length, 64);
 
-  // with the payloads handed back, it's the original file byte for byte (media ids aside; the example has none)
+  // with the payloads handed back, it's the original file byte for byte, media ids aside (they come back as sha256-<hex>)
   const full = docToCueboard(viaWire(doc), { media, exportedAt: example.exportedAt });
-  assert.equal(JSON.stringify(full.project), JSON.stringify(example.project));
+  assert.ok(Object.keys(example.media).length > 0, 'the example ships media');
+  assert.equal(JSON.stringify(full.project), JSON.stringify(withoutPayloads(example).project));
+  const idOf = data => mediaId(createHash('sha256').update(Buffer.from(data.slice(data.indexOf(',') + 1), 'base64')).digest('hex'));
+  for (const [id, m] of Object.entries(example.media)) assert.equal(full.media[idOf(m.data)]?.data, m.data, id);
   assert.equal(full.song.data, example.song.data);
 });
 

@@ -2,12 +2,13 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as Y from 'yjs';
-import { cueboardToDoc, parseExampleJS } from '../src/import-cueboard.mjs';
+import { cueboardToDoc } from '../src/import-cueboard.mjs';
+import { loadCueboardFile } from '../src/load-example.mjs';
 import { orderedShots } from '../src/schema.mjs';
 import { ProjectStore } from '../src/store.mjs';
 import { tmpDir, server, client, synced, until } from './helpers.mjs';
 
-const example = parseExampleJS(fs.readFileSync(fileURLToPath(new URL('../../../example/example.js', import.meta.url)), 'utf8'));
+const example = loadCueboardFile(fileURLToPath(new URL('../../../example/example.js', import.meta.url)));
 const mb = n => (n / 1048576).toFixed(1) + ' MB';
 const heap = () => { global.gc?.(); return process.memoryUsage().heapUsed; };
 const dir = tmpDir(), store = new ProjectStore(dir);
