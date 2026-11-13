@@ -11,7 +11,8 @@
     ".": "./src/server.mjs",
     "./schema": "./src/schema.mjs",
     "./media-limits": "./src/media-limits.mjs",
-    "./import-cueboard": "./src/import-cueboard.mjs"
+    "./import-cueboard": "./src/import-cueboard.mjs",
+    "./load-example": "./src/load-example.mjs"
   },
   "scripts": {
     "start": "node src/main.mjs",
