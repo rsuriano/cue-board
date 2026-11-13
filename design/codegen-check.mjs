@@ -284,6 +284,26 @@ const shotLen = page => page.evaluate(() => { const t = document.getElementById(
   check('19 openrouter.ai only on generate, test or connect', page.st.ext.every(u => /openrouter\.ai\/(api\/v1\/(chat\/completions|auth\/keys|videos\/models|credits)|auth\?)/.test(u)), page.st.ext.filter(u => !/openrouter/.test(u)).join(' '));
   await page.ctx.close();
 }
+// ================= the other frame ratios: 1080 on the short side =================
+{
+  const page = await newPage('ratios');
+  await openExample(page); await setKey(page);
+  for (const [r, W, H] of [['9:16', 1080, 1920], ['1:1', 1080, 1080], ['4:3', 1440, 1080]]) {
+    await page.evaluate(r => { document.getElementById('moreb').click(); const b = document.querySelector(`[data-ratio="${r}"]`); if (b) b.click(); }, r); await sleep(400);
+    await onSideB(page, 1); await page.click('[data-mk="code"]').catch(() => {});
+    await page.fill('#cgPrompt', 'Dots for ' + r); page.st.answers.push(sse(GOOD, 0.01)); await page.click('#cgGo');
+    await sleep(500); await waitCard(page, /Use in cut|Play in cut|failed/i, 90000);
+    const f = await mp4(page), len = await shotLen(page);
+    check(`8 output ${r}: avc1 ${W}x${H}, 30 fps, the shot’s length ± 1 frame`, f && f.codec === 'avc1' && f.w === W && f.h === H && Math.abs(f.fps - 30) < 0.01 && Math.abs(f.frames - Math.round(len * 30)) <= 1, JSON.stringify(f && { w: f.w, h: f.h, fps: f.fps, frames: f.frames, len }));
+  }
+  // Use in cut, then the monitor on side A plays the take's file
+  await page.click('#bTakes .take [data-act="use"]'); await sleep(300);
+  const media = await page.evaluate(() => document.querySelector('#bTakes .take video').src);
+  await page.click('.sidetab[data-side="a"]'); await sleep(800);
+  const mon = await page.evaluate(() => [...document.querySelectorAll('video')].filter(v => v.getClientRects().length).map(v => v.src));
+  check('8 after Use in cut, the monitor on side A has the take’s video', mon.includes(media), JSON.stringify(mon.slice(0, 3)));
+  await page.ctx.close();
+}
 // ================= fallbacks =================
 {
   const page = await newPage('rt', { init: () => { delete window.VideoEncoder; } });
