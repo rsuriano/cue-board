@@ -666,8 +666,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .takes>p.muted{grid-column:1/-1;margin:0;padding:var(--inset-panel);max-width:none;background:var(--surface-1);border:var(--hairline) dashed var(--border-strong);border-radius:var(--r-md);color:var(--ink-2);font-size:var(--text-md);line-height:var(--lh-md)}
 .take{display:grid;align-content:start;min-width:0;overflow:hidden;background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
 .take.incut{border-color:var(--ok)}
-.tv{position:relative;aspect-ratio:16/9;display:grid;place-items:center;background:var(--screen);border-bottom:var(--hairline) solid var(--border-subtle)}
-.tv video{width:100%;height:100%;object-fit:cover;display:block}
+.tv{position:relative;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center;background:var(--screen);border-bottom:var(--hairline) solid var(--border-subtle)}
+.tv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .tbusy{display:grid;justify-items:center;gap:var(--sp-2);padding:var(--sp-3);color:var(--ink-2);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);text-align:center}
 .tbusy.err{color:var(--error)}
 .spin{width:var(--icon-lg);height:var(--icon-lg);border-radius:var(--r-round);border:var(--ring) solid var(--border-strong);border-top-color:var(--accent)}
