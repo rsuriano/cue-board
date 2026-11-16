@@ -1,4 +1,4 @@
-// Test helpers: a fake Lemon Squeezy + Resend (injected fetch, nothing leaves the process), a temp auth server, HTTP calls.
+// Test helpers: a fake Gumroad, Lemon Squeezy and Resend (injected fetch, nothing leaves the process), a temp auth server, HTTP calls.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,6 +26,13 @@ export function fakeUpstream() {
       up.orders.set(email, [...(up.orders.get(email) || []), { id, product, status: 'paid', key }]);
       return id;
     },
+    /** Gumroad: [{ id, product_id, email, refunded, chargedback, disputed, dispute_won }]; grStatus forces an answer (429, 401, 500…) */
+    sales: [], grDown: false, /** @type {number | null} */ grStatus: null, grPageSize: 10,
+    /** @param {string} email @param {string} product @param {object} [extra] */
+    sell(email, product, extra = {}) {
+      const s = { id: 'sale' + (up.sales.length + 1) + '==', product_id: product, product_name: 'x', email, price: 900, refunded: false, partially_refunded: false, chargedback: false, disputed: false, dispute_won: false, ...extra };
+      up.sales.push(s); return s;
+    },
   };
   const res = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   up.fetch = async (url, init = {}) => {
@@ -35,6 +42,19 @@ export function fakeUpstream() {
       if (up.mailDown) return res(500, { name: 'internal_server_error', message: 'down' });
       if (h.authorization !== 'Bearer test-resend') return res(401, { name: 'missing_api_key' });
       up.mails.push(JSON.parse(init.body)); return res(200, { id: 'mail-' + up.mails.length });
+    }
+    if (u.host === 'api.gumroad.com') {   // gumroad.com/api#sales
+      if (up.grDown) throw new TypeError('fetch failed');
+      if (up.grStatus) return res(up.grStatus, { success: false, message: 'forced' });
+      if (u.searchParams.get('access_token') !== 'test-gr') return res(401, { success: false, message: 'The access token is invalid' });
+      if (u.pathname === '/v2/sales') {
+        const email = u.searchParams.get('email'), product = u.searchParams.get('product_id'), start = Number(u.searchParams.get('page_key') || 0);
+        const all = up.sales.filter(s => (!email || s.email.toLowerCase() === email.toLowerCase()) && (!product || s.product_id === product));
+        const page = all.slice(start, start + up.grPageSize), next = start + up.grPageSize < all.length ? String(start + up.grPageSize) : undefined;
+        return res(200, { success: true, sales: page, ...(next ? { next_page_key: next, next_page_url: '/v2/sales?page_key=' + next } : {}) });
+      }
+      const m = /^\/v2\/sales\/([^/]+)$/.exec(u.pathname), s = m && up.sales.find(x => x.id === decodeURIComponent(m[1]));
+      return s ? res(200, { success: true, sale: s }) : res(404, { success: false, message: 'The sale was not found.' });
     }
     if (u.host !== 'api.lemonsqueezy.com') return res(404, {});
     if (up.down) return res(503, { error: 'Service unavailable' });
@@ -72,7 +92,7 @@ export async function auth(extra = {}) {
   const dir = extra.dataDir || tmpDir(), up = extra.up || fakeUpstream(), keys = keyPair(), clock = { t: Date.parse('2026-11-08T12:00:00Z') };
   const lines = [];
   const srv = await startAuth({ port: 0, host: '127.0.0.1', dataDir: dir, products: PRODUCTS, signingKey: keys.privateKey,
-    lsApiKey: 'test-ls', resendKey: 'test-resend', mailFrom: 'Bedrock Labs <login@example.dev>', corsOrigins: ['https://cue.example.dev'],
+    lsApiKey: 'test-ls', gumroadToken: 'test-gr', resendKey: 'test-resend', mailFrom: 'Bedrock Labs <login@example.dev>', corsOrigins: ['https://cue.example.dev'],
     fetch: up.fetch, now: () => clock.t, logLevel: 'debug', logWrite: l => lines.push(l), ...extra });
   return { srv, dir, up, keys, clock, lines, call: (method, p, body, headers = {}) => call(srv.url, method, p, body, headers) };
 }

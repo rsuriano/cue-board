@@ -1,17 +1,18 @@
 // @ts-check
 /* auth.bedrocklabs.dev: accounts for Bedrock Labs products. Paying is the account (an email); no passwords, no signup.
-   Products come from products.json: { id, name, lsProductId, appUrl }. JSON bodies (≤ 4 KiB), JSON answers, no-store.
+   Products come from products.json: { id, name, gumroadProductId, lsProductId, appUrl }. A product with gumroadProductId
+   is sold on Gumroad; else one with lsProductId on Lemon Squeezy; with neither, log in by email is off for it. JSON bodies (≤ 4 KiB), JSON answers, no-store.
 
      GET  /health
-     POST /login   { email, product }        always 200 with the same message ('off' for a product with no lsProductId).
+     POST /login   { email, product }        always 200 with the same message ('off' for a product with no store, or no key for its store).
                                              Afterwards, if that email bought the product, it gets the magic link
-                                             appUrl?key=<one-hour ticket> (never the license key). Lookups are
+                                             appUrl?key=<one-hour ticket> (never the sale id or license key). Lookups are
                                              limited per IP and per email (loginPerHour); past that, requests are
-                                             dropped silently (same answer). A Lemon Squeezy failure counts against nobody.
-     POST /session { key, product }          a license key (the receipt button) or a ticket (from /login's or /redeem's
-                                             email; a purchase ticket looks the key up again)
-                                             → 200 { session, email }. The key is validated, never activated, and must
-                                             belong to `product`. Upserts the user (users.mjs).
+                                             dropped silently (same answer). A store failure counts against nobody.
+     POST /session { key, product }          a ticket (from /login's or /redeem's email; a purchase ticket looks the
+                                             purchase up again) or, for Lemon Squeezy products only, a license key (the
+                                             receipt button) → 200 { session, email }. A license key is validated, never
+                                             activated, and must belong to `product`. Upserts the user (users.mjs).
                    { session }               renew: the same session while checked in the last 24h; past that the
                                              purchase (or code) is re-checked: a fresh session, or 401 signed_out.
      POST /redeem  { email, code, product }  an invite code (codes.mjs): emails a magic link with a one-hour ticket.
@@ -36,22 +37,33 @@ const ERRORS = {
 };
 
 /**
- * @param {{ port: number, host?: string, dataDir: string, products: { id: string, name: string, lsProductId: number | null, appUrl: string }[],
- *   signingKey: import('node:crypto').KeyObject | null, lsApiKey?: string, resendKey?: string, mailFrom?: string, corsOrigins?: string[],
+ * @param {{ port: number, host?: string, dataDir: string, products: { id: string, name: string, gumroadProductId?: string | null, lsProductId?: number | null, appUrl: string }[],
+ *   signingKey: import('node:crypto').KeyObject | null, lsApiKey?: string, gumroadToken?: string, resendKey?: string, mailFrom?: string, corsOrigins?: string[],
  *   trustProxy?: boolean, fetch?: typeof fetch, now?: () => number, loginPerHour?: number, failMax?: number,
  *   logLevel?: string, logWrite?: (line: string) => void }} o
  */
 export async function startAuth(o) {
   const log = createLogger(o.logLevel, o.logWrite), now = o.now || Date.now, key = o.signingKey;
   const products = new Map(o.products.map(p => [p.id, p])), codes = new CodeStore(o.dataDir), users = new Users(o.dataDir);
-  const up = createUpstream({ fetch: o.fetch || globalThis.fetch, lsApiKey: o.lsApiKey || '', resendKey: o.resendKey || '', mailFrom: o.mailFrom || '' });
+  const up = createUpstream({ fetch: o.fetch || globalThis.fetch, lsApiKey: o.lsApiKey || '', gumroadToken: o.gumroadToken || '', resendKey: o.resendKey || '', mailFrom: o.mailFrom || '' });
   const lookups = createBurstLimiter({ max: o.loginPerHour ?? 5, now }), mails = createBurstLimiter({ max: o.loginPerHour ?? 5, now });
   const fails = createFailureLimiter({ max: o.failMax ?? 5, now }), origins = new Set(o.corsOrigins || []);
-  const on = { session: !!key, login: !!(key && o.lsApiKey && o.resendKey), redeem: !!(key && o.resendKey) };
+  const on = { session: !!key, login: !!(key && (o.gumroadToken || o.lsApiKey) && o.resendKey), redeem: !!(key && o.resendKey) };
   if (!key) log.warn('sessions off: SESSION_KEY_FILE not set');
+  if (!o.gumroadToken) log.warn('gumroad off: GUMROAD_ACCESS_TOKEN not set (log in by email is off for Gumroad products)');
   if (!o.lsApiKey) log.warn('lemon squeezy off: LEMONSQUEEZY_API_KEY not set (log in by email is off; receipt links still work)');
   if (!o.resendKey) log.warn('email off: RESEND_API_KEY not set (log in by email and invite codes are off)');
   /** @type {Set<Promise<void>>} */ const pending = new Set();
+  /* the store a product is sold on. findRef(email): a reference for the daily check ('' = no purchase); check(ref): the
+     buyer's email or null; canFind: log in by email works (the store's key is set). Both throw UpstreamError when the
+     store can't be asked (a missing key too, so it never ends a session). */
+  /** @param {any} p @returns {{ canFind: boolean, findRef: (e: string) => Promise<string>, check: (r: string) => Promise<string | null> } | null} */
+  const store = p => {
+    if (p?.gumroadProductId) { const id = String(p.gumroadProductId); return { canFind: !!o.gumroadToken, findRef: e => up.findSale(e, id), check: r => up.checkSale(r, id) }; }
+    if (p?.lsProductId) { const id = Number(p.lsProductId); return { canFind: !!o.lsApiKey, findRef: e => up.findKey(e, id), check: r => up.validate(r, id) }; }
+    return null;
+  };
+  const storeFailed = (/** @type {any} */ err) => log.warn('store failed', { err: /** @type {Error} */ (err).message });
 
   /** @param {http.ServerResponse} res @param {number} status @param {any} body */
   const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -80,7 +92,8 @@ export async function startAuth(o) {
     let who, source, ref;
     if (t && t.typ === 'ticket' && t.src === 'purchase') {   // /login's email: the key is looked up again, never sent
       if (t.prd !== p.id) return fail(res, 'bad_key');
-      try { ref = p.lsProductId ? await up.findKey(t.sub, p.lsProductId) : ''; } catch (err) { log.warn('lemon squeezy failed', { err: /** @type {Error} */ (err).message }); return fail(res, 'upstream'); }
+      const st = store(p);
+      try { ref = st ? await st.findRef(t.sub) : ''; } catch (err) { storeFailed(err); return fail(res, 'upstream'); }
       if (!ref) return fail(res, 'bad_key');
       [who, source] = [t.sub, 'purchase'];
     } else if (t && t.typ === 'ticket') {
@@ -90,7 +103,9 @@ export async function startAuth(o) {
       [who, source, ref] = [t.sub, 'invite:' + c.label, c.id];
     } else {
       if (b.key.includes('.')) return miss(res, ip, 'bad_key');   // a forged or expired ticket (license keys have no dots)
-      try { who = p.lsProductId ? await up.validate(b.key, p.lsProductId) : null; } catch (err) { log.warn('lemon squeezy failed', { err: /** @type {Error} */ (err).message }); return fail(res, 'upstream'); }
+      // a license key from Lemon Squeezy's receipt; Gumroad has no such key, so for its products this is a miss
+      const lemon = !p.gumroadProductId && p.lsProductId;
+      try { who = lemon ? await up.validate(b.key, Number(p.lsProductId)) : null; } catch (err) { storeFailed(err); return fail(res, 'upstream'); }
       if (!who) return miss(res, ip, 'bad_key');
       [source, ref] = ['purchase', b.key];
     }
@@ -107,8 +122,8 @@ export async function startAuth(o) {
     if (t.chk + DAY > now()) return json(res, 200, { session: token, email: t.sub });
     const u = users.get(t.sub, t.prd), p = products.get(t.prd);
     let ok = false;
-    try { ok = !!u && !!p && (u.source === 'purchase' ? !!p.lsProductId && !!(await up.validate(u.ref, p.lsProductId)) : !!codes.standing(u.ref)); }
-    catch (err) { log.warn('lemon squeezy failed', { err: /** @type {Error} */ (err).message }); return fail(res, 'upstream'); }
+    try { const st = store(p); ok = !!u && !!p && (u.source === 'purchase' ? !!st && !!(await st.check(u.ref)) : !!codes.standing(u.ref)); }
+    catch (err) { storeFailed(err); return fail(res, 'upstream'); }
     log.info(ok ? 'session renewed' : 'session ended', { product: t.prd, who: tag(t.sub), source: u?.source });
     if (!ok) return fail(res, 'signed_out');
     json(res, 200, { session: signToken(/** @type {any} */ (key), { ...t, src: u.source, chk: now() }), email: t.sub });
@@ -118,14 +133,15 @@ export async function startAuth(o) {
   function login(res, b, ip) {
     const p = products.get(b.product), to = email(b.email);
     if (!p || !to) return fail(res, 'bad_request');
-    if (!p.lsProductId) return fail(res, 'off');
+    const st = store(p);
+    if (!st?.canFind) return fail(res, 'off');
     json(res, 200, { ok: true, message: SENT });
     const keys = ['ip:' + ip, 'email:' + to];
     if (keys.some(k => lookups.full(k))) { log.warn('login dropped: rate limit', { ip, who: tag(to) }); return; }
     keys.forEach(k => lookups.take(k));
     const job = (async () => {
       try {
-        const k = await up.findKey(to, Number(p.lsProductId));
+        const k = await st.findRef(to);
         if (k) await send(to, p, link(p, signToken(/** @type {any} */ (key), { typ: 'ticket', sub: to, prd: p.id, src: 'purchase', exp: now() + TICKET_MS })));
         log.info(k ? 'login link sent' : 'login: no purchase', { ip, who: tag(to), product: p.id });
       } catch (err) {
