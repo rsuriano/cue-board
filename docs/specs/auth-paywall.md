@@ -3,6 +3,15 @@
 Status: draft for Rami's approval. Decided in a grill session, 2026-11-08.
 Replaces PR rsuriano/cue-board#19 (kept on hold for comparison: time, lines, review passes).
 
+> **Change, 2026-11-16: Gumroad replaces Lemon Squeezy.** Lemon Squeezy stops new stores, and our store did not
+> leave test mode. Cue Board is now sold on Gumroad ("Cue Board - Lifetime", one-time payment, no license keys).
+> The flow does not change: Log in with the email of the purchase, a one-hour magic link, a session, a daily check.
+> Auth finds a good sale with the Gumroad sales API (`GET /v2/sales?email=&product_id=`) and keeps the sale id for
+> the daily check (`GET /v2/sales/<id>`). A good sale is not refunded, not chargedback and not disputed. The product
+> entry is `{ id, name, gumroadProductId, lsProductId, appUrl }`; `gumroadProductId` has priority. Gumroad has no
+> license key, so there is no receipt button with `?key=`: the buyer uses Log in. The Lemon Squeezy text below is
+> the original plan. The Lemon Squeezy code stays for products that have only `lsProductId`.
+
 ## Product rules
 - Only **creating a collaboration room** needs an account. Solo use and joining a room by link stay free forever.
 - **Paying = creating the account** (Nomad List style). No signup form, no passwords. Account = email.

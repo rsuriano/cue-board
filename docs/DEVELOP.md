@@ -83,7 +83,7 @@ The repo is also an npm workspaces monorepo (Node 20 or later) for the services.
 |---|---|
 | `packages/sync-server` | Real-time sync server: Yjs over WebSocket, one room per project, invite links, the media relay, problem reports. See its `SPIKE.md`. |
 | `packages/collab-client` | The app side of collaboration: Yjs client, the project ⇄ doc binding, validation of remote data, media between peers. `npm run build:collab` bundles it into `collab.js` (committed; rebuild after changing the package). |
-| `packages/auth` | The account service (`auth.bedrocklabs.dev`): email magic links, Lemon Squeezy purchases, invite codes, signed sessions. No dependency, Node 22.13 or later. Spec: `docs/specs/auth-paywall.md`. |
+| `packages/auth` | The account service (`auth.bedrocklabs.dev`): email magic links, Gumroad purchases (Lemon Squeezy code kept for products that use it), invite codes, signed sessions. No dependency, Node 22.13 or later. Spec: `docs/specs/auth-paywall.md`. |
 
 ```bash
 npm install          # at the root: installs every package

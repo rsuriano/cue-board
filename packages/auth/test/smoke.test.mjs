@@ -25,6 +25,7 @@ test('(9) auth starts from src/main.mjs, answers /health, stops on SIGTERM and c
     assert.equal(r.status, 200); assert.equal((await r.json()).ok, true);
     assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600, 'the signing key is made on first start, private');
     assert.match(fs.readFileSync(keyFile + '.pub', 'utf8'), /BEGIN PUBLIC KEY/, 'and its public half, for the sync server');
+    assert.match(err, /gumroad off/i, 'missing GUMROAD_ACCESS_TOKEN is said once, at start');
     assert.match(err, /lemon squeezy off/i, 'missing LEMONSQUEEZY_API_KEY is said once, at start');
   } finally { child.kill('SIGTERM'); }
   assert.equal(await exited, 0);
