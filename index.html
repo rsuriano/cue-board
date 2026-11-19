@@ -1458,7 +1458,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
     <section aria-labelledby="kTime"><p class="kh" role="heading" aria-level="4" id="kTime">Timeline</p><dl class="klist">
       <div><dt>Scrub</dt><dd>drag on the waveform</dd></div>
       <div><dt>Move sideways</dt><dd>scroll over the waveform</dd></div>
-      <div><dt>Zoom</dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll</dd></div>
+      <div><dt>Zoom</dt><dd><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll (around the pointer)</dd></div>
       <div><dt>Move along the shots<small>a mouse wheel works too</small></dt><dd>scroll over the shot cards</dd></div>
       <div><dt>Mark in / out at the playhead<small>the section to render; drag the marks on the ruler</small></dt><dd><kbd>I</kbd><kbd>O</kbd></dd></div>
       <div><dt>Clear the marks</dt><dd><kbd>Alt</kbd>+<kbd>X</kbd></dd></div>
@@ -2163,9 +2163,8 @@ cv.addEventListener("pointerup",endDrag);cv.addEventListener("pointercancel",end
 scroller.addEventListener("wheel",e=>{
   if(!cur)return;
   if(e.ctrlKey||e.metaKey){
-    e.preventDefault();const r=scroller.getBoundingClientRect(),mx=e.clientX-r.left,t=(scroller.scrollLeft+mx)/P;
-    const cw=scroller.clientWidth,f=Math.exp(-e.deltaY*.0025);let v=Math.min(400,(pps==null?P:pps)*f);
-    pps=v*dur()<=cw?null:v;renderTimeline();scroller.scrollLeft=Math.max(0,t*P-mx);return;
+    e.preventDefault();const r=scroller.getBoundingClientRect();
+    zoomTo((pps==null?P:pps)*Math.exp(-e.deltaY*.0025),e.clientX-r.left);return;
   }
   if(scroller.scrollWidth<=scroller.clientWidth+1)return;
   const d=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
@@ -2175,8 +2174,14 @@ scroller.addEventListener("wheel",e=>{
 /* ---------- controls ---------- */
 $("play").onclick=toggle;$("mark").onclick=addMarker;$("loop").onclick=()=>setLoop(!loop);
 $("speed").onchange=e=>{audio.playbackRate=+e.target.value;mTimeTxt()};
-$("zin").onclick=()=>{pps=Math.min(400,(pps==null?P:pps)*1.6);renderTimeline()};
-$("zout").onclick=()=>{const cw=scroller.clientWidth;let v=(pps==null?P:pps)/1.6;pps=v*dur()<=cw?null:v;renderTimeline()};
+/* zoom keeping one moment in place: the time under x (px from the timeline's left edge) stays under x. The buttons
+   anchor on the playhead when it is in view (else the middle of the view), not on the start of the song */
+function zoomTo(v,x){if(phone()){pps=v*dur()<=scroller.clientWidth?null:Math.min(400,v);renderTimeline();return}
+  const cw=scroller.clientWidth,t=(scroller.scrollLeft+x)/P;v=Math.min(400,v);pps=v*dur()<=cw?null:v;renderTimeline();
+  scroller.scrollLeft=Math.max(0,Math.min(scroller.scrollWidth-cw,t*P-x))}
+const zoomAnchor=()=>{const cw=scroller.clientWidth,x=now()*P-scroller.scrollLeft;return x>=0&&x<=cw?x:cw/2};
+$("zin").onclick=()=>zoomTo((pps==null?P:pps)*1.6,zoomAnchor());
+$("zout").onclick=()=>zoomTo((pps==null?P:pps)/1.6,zoomAnchor());
 $("zfit").onclick=()=>{pps=null;renderTimeline()};
 $("song").onchange=e=>{const f=e.target.files[0];e.target.value="";loadSongFile(f)};
 /* menus in the bar (projects, More): arrows, Home and End move, Escape closes and hands focus back to the button,
