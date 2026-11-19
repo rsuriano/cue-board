@@ -421,6 +421,13 @@ input[type="checkbox"]{width:var(--icon-lg);height:var(--icon-lg);margin:0;accen
 /* field: label, control, hint, 6px apart. Fields stack 12px apart (one block = 16px) */
 .field{display:grid;gap:var(--gap-label);font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-medium);color:var(--ink-2)}
 .field .muted{font-weight:var(--w-regular)}
+/* shot type: free text with a menu of the common ones (a <datalist> filtered by what is typed, so a filled field showed nothing) */
+.combo{position:relative;display:block}
+.combo input{padding-right:calc(var(--h-md) + var(--sp-1))}
+.combo-btn{all:unset;position:absolute;top:0;right:0;height:100%;width:var(--h-md);display:grid;place-items:center;color:var(--ink-2);cursor:pointer;border-radius:var(--r-xs)}
+.combo-btn:hover{color:var(--ink)}
+.combo-btn .ico{width:14px;height:14px;transform:rotate(90deg);fill:none;stroke:currentColor;stroke-width:1.6}
+.combo .menu .mi[aria-selected="true"]{color:var(--ink);background:var(--surface-3)}
 .hint{margin:0;color:var(--ink-3);font-size:var(--text-sm);line-height:var(--lh-sm);font-weight:var(--w-regular)}
 .chk{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit);font-size:var(--text-md);color:var(--ink);cursor:pointer}
 
@@ -1292,9 +1299,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
       <div id="ed-body" hidden style="display:grid">
         <div class="ed-head"><span class="ed-n" id="ed-n">01</span><span id="ed-time" class="tc"></span><span class="grow"></span><button type="button" id="f-del" class="btn ghost small">Delete shot</button><span id="ed-clip" class="clip"></span></div>
         <label class="field">Title<input id="f-title" placeholder="e.g. John crosses the river"></label>
-        <label class="field">Shot type<input id="f-shot" list="shots" placeholder="Wide shot, close-up…"></label>
+        <label class="field">Shot type<span class="combo"><input id="f-shot" placeholder="Wide shot, close-up…" autocomplete="off" role="combobox" aria-autocomplete="none" aria-expanded="false" aria-controls="shotMenu"><button type="button" class="combo-btn" id="shotBtn" tabindex="-1" aria-label="Show shot types"><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button><div id="shotMenu" class="menu" role="listbox" aria-label="Shot types" hidden></div></span></label>
         <div class="chips m-only" id="mShotChips" role="group" aria-label="Shot type"></div>
-        <datalist id="shots"><option value="Wide shot"><option value="Medium shot"><option value="Close-up"><option value="Extreme close-up"><option value="Insert / detail"><option value="Tracking shot"><option value="Aerial"><option value="Low angle"><option value="POV"></datalist>
+        
         <label class="field">Notes<textarea id="f-notes" rows="4" placeholder="What happens here, what the viewer should feel…"></textarea></label>
         <div class="row">
           <label class="btn small" for="f-img" id="f-imglbl">Upload image, GIF or clip</label>
@@ -3716,6 +3723,26 @@ $("mShotChips").innerHTML=MSHOTS.map(v=>`<button type="button" class="chip" aria
 function mShotChips(){const v=$("f-shot").value;$("mShotChips").querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed",String(c.dataset.shot===v)))}
 $("mShotChips").onclick=e=>{const c=e.target.closest("[data-shot]");if(!c)return;const f=$("f-shot");f.value=f.value===c.dataset.shot?"":c.dataset.shot;f.dispatchEvent(new Event("input"));mShotChips()};
 $("f-shot").addEventListener("input",mShotChips);
+/* shot type menu: always lists every common type (the old <datalist> filtered by the typed text) */
+(()=>{const f=$("f-shot"),b=$("shotBtn"),m=$("shotMenu"),SHOTS=["Wide shot","Medium shot","Close-up","Extreme close-up","Insert / detail","Tracking shot","Aerial","Low angle","POV"];
+  const items=()=>[...m.querySelectorAll(".mi")];
+  const close=(refocus)=>{if(m.hidden)return;m.hidden=true;f.setAttribute("aria-expanded","false");if(refocus)f.focus()};
+  const open=(focusFirst)=>{m.innerHTML=SHOTS.map(v=>`<button type="button" class="mi" role="option" tabindex="-1" aria-selected="${v===f.value}" data-v="${v}"><span>${v}</span></button>`).join("");
+    m.hidden=false;f.setAttribute("aria-expanded","true");if(focusFirst){const it=items(),cur=it.find(x=>x.dataset.v===f.value)||it[0];cur.focus()}};
+  const pick=v=>{f.value=v;f.dispatchEvent(new Event("input",{bubbles:true}));f.dispatchEvent(new Event("change",{bubbles:true}));close(true)};
+  b.addEventListener("mousedown",e=>e.preventDefault());
+  b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();m.hidden?open(false):close(true);if(!m.hidden)f.focus()});
+  m.addEventListener("mousedown",e=>e.preventDefault());
+  m.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();const it=e.target.closest(".mi");if(it)pick(it.dataset.v)});
+  f.addEventListener("keydown",e=>{if(e.key==="ArrowDown"){e.preventDefault();open(true)}else if(e.key==="Escape"&&!m.hidden){e.preventDefault();e.stopPropagation();close(true)}});
+  m.addEventListener("keydown",e=>{const it=items(),i=it.indexOf(document.activeElement);
+    if(e.key==="ArrowDown"){e.preventDefault();it[Math.min(i+1,it.length-1)].focus()}
+    else if(e.key==="ArrowUp"){e.preventDefault();i<=0?f.focus():it[i-1].focus()}
+    else if(e.key==="Escape"||e.key==="Tab"){e.preventDefault();e.stopPropagation();close(true)}});
+  f.addEventListener("input",()=>close(false));
+  document.addEventListener("pointerdown",e=>{if(!m.hidden&&!e.target.closest(".combo"))close(false)});
+  f.addEventListener("blur",()=>setTimeout(()=>{if(!m.contains(document.activeElement)&&document.activeElement!==f)close(false)},0));
+})();
 
 /* ---------- sheets ---------- */
 let mEdFrom=null;
