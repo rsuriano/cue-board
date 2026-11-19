@@ -71,6 +71,34 @@ test('concurrent edits from two docs: notes merge by character, a new shot and a
   assert.equal(ra.sections.find(s => s.id === pb.sections[2].id).start, pb.sections[2].start + 0.5);
 });
 
+// a block shot (index.html, "Block"): a plain boolean shot field, no schema change. It reaches the other peer, an
+// untick (the key removed) removes it there too, a peer that edits another field of that shot keeps it, and the
+// server's export carries it
+test('block: true syncs to the other peer, survives their edit of another field, and its removal syncs too', () => {
+  const a = new Y.Doc(), b = new Y.Doc();
+  pushProject(a, null, structuredClone(example.project), { refOf, songRef });
+  sync(a, b);
+  let pa = docToProject(a).project, na = structuredClone(pa);
+  na.sections[1].block = true;
+  pushProject(a, pa, na, { refOf: () => null, songRef }); sync(a, b);
+  let pb = docToProject(b).project;
+  assert.equal(pb.sections[1].block, true);
+  assert.ok(pb.sections.every((s, i) => i === 1 || !('block' in s)));
+  assert.equal(exportOf(b).project.sections[1].block, true);
+  // b (an older build that knows nothing of blocks) edits the title of that shot: the flag stays
+  const nb = structuredClone(pb); nb.sections[1].title = 'Renamed';
+  pushProject(b, pb, nb, { refOf: () => null, songRef }); sync(a, b);
+  pa = docToProject(a).project;
+  assert.equal(pa.sections[1].block, true); assert.equal(pa.sections[1].title, 'Renamed');
+  // a unticks: the key goes on both
+  na = structuredClone(pa); delete na.sections[1].block;
+  pushProject(a, pa, na, { refOf: () => null, songRef }); sync(a, b);
+  pb = docToProject(b).project;
+  assert.ok(!('block' in pb.sections[1]));
+  // a string from a peer is kept as data (the app only treats true as a block)
+  assert.equal(sanitizeProject({ sections: [{ id: 's1', block: 'yes' }] }).sections[0].block, 'yes');
+});
+
 test('a media file whose hash is not known yet is left out and retried on the next push', () => {
   const doc = new Y.Doc(), p = { title: 'x', song: null, sections: [{ id: 's1', start: 0, title: '', notes: '', img: 'm-local', kind: 'image', takes: [] }] };
   let known = false;

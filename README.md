@@ -104,6 +104,24 @@ flowchart LR
    the email you enter with an invite code. There are no passwords. The sync server checks the signature of the
    session itself. It does not call the auth service.
 
+## Blocks and your editor
+
+Some stretches of the song need more than one clip. Mark each of these shots as a block. Select the shot and tick
+**Block** under **Shot type**. The strip card then shows **BLOCK**, and the monitor shows "Block · cut in your editor".
+You cut a block in your video editor, not in Cue Board.
+
+To get the shots into DaVinci Resolve as timeline markers:
+
+1. Click **Export**. Under **Markers for your editor**, select the frame rate of your Resolve timeline.
+2. Type the start timecode of the timeline. The default is `01:00:00:00`.
+3. Click **Download markers (.edl)**. You get one marker for each shot, at the cut. Normal shots are blue. Blocks are
+   purple. The marker name is the shot number, the title and the shot type.
+4. In Resolve, put the song at the start of the timeline.
+5. In the media pool, right-click the timeline. Select **Timelines → Import → Timeline Markers from EDL**, then select
+   the file.
+
+The timecode is non-drop frame. At 23.976 and 29.97 fps, the timecode counts 24 and 30 frames per second.
+
 ## On a phone
 
 <table align="center">
