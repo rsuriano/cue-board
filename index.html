@@ -3718,13 +3718,13 @@ $("mmSpeed").onclick=()=>{const sp=$("speed");sp.selectedIndex=(sp.selectedIndex
    deletes a shot that wasn't armed */
 const resetMtDel=twoTap($("mmDel"),"Delete shot","Tap again to delete",()=>{mMore.close();deleteShot()});
 /* shot type: the common ones as chips, the field stays for anything else */
-const MSHOTS=["Wide shot","Medium shot","Close-up","Extreme close-up","Insert / detail","POV"];
+const MSHOTS=["Establishing shot","Wide shot","Medium shot","Close-up","Extreme close-up","Insert / detail","POV"];
 $("mShotChips").innerHTML=MSHOTS.map(v=>`<button type="button" class="chip" aria-pressed="false" data-shot="${v}">${v}</button>`).join("");
 function mShotChips(){const v=$("f-shot").value;$("mShotChips").querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed",String(c.dataset.shot===v)))}
 $("mShotChips").onclick=e=>{const c=e.target.closest("[data-shot]");if(!c)return;const f=$("f-shot");f.value=f.value===c.dataset.shot?"":c.dataset.shot;f.dispatchEvent(new Event("input"));mShotChips()};
 $("f-shot").addEventListener("input",mShotChips);
 /* shot type menu: always lists every common type (the old <datalist> filtered by the typed text) */
-(()=>{const f=$("f-shot"),b=$("shotBtn"),m=$("shotMenu"),SHOTS=["Wide shot","Medium shot","Close-up","Extreme close-up","Insert / detail","Tracking shot","Aerial","Low angle","POV"];
+(()=>{const f=$("f-shot"),b=$("shotBtn"),m=$("shotMenu"),SHOTS=["Establishing shot","Wide shot","Medium shot","Close-up","Extreme close-up","Insert / detail","Tracking shot","Aerial","Low angle","POV"];
   const items=()=>[...m.querySelectorAll(".mi")];
   const close=(refocus)=>{if(m.hidden)return;m.hidden=true;f.setAttribute("aria-expanded","false");if(refocus)f.focus()};
   const open=(focusFirst)=>{m.innerHTML=SHOTS.map(v=>`<button type="button" class="mi" role="option" tabindex="-1" aria-selected="${v===f.value}" data-v="${v}"><span>${v}</span></button>`).join("");
