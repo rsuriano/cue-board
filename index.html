@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- Link previews (X, Slack, iMessage, Discord). Absolute URLs: crawlers don't resolve relative ones. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Cue Board">
+<meta property="og:title" content="Cue Board">
+<meta property="og:description" content="Plan your music video against the song, shot by shot. In the browser, free to use.">
+<meta property="og:url" content="https://cue.bedrocklabs.dev/">
+<meta property="og:image" content="https://cue.bedrocklabs.dev/icons/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cue Board: a music video cut planned against the song's waveform">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="description" content="Cue Board: plan an AI music video against the song (side A) and generate each shot through OpenRouter (side B).">
 <!-- Collaboration: the sync server's WebSocket URL (e.g. wss://sync.example.dev). Empty = off: no network, collab.js never loads. -->
 <meta name="cue-sync-url" content="">
