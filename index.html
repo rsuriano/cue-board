@@ -548,6 +548,7 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 .ct{font-weight:var(--w-semibold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ct em{font-style:normal;font-weight:var(--w-regular);color:var(--ink-3)}
 .cs{font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cblk{display:inline-block;margin-right:var(--sp-1);padding:0 var(--sp-1);border:var(--hairline) solid var(--border-strong);border-radius:var(--r-xs);font:var(--w-semibold) var(--text-tiny)/var(--lh-sm) var(--font-ui);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-2)}
 .cv{font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-ui);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cv.warn{color:var(--error)}
 .card.lifted{opacity:var(--o-lifted)}
@@ -590,6 +591,13 @@ dialog::backdrop{background:var(--backdrop)}
 .rn-cus input{font-family:var(--font-mono);font-size:var(--text-input-mono);font-variant-numeric:tabular-nums}
 .rn-cus input[aria-invalid="true"]{border-color:var(--error)}
 .rn-err{grid-column:1/-1;color:var(--error)}
+/* export: markers for an editor. Frame rate, start timecode and the button on one row; they stack on a narrow screen */
+.edl-set{gap:var(--gap-label)}
+.edl-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;align-items:end;gap:var(--sp-3);margin-top:var(--sp-1)}
+.edl-row input{font-family:var(--font-mono);font-size:var(--text-input-mono);font-variant-numeric:tabular-nums}
+.edl-row input[aria-invalid="true"]{border-color:var(--error)}
+#edlMsg:empty{display:none}
+@media (max-width:620px){.edl-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.edl-row .btn{grid-column:1/-1}}
 .rn-frame{display:flex;align-items:center;gap:var(--sp-2)}
 .rn-frame .linkbtn{margin-left:var(--sp-2);font-size:var(--text-sm)}
 .rn-prog{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-2) var(--sp-3)}
@@ -1301,7 +1309,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
         <label class="field">Title<input id="f-title" placeholder="e.g. John crosses the river"></label>
         <label class="field">Shot type<span class="combo"><input id="f-shot" placeholder="Wide shot, close-up…" autocomplete="off" role="combobox" aria-autocomplete="none" aria-expanded="false" aria-controls="shotMenu"><button type="button" class="combo-btn" id="shotBtn" tabindex="-1" aria-label="Show shot types"><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button><div id="shotMenu" class="menu" role="listbox" aria-label="Shot types" hidden></div></span></label>
         <div class="chips m-only" id="mShotChips" role="group" aria-label="Shot type"></div>
-        
+        <label class="chk"><input type="checkbox" id="f-block"> Block: a stretch you'll cut in your editor from several clips</label>
         <label class="field">Notes<textarea id="f-notes" rows="4" placeholder="What happens here, what the viewer should feel…"></textarea></label>
         <div class="row">
           <label class="btn small" for="f-img" id="f-imglbl">Upload image, GIF or clip</label>
@@ -1537,7 +1545,16 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   <h3>Export project</h3>
   <p class="muted">Saves this project as one file: cuts, notes, prompts, keyframes and every take. Import it on any computer with the Import button.</p>
   <label class="chk"><input type="checkbox" id="expSong"> Include the song (leave it out if you'll share the file)</label>
-  <div class="row"><span class="grow"></span><button type="button" id="expCancel" class="btn ghost">Cancel</button><button type="button" id="expGo" class="btn primary">Download</button></div>
+  <fieldset class="rn-set edl-set"><legend>Markers for your editor</legend>
+    <p class="hint">In DaVinci Resolve, put the song at the start of a timeline. Then, in the media pool, right-click the timeline → Timelines → Import → Timeline Markers from EDL.</p>
+    <div class="edl-row">
+      <div class="field"><label for="edlFps">Frame rate</label><select id="edlFps"><option value="23.976">23.976</option><option value="24" selected>24</option><option value="25">25</option><option value="29.97">29.97</option><option value="30">30</option></select></div>
+      <div class="field"><label for="edlStart">Timeline start</label><input id="edlStart" class="tc" value="01:00:00:00" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="01:00:00:00" aria-describedby="edlMsg"></div>
+      <button type="button" id="edlGo" class="btn">Download markers (.edl)</button>
+    </div>
+    <p class="hint rn-err" id="edlMsg" role="alert"></p>
+  </fieldset>
+  <div class="row"><span class="grow"></span><button type="button" id="expCancel" class="btn ghost">Cancel</button><button type="button" id="expGo" class="btn primary">Download project</button></div>
 </div></dialog>
 <!-- render (docs/specs/export-render.md): the range, the size, then progress and the file. Closing it cancels -->
 <dialog id="dlgRender" aria-labelledby="rnTitle" data-mode="idle"><form class="dlg" id="rnForm">
@@ -1807,7 +1824,7 @@ function hCutEnd(t){if(!t||!cur||cur.id!==t.pid)return;const s=S().find(x=>x.id=
   if(s){const c={k:"sf",id:t.id,f:"start",b:t.b,a:s.start};c.near=H.between(cur,c);hist.push("move cut",[c],{pid:t.pid})}}
 /* a text field edit: one change, scoped to that field, merged with the previous keystrokes until the field blurs */
 function hText(label,s,f,v){const b=s[f];if(H.same(b,v))return;s[f]=v;hist.push(label,[{k:"sf",id:s.id,f,b:H.clone(b),a:H.clone(v)}],{pid:cur.id,merge:"text:"+s.id+":"+f})}
-const FIELD_LABEL={title:"title",shot:"shot type",notes:"notes",imgPrompt:"frame prompt",vidPrompt:"motion prompt",endPrompt:"end frame prompt",endChange:"end frame change"};
+const FIELD_LABEL={title:"title",shot:"shot type",notes:"notes",imgPrompt:"frame prompt",vidPrompt:"motion prompt",endPrompt:"end frame prompt",endChange:"end frame change",block:"block"};
 const fieldLabel=(f,s)=>(FIELD_LABEL[f]||f)+" of shot "+shotNo(s);
 document.addEventListener("focusout",e=>{if(e.target&&/INPUT|TEXTAREA/.test(e.target.tagName))hist.breakMerge()});
 let undoAt=0;
@@ -2047,7 +2064,7 @@ function renderStrip(){
   const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
   const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
     const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${frameURL(s,"img")}" alt="">`;
-    return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${esc(s.shot||clipHint(d))}</div>${clipLine(s,d)}</div></button>`});
+    return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${csHTML(s,d)}</div>${clipLine(s,d)}</div></button>`});
   const cards=[...el.children],fresh=[];
   if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
   else{el.innerHTML=html.join("");[...el.children].forEach((c,i)=>{c._h=html[i];fresh.push(c)})}
@@ -2056,6 +2073,9 @@ function renderStrip(){
   if(fid&&document.activeElement!==ae){const c=el.querySelector(`.card[data-id="${CSS.escape(fid)}"]`);if(c)c.focus({preventScroll:true})}
   renderMarks();if(csess)csess.select(selId);
 }
+/* a block is cut in the editor from several clips, so its card shows BLOCK where the clip length hint would be */
+const isBlock=s=>!!s&&s.block===true;
+function csHTML(s,d){return isBlock(s)?`<span class="cblk">Block</span>${s.shot?" "+esc(s.shot):""}`:esc(s.shot||clipHint(d))}
 function clipLine(s,d){
   if(!(s.img&&s.kind==="video"&&s.clipDur))return "";
   const diff=s.clipDur-d;
@@ -2071,7 +2091,7 @@ function setVal(id,v){const el=$(id);if(document.activeElement!==el)el.value=v||
 function renderEditor(){
   renderPeek();renderMTool();
   const s=selSec();$("ed-empty").hidden=!!s;$("ed-body").hidden=!s;$("ed-body").style.display=s?"grid":"none";if(!s)return;
-  renderEdHead();mShotChips();setVal("f-title",s.title);setVal("f-shot",s.shot);setVal("f-notes",s.notes);setVal("f-imgp",s.imgPrompt);setVal("f-vidp",s.vidPrompt);
+  renderEdHead();mShotChips();setVal("f-title",s.title);setVal("f-shot",s.shot);setVal("f-notes",s.notes);setVal("f-imgp",s.imgPrompt);setVal("f-vidp",s.vidPrompt);$("f-block").checked=isBlock(s);
   $("f-imgdel").hidden=!s.img;$("f-imgrf").hidden=!s.img||s.kind==="video"||!mediaURL(s.img);$("f-imglbl").hidden=!assets;$("f-imglbl").textContent=s.img?(s.kind==="video"?"Replace clip":"Replace image"):"Upload image, GIF or clip";
 
   resetDel();resetMtDel();
@@ -2083,10 +2103,10 @@ function renderMonitor(force){
     if(lastKey!=="empty"){lastKey="empty";sl.className="slate";sl.innerHTML=`<div class="shot">Animatic</div><div class="t">Load a song to start</div><p>Hit play, press M at every change in the music, and each stretch becomes a shot with its own notes and keyframe.</p>`}return}
   const i=secAt(t),s=S()[i],a=s.start,b=secEnd(i);
   $("mprog").style.width=Math.min(100,Math.max(0,(t-a)/Math.max(.01,b-a)*100))+"%";
-  const miss=isMissing(s.img),fu=frameURL(s,"img"),key=[s.id,i,s.img,s.kind,s.title,s.shot,s.notes,miss,fu].join("|");
+  const miss=isMissing(s.img),fu=frameURL(s,"img"),key=[s.id,i,s.img,s.kind,s.title,s.shot,isBlock(s),s.notes,miss,fu].join("|");
   if(force||key!==lastKey){lastKey=key;
     const vd=$("mvid");
-    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?missHTML("div","miss",s.img,(s.kind==="video"?"Clip":"Image")+" not on this device yet"):""}`;missSoon();
+    sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}${isBlock(s)?`<div class="shot">Block · cut in your editor</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?missHTML("div","miss",s.img,(s.kind==="video"?"Clip":"Image")+" not on this device yet"):""}`;missSoon();
     if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
     else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
     else{vd.hidden=true;try{vd.pause()}catch(e){}
@@ -2291,7 +2311,7 @@ const resetDelsong=twoTap($("delsong"),"Remove song","Tap again to remove",remov
 function disarmMore(){resetDelp();resetDelsong();resetDelroom()}
 const deleteShot=()=>{
   const s=S(),i=s.findIndex(x=>x.id===selId);if(i<0)return;
-  if(s.length===1)hRec("clear shot 01",()=>Object.assign(s[0],{title:"",shot:"",notes:"",imgPrompt:"",vidPrompt:""}));
+  if(s.length===1)hRec("clear shot 01",()=>{Object.assign(s[0],{title:"",shot:"",notes:"",imgPrompt:"",vidPrompt:""});delete s[0].block});
   else{hRec("delete shot "+pad(i+1),()=>{const[rm]=s.splice(i,1);if(i===0)s[0].start=0;sectionMediaIds(rm).forEach(releaseMedia)});selId=s[Math.max(0,i-1)].id}
   scheduleSave();renderTimeline();renderStrip();renderEditor();renderMonitor(true);
 };
@@ -2300,8 +2320,13 @@ let delByKey=false;const DEL_HINT="Press Delete again to delete this shot";
 const resetDel=twoTap($("f-del"),"Delete shot","Tap again to delete",deleteShot,on=>{if(on||!delByKey)return;delByKey=false;if($("toast").textContent===DEL_HINT)$("toast").hidden=true});
 [["f-title","title"],["f-shot","shot"],["f-notes","notes"],["f-imgp","imgPrompt"],["f-vidp","vidPrompt"]].forEach(([id,f])=>{
   $(id).addEventListener("input",e=>{const s=selSec();if(!s)return;hText(fieldLabel(f,s),s,f,e.target.value);scheduleSave(true);
-    if(f==="title"||f==="shot"){const c=$("strip").querySelector(`.card[data-id="${CSS.escape(s.id)}"]`);if(c){const i=S().indexOf(s);c.querySelector(".ct").innerHTML=s.title?esc(s.title):"<em>Untitled</em>";c.querySelector(".cs").textContent=s.shot||clipHint(secEnd(i)-s.start)}}
+    if(f==="title"||f==="shot"){const c=$("strip").querySelector(`.card[data-id="${CSS.escape(s.id)}"]`);if(c){const i=S().indexOf(s);c.querySelector(".ct").innerHTML=s.title?esc(s.title):"<em>Untitled</em>";c.querySelector(".cs").innerHTML=csHTML(s,secEnd(i)-s.start)}}
     if(f==="title")renderTimeline();if(f!=="imgPrompt"&&f!=="vidPrompt")renderMonitor();if(f!=="imgPrompt"&&f!=="vidPrompt")renderPeek()})});
+/* block: true when on; the key goes when off, so a project that never used it stays as it was. One undo step per toggle */
+$("f-block").addEventListener("change",e=>{const s=selSec();if(!s||!cur)return;const on=e.target.checked,b=s.block;if(isBlock(s)===on)return;
+  if(on)s.block=true;else delete s.block;
+  hist.push(fieldLabel("block",s),[{k:"sf",id:s.id,f:"block",b:H.clone(b),a:on?true:undefined}],{pid:cur.id});
+  scheduleSave();renderStrip();renderMonitor(true)});
 /* ---------- reorder shots by dragging cards ----------
    Drop on the MIDDLE of a card  → swap: the two shots trade time slots, nothing else changes.
    Drop on a card's EDGE / a gap → slide in: the shot leaves its old slot (the shot before it absorbs that time)
@@ -2513,7 +2538,7 @@ async function importData(data,quiet){
   p.refs=(p.refs||[]).map(re).filter(Boolean);
   p.sections.forEach(s=>{Object.assign(s,{img:re(s.img),key:re(s.key),endKey:re(s.endKey)});
     s.takes=(s.takes||[]).map(t=>({...t,media:re(t.media),...(t.code?{code:{...t.code,asset:re(t.code.asset)}}:{})}));if(!s.img){s.kind="";s.clipDur=0}
-    ["title","shot","notes","imgPrompt","vidPrompt"].forEach(k=>{if(typeof s[k]!=="string")s[k]=""})});
+    ["title","shot","notes","imgPrompt","vidPrompt"].forEach(k=>{if(typeof s[k]!=="string")s[k]=""});if(s.block!==true)delete s.block});
   if(projects.some(x=>x.id===p.id)){p.id=uid("p");p.title=(p.title||"Project")+" (imported)"}
   p.updated=Date.now();
   try{await store.set(p)}catch(e){toast("Couldn't save the imported project");return}
@@ -2547,6 +2572,43 @@ document.addEventListener("click",e=>{if(e.target.closest("[data-example]"))open
 $("exportb").onclick=()=>{if(!cur){toast("Nothing to export yet");return}$("dlgExport").showModal()};
 $("expGo").onclick=async()=>{$("dlgExport").close();await exportProject($("expSong").checked)};
 $("expCancel").onclick=()=>$("dlgExport").close();
+/* ---------- markers for an editor: an EDL that DaVinci Resolve reads as timeline markers, one per shot ----------
+   Pure, for the checks (window.cueEDL). Frames from seconds use the real rate (23.976 is 24000/1001, 29.97 is
+   30000/1001); the timecode counts with round(fps), non-drop frame. A marker sits at the shot's cut; its length is
+   the frames to the next cut (so markers butt, never gap), at least 1. Names lose | and line breaks (EDL syntax) */
+const EDL_FPS=["23.976","24","25","29.97","30"];
+const edlRate=fps=>{const f=+fps;return Math.abs(f-23.976)<.001?24000/1001:Math.abs(f-29.97)<.001?30000/1001:f};
+function edlTC(frames,base){const p=n=>String(n).padStart(2,"0"),f=Math.max(0,Math.round(frames)),s=Math.floor(f/base);
+  return p(Math.floor(s/3600)%24)+":"+p(Math.floor(s/60)%60)+":"+p(s%60)+":"+p(f%base)}
+/* "HH:MM:SS:FF" → frames, or null; FF below the base */
+function edlParseTC(t,base){const m=/^(\d\d):(\d\d):(\d\d):(\d\d)$/.exec(String(t||"").trim());if(!m)return null;
+  const[h,mi,s,f]=m.slice(1).map(Number);return h<24&&mi<60&&s<60&&f<base?((h*60+mi)*60+s)*base+f:null}
+const edlClean=v=>String(v==null?"":v).replace(/[|\u0000-\u001f\u007f\s]+/g," ").replace(/\s+/g," ").trim();
+/* total: the song's length (the last shot's end); without it, the project's saved song length */
+function markersEDL(p,fps,startTC,total){
+  const rate=edlRate(fps),base=Math.round(rate),t0=edlParseTC(startTC,base);
+  if(!(rate>0)||t0==null)throw new Error("bad frame rate or start timecode");
+  const secs=(p&&Array.isArray(p.sections))?p.sections:[],T=Number.isFinite(total)?total:+(p&&p.song&&p.song.duration)||0;
+  const F=sec=>Math.round(Math.max(0,+sec||0)*rate),pad2=n=>String(n).padStart(2,"0");
+  const L=["TITLE: "+(edlClean(p&&p.title)||"Untitled project"),"FCM: NON-DROP FRAME"];
+  secs.forEach((s,i)=>{
+    const a=F(s.start),b=i<secs.length-1?F(secs[i+1].start):Math.max(F(T),a),at=t0+a;
+    const title=edlClean(s.title),shot=edlClean(s.shot);
+    const name=[pad2(i+1),title,shot?"("+shot+")":""].filter(Boolean).join(" ");
+    L.push("",String(i+1).padStart(3,"0")+"  001      V     C        "+edlTC(at,base)+" "+edlTC(at+1,base)+" "+edlTC(at,base)+" "+edlTC(at+1,base),
+      " |C:"+(s.block===true?"ResolveColorPurple":"ResolveColorBlue")+" |M:"+name+" |D:"+Math.max(1,b-a))});
+  return L.join("\r\n")+"\r\n"}
+window.cueEDL={markersEDL,edlTC,edlParseTC,edlRate};
+/* the dialog: rate and start are remembered in this browser; a bad start shows under the field and blocks the button */
+{const K="cueboard-edl",fpsEl=$("edlFps"),stEl=$("edlStart");
+  try{const o=JSON.parse(localStorage.getItem(K)||"{}");if(EDL_FPS.includes(o.fps))fpsEl.value=o.fps;if(typeof o.start==="string")stEl.value=o.start}catch(e){}
+  const check=()=>{const base=Math.round(edlRate(fpsEl.value)),ok=edlParseTC(stEl.value,base)!=null;
+    $("edlMsg").textContent=ok?"":`Type a timecode like 01:00:00:00 (frames 00 to ${pad(base-1)})`;stEl.setAttribute("aria-invalid",String(!ok));$("edlGo").disabled=!ok;return ok};
+  fpsEl.onchange=stEl.oninput=()=>{if(check())try{localStorage.setItem(K,JSON.stringify({fps:fpsEl.value,start:stEl.value.trim()}))}catch(e){}};
+  check();
+  $("edlGo").onclick=()=>{if(!cur||!check())return;
+    saveFile(new Blob([markersEDL(cur,fpsEl.value,stEl.value,dur())],{type:"text/plain"}),slug(cur.title)+"-markers.edl");
+    $("dlgExport").close();toast("Markers exported")}}
 
 /* ================= SIDE B: generate takes for each shot through OpenRouter ================= */
 let side="a";
