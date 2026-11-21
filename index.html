@@ -249,7 +249,7 @@ w.cueHistory={create,diff,between,same,clone,mediaOf,current,GONE};
   --w-project:220px; --w-project-min:160px; --w-menu-max:360px; --w-menu-min:200px; --w-saved:100px; --menu-max-h:min(420px,60vh); --w-panel:400px; --mlist-max:min(360px,40vh); --mbar-w:120px;--w-play:88px; --w-tc:76px; --h-prompt:96px; --genbox-min:360px; --measure-short:60ch;
   --app-max:1920px; --gutter:var(--sp-5); --header-h:48px;
   --inspector-w:clamp(320px,26vw,400px); --list-w:248px; --card-w:176px; --thumb-w:72px; --ref-w:100px;
-  --monitor-min-h:280px; --stage-h:max(var(--monitor-min-h),calc(100vh - 400px)); --dialog-w:560px; --measure:72ch; --take-min:400px; --var-min:140px;
+  --monitor-min-h:280px; --stage-h:max(var(--monitor-min-h),calc(100vh - 400px)); --dialog-w:560px; --measure:72ch; --take-min:400px; --var-min:140px; --tile-max-h:min(56vh,520px);
   --dialog-w-wide:800px; --w-kcol:280px;
   /* elevation: borders first; shadows only for things that float */
   --shadow-float:0 12px 32px rgba(0,0,0,.5); --shadow-overlay:0 24px 64px rgba(0,0,0,.55);
@@ -664,14 +664,14 @@ dialog::backdrop{background:var(--backdrop)}
 .fhead{display:flex;justify-content:space-between;align-items:baseline;gap:var(--sp-2);font-size:var(--text-md);line-height:var(--lh-md)}
 .fhead b{font-weight:var(--w-semibold)}
 .fhead b .muted{font-weight:var(--w-regular)}
-.fimg{aspect-ratio:16/9;display:grid;place-items:center;overflow:hidden;padding:var(--sp-3);background:var(--inset);border:var(--hairline) dashed var(--border-strong);border-radius:var(--r-sm);color:var(--ink-3);font-size:var(--text-sm);text-align:center}
+.fimg{aspect-ratio:var(--fr,1.7778);width:min(100%,var(--tile-max-h) * var(--fr,1.7778));justify-self:center;display:grid;place-items:center;overflow:hidden;padding:var(--sp-3);background:var(--inset);border:var(--hairline) dashed var(--border-strong);border-radius:var(--r-sm);color:var(--ink-3);font-size:var(--text-sm);text-align:center}
 .frame.has .fimg{padding:0;border-style:solid;border-color:var(--border-subtle);background:var(--screen)}
 .frame.over .fimg{border-color:var(--accent);border-style:solid;background:var(--accent-subtle);color:var(--accent)}
 .fimg img{width:100%;height:100%;object-fit:cover;display:block}
 .fgen{display:grid;gap:var(--sp-2);padding-top:var(--sp-3);border-top:var(--hairline) solid var(--border-subtle)}
 .vars{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--var-min),1fr));gap:var(--sp-2)}
 .vars:empty{display:none}
-.var{all:unset;box-sizing:border-box;display:grid;place-items:center;aspect-ratio:16/9;overflow:hidden;background:var(--screen);border:var(--hairline) solid var(--border);border-radius:var(--r-sm);cursor:pointer}
+.var{all:unset;box-sizing:border-box;display:grid;place-items:center;aspect-ratio:var(--fr,1.7778);overflow:hidden;background:var(--screen);border:var(--hairline) solid var(--border);border-radius:var(--r-sm);cursor:pointer}
 span.var{cursor:default}
 .var img{width:100%;height:100%;object-fit:cover;display:block}
 button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:inset 0 0 0 var(--hairline) var(--accent);outline:none}
@@ -701,7 +701,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .takes>p.muted{grid-column:1/-1;margin:0;padding:var(--inset-panel);max-width:none;background:var(--surface-1);border:var(--hairline) dashed var(--border-strong);border-radius:var(--r-md);color:var(--ink-2);font-size:var(--text-md);line-height:var(--lh-md)}
 .take{display:grid;align-content:start;min-width:0;overflow:hidden;background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
 .take.incut{border-color:var(--ok)}
-.tv{position:relative;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center;background:var(--screen);border-bottom:var(--hairline) solid var(--border-subtle)}
+.tv{position:relative;overflow:hidden;aspect-ratio:var(--fr,1.7778);width:min(100%,var(--tile-max-h) * var(--fr,1.7778));justify-self:center;display:grid;place-items:center;background:var(--screen);border-bottom:var(--hairline) solid var(--border-subtle)}
 .tv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .tbusy{display:grid;justify-items:center;gap:var(--sp-2);padding:var(--sp-3);color:var(--ink-2);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);text-align:center}
 .tbusy.err{color:var(--error)}
@@ -914,7 +914,7 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
   :root{--text-sm:13px; --lh-sm:18px; --text-md:15px; --text-input:16px; --text-input-mono:16px; --text-tiny:12px; --h-md:44px; --h-sm:36px; --hit:44px;
     --gutter:var(--sp-4); --list-w:136px; --appbar-h:48px; --toolbar-h:60px;
     /* the timeline takes the height the picture and the bar leave; its ruler row is one touch target tall */
-    --tl-ruler-h:var(--hit); --mon-max:56dvh;
+    --tl-ruler-h:var(--hit); --mon-max:56dvh; --tile-max-h:46dvh;
     --grip-w:var(--sp-3); --icon-tool:var(--sp-5); --z-sheet:14;
     --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px); --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px)}
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
@@ -1868,7 +1868,7 @@ const RATIOS={"16:9":[16,9],"9:16":[9,16],"1:1":[1,1],"4:3":[4,3]};
 const ratioOf=p=>p&&RATIOS.hasOwnProperty(p.ratio)?p.ratio:"16:9";
 /* what a generation request asks for: the project's ratio where the model lists it, else 16:9 (the render crops) */
 const genRatio=m=>{const r=ratioOf(cur);return m&&(m.ratios||[]).includes(r)?r:"16:9"};
-function renderFrame(){const r=ratioOf(cur),[w,h]=RATIOS[r];$("monitor").style.setProperty("--fr",(w/h).toFixed(4));
+function renderFrame(){const r=ratioOf(cur),[w,h]=RATIOS[r];document.documentElement.style.setProperty("--fr",(w/h).toFixed(4));   /* the monitor, side B's frames, variants and take tiles */
   /* the same choice in two places: radio items under Frame in More (desktop), a select in the phone's Projects sheet */
   const box=$("frameItems"),s=$("mFrame"),ks=Object.keys(RATIOS);
   if(!s.options.length){s.innerHTML=ks.map(k=>`<option>${k}</option>`).join("");box.insertAdjacentHTML("beforeend",ks.map(k=>`<button type="button" class="mi" role="menuitemradio" tabindex="-1" data-ratio="${k}">${ico("check")}<span>${k}</span></button>`).join(""))}
