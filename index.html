@@ -609,9 +609,10 @@ dialog::backdrop{background:var(--backdrop)}
 @media (min-width:820px){#dlgFrame{max-width:min(var(--dialog-w-wide),calc(100vw - var(--sp-8)))}}
 .rf-stage{position:relative;height:min(56vh,480px);overflow:hidden;background:var(--screen);border-radius:var(--r-sm);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
 .rf-stage:active{cursor:grabbing}
-.rf-stage img{position:absolute;max-width:none;pointer-events:none;-webkit-user-drag:none}
+.rf-stage :is(img,video){position:absolute;max-width:none;pointer-events:none;-webkit-user-drag:none}
 .rf-box{position:absolute;box-shadow:0 0 0 100vmax var(--backdrop);outline:var(--hairline) solid var(--ink);pointer-events:none}
 .rf-zoom{display:flex;align-items:center;gap:var(--sp-3);color:var(--ink-2)}
+.rf-zoom>span{min-width:var(--sp-10)}
 .rf-zoom input{flex:1;min-height:var(--hit);accent-color:var(--ink-2)}
 @media not all and (min-width:820px){.rf-stage{height:min(44dvh,400px)}}
 
@@ -703,6 +704,11 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .take.incut{border-color:var(--ok)}
 .tv{position:relative;overflow:hidden;aspect-ratio:var(--fr,1.7778);width:min(100%,var(--tile-max-h) * var(--fr,1.7778));justify-self:center;display:grid;place-items:center;background:var(--screen);border-bottom:var(--hairline) solid var(--border-subtle)}
 .tv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+/* a reframed clip: a box in the project's ratio covering its holder (centred, cropped by it), the video inside scaled
+   so the crop fills the box (cropCSS). The holder is a size container only then */
+.vcrop{position:absolute;left:50%;top:50%;width:max(100cqw,100cqh * var(--fr,1.7778));height:max(100cqh,100cqw / var(--fr,1.7778));transform:translate(-50%,-50%);overflow:hidden;pointer-events:none}
+:is(.thumb,.bt,.tv):has(>.vcrop){container-type:size}
+.tv .vcrop{pointer-events:auto;cursor:pointer}
 .tbusy{display:grid;justify-items:center;gap:var(--sp-2);padding:var(--sp-3);color:var(--ink-2);font:var(--w-medium) var(--text-sm)/var(--lh-sm) var(--font-ui);text-align:center}
 .tbusy.err{color:var(--error)}
 .spin{width:var(--icon-lg);height:var(--icon-lg);border-radius:var(--r-round);border:var(--ring) solid var(--border-strong);border-top-color:var(--accent)}
@@ -1587,7 +1593,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 <dialog id="dlgFrame" aria-labelledby="rfTitle"><form class="dlg" id="rfForm">
   <h3 id="rfTitle">Reframe</h3>
   <p class="muted">Drag to move it. Pinch, scroll or use the slider to zoom.</p>
-  <div class="rf-stage" id="rfStage" tabindex="0" aria-label="Framing. Arrow keys move it"><img id="rfImg" alt=""><div class="rf-box" id="rfBox"></div></div>
+  <div class="rf-stage" id="rfStage" tabindex="0" aria-label="Framing. Arrow keys move it"><img id="rfImg" alt=""><video id="rfVid" muted playsinline preload="auto" hidden></video><div class="rf-box" id="rfBox"></div></div>
+  <label class="rf-zoom" id="rfScrub" hidden><span>Time</span><input type="range" id="rfTime" min="0" max="1" step="0.01" value="0"></label>
   <label class="rf-zoom"><span>Zoom</span><input type="range" id="rfZoom" min="1" max="4" step="0.01" value="1"></label>
   <div class="row"><span class="grow"></span><button type="button" id="rfAsIs" class="btn ghost">Use as is</button><button type="submit" id="rfOk" class="btn primary">Use this framing</button></div>
 </form></dialog>
@@ -2063,7 +2070,7 @@ function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
   const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
   const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
-    const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?`<video src="${mediaURL(s.img)}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">clip</span>`:`<img src="${frameURL(s,"img")}" alt="">`;
+    const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?clipHTML(mediaURL(s.img)+"#t=0.1",cropOf(s,"img"),'muted playsinline preload="metadata"')+`<span class="badge">clip</span>`:`<img src="${frameURL(s,"img")}" alt="">`;
     return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${csHTML(s,d)}</div>${clipLine(s,d)}</div></button>`});
   const cards=[...el.children],fresh=[];
   if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
@@ -2092,7 +2099,7 @@ function renderEditor(){
   renderPeek();renderMTool();
   const s=selSec();$("ed-empty").hidden=!!s;$("ed-body").hidden=!s;$("ed-body").style.display=s?"grid":"none";if(!s)return;
   renderEdHead();mShotChips();setVal("f-title",s.title);setVal("f-shot",s.shot);setVal("f-notes",s.notes);setVal("f-imgp",s.imgPrompt);setVal("f-vidp",s.vidPrompt);$("f-block").checked=isBlock(s);
-  $("f-imgdel").hidden=!s.img;$("f-imgrf").hidden=!s.img||s.kind==="video"||!mediaURL(s.img);$("f-imglbl").hidden=!assets;$("f-imglbl").textContent=s.img?(s.kind==="video"?"Replace clip":"Replace image"):"Upload image, GIF or clip";
+  $("f-imgdel").hidden=!s.img;$("f-imgrf").hidden=!s.img||!mediaURL(s.img);$("f-imglbl").hidden=!assets;$("f-imglbl").textContent=s.img?(s.kind==="video"?"Replace clip":"Replace image"):"Upload image, GIF or clip";
 
   resetDel();resetMtDel();
 }
@@ -2103,12 +2110,12 @@ function renderMonitor(force){
     if(lastKey!=="empty"){lastKey="empty";sl.className="slate";sl.innerHTML=`<div class="shot">Animatic</div><div class="t">Load a song to start</div><p>Hit play, press M at every change in the music, and each stretch becomes a shot with its own notes and keyframe.</p>`}return}
   const i=secAt(t),s=S()[i],a=s.start,b=secEnd(i);
   $("mprog").style.width=Math.min(100,Math.max(0,(t-a)/Math.max(.01,b-a)*100))+"%";
-  const miss=isMissing(s.img),fu=frameURL(s,"img"),key=[s.id,i,s.img,s.kind,s.title,s.shot,isBlock(s),s.notes,miss,fu].join("|");
+  const miss=isMissing(s.img),fu=frameURL(s,"img"),vc=s.kind==="video"&&cropOf(s,"img"),key=[s.id,i,s.img,s.kind,s.title,s.shot,isBlock(s),s.notes,miss,fu,vc].join("|");
   if(force||key!==lastKey){lastKey=key;
     const vd=$("mvid");
     sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}${isBlock(s)?`<div class="shot">Block · cut in your editor</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?missHTML("div","miss",s.img,(s.kind==="video"?"Clip":"Image")+" not on this device yet"):""}`;missSoon();
     if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
-    else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
+    else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;vd.style.cssText=vc?cropCSS(vc):"";sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
     else{vd.hidden=true;try{vd.pause()}catch(e){}
       if(s.img){im.hidden=false;sl.className="slate cap";{const u=fu;if(u&&im.getAttribute("src")!==u)im.src=u}}
       else{im.hidden=true;sl.className="slate"}}
@@ -2448,12 +2455,14 @@ async function uploadMedia(f){
     if(f.size>MAX){msg.textContent="The GIF is over 500 MB.";return}
     type="image/gif";msg.textContent="Uploading GIF…";
   }else{msg.textContent="Uploading…";blob=await shrink(f);type=blob.type||"image/jpeg"}
-  try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img;hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur;delete s.imgCrop});scheduleSave();
-    releaseMedia(old);msg.textContent="";renderStrip();renderEditor();renderMonitor(true)}
+  try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img;hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur;delete s.imgCrop;delete s.clipCrop});scheduleSave();
+    releaseMedia(old);msg.textContent="";renderStrip();renderEditor();renderMonitor(true);
+    /* a clip not in the project's ratio opens Reframe, as a frame image does */
+    if(kind==="video"){const v=document.createElement("video");v.muted=true;v.preload="metadata";v.onloadedmetadata=()=>{if(offRatio(v.videoWidth,v.videoHeight)&&selSec()===s&&s.img===r.id)openReframe(s,"img");v.removeAttribute("src")};v.src=mediaURL(r.id)}}
   catch(e){const c=e&&e.code;msg.textContent=c==="too_large"?"The file is too big (20 MB max).":c==="unsupported_type"?"That format can't be uploaded: use JPG, PNG, GIF, MP4 or WebM.":c==="quota_or_state"?"The board is out of storage.":c==="rate_limited"?"Too many uploads in a row, wait a moment.":"Couldn't upload the file."}
 }
 $("f-img").onchange=e=>{const f=e.target.files[0];e.target.value="";uploadMedia(f).then(()=>{const t=$("f-imgmsg").textContent;if(phone()&&t)toast(t)})};
-$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;hRec(`remove ${s.kind==="video"?"clip":"image"} from shot ${shotNo(s)}`,()=>{s.img="";s.kind="";s.clipDur=0;delete s.imgCrop});scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
+$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;hRec(`remove ${s.kind==="video"?"clip":"image"} from shot ${shotNo(s)}`,()=>{s.img="";s.kind="";s.clipDur=0;delete s.imgCrop;delete s.clipCrop});scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
 $("f-imgrf").onclick=()=>openReframe(selSec(),"img");
 document.addEventListener("dragover",e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes("Files"))e.preventDefault()});
 document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(!f)return;e.preventDefault();
@@ -2689,7 +2698,7 @@ function renderBHead(){
 }
 function renderBList(){
   $("bList").innerHTML=S().map((s,i)=>{const d=slotDur(s),st=startFrameId(s),tk=s.takes||[],busy=tk.some(isBusy),cut=s.img&&s.kind==="video";
-    const th=cut&&mediaURL(s.img)?`<video src="${mediaURL(s.img)}#t=0.1" muted preload="metadata"></video>`:st&&mediaURL(st)?`<img src="${frameURL(s,startSlot(s))}" alt="">`:"";
+    const th=cut&&mediaURL(s.img)?clipHTML(mediaURL(s.img)+"#t=0.1",cropOf(s,"img"),'muted preload="metadata"'):st&&mediaURL(st)?`<img src="${frameURL(s,startSlot(s))}" alt="">`:"";
     return `<button type="button" class="bitem${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><span class="bt">${th||`<span class="bph m-only">${s.title?esc(s.title):"Untitled"}</span>`}</span><span class="bi"><span class="tc">${pad(i+1)}<span class="bd"> · ${d.toFixed(1)} s</span></span><span class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="cv">${tk.length?tk.length+(tk.length>1?" takes":" take"):"no takes"}${busy?" · rendering":""}${cut?" · in cut":""}</span></span></button>`}).join("");
   renderMarks();if(csess)csess.select(selId);
 }
@@ -2732,11 +2741,12 @@ function updateEst(){
   $("gGo").textContent=gen.count>1?`Generate ${gen.count} takes`:"Generate take";
 }
 const statusLabel=t=>({submitting:"Sending",pending:"Queued",in_progress:"Rendering",downloading:"Downloading",failed:"Failed",cancelled:"Cancelled",expired:"Expired"}[t.status]||t.status);
-function takeSig(s,t){return [t.status,t.media,!!mediaURL(t.media),t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1]].join("|")+(t.kind==="code"&&t.code?"|"+cgSig(s,t):"")}
+function takeSig(s,t){return [t.status,t.media,!!mediaURL(t.media),t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1],cropOf(s,"t:"+t.id)].join("|")+(t.kind==="code"&&t.code?"|"+cgSig(s,t):"")}
 function takeHTML(s,t,num){
   const incut=!!t.media&&s.img===t.media,busy=isBusy(t);
   if(t.kind==="code"&&t.code){const[v,b,n]=cgCard(s,t,s.takes||[]);return `<div class="tv">${v}<span class="badge">take ${n}</span>${incut?'<span class="incut-badge">in cut</span>':""}</div><div class="tbody">${b}</div>`}
-  const vis=t.media&&mediaURL(t.media)?`<video src="${mediaURL(t.media)}" muted loop playsinline preload="metadata" controls></video>`:
+  /* a reframed take shows its crop, so no native controls (they'd be cropped too): a click plays or pauses it */
+  const tc=cropOf(s,"t:"+t.id),vis=t.media&&mediaURL(t.media)?(tc?clipHTML(mediaURL(t.media)+"#t=0.1",tc,'muted loop playsinline preload="metadata" data-act="pv" aria-label="Play or pause the take"'):`<video src="${mediaURL(t.media)}" muted loop playsinline preload="metadata" controls></video>`):
     isMissing(t.media)?missHTML("div","tbusy",t.media,"Video not on this device yet"):
     busy?`<div class="tbusy"><span class="spin"></span><span>${statusLabel(t)}</span><span class="tc" data-since="${t.created}"></span></div>`:
     `<div class="tbusy err">${esc(statusLabel(t))}</div>`;
@@ -2746,7 +2756,7 @@ function takeHTML(s,t,num){
   if(t.status==="completed"&&t.media){
     btns+=incut?`<button type="button" class="btn small" data-act="play">${ico("play")}Play in cut</button>`:`<button type="button" class="btn small primary" data-act="use">Use in cut</button>`;
     if(hasNext)btns+=`<button type="button" class="btn small ghost" data-act="next" title="Grab this take's last frame and use it as the next shot's start frame">${NEXT_LABEL}</button>`;
-    btns+=`<button type="button" class="btn small ghost" data-act="dl">Download</button><button type="button" class="btn small ghost" data-act="del">Delete</button>`;
+    btns+=`<button type="button" class="btn small ghost" data-act="rf">Reframe</button><button type="button" class="btn small ghost" data-act="dl">Download</button><button type="button" class="btn small ghost" data-act="del">Delete</button>`;
   }else if(busy){btns+=`<button type="button" class="btn small ghost" data-act="del" title="Stops tracking this job here. OpenRouter may still finish and bill it.">Forget</button>`}
   else{btns+=`<button type="button" class="btn small" data-act="retry">Retry</button><button type="button" class="btn small ghost" data-act="del">Remove</button>`}
   const fit=t.clipDur?` · ${t.clipDur.toFixed(1)} s`:"";
@@ -2803,10 +2813,16 @@ $("fEndClr").onclick=()=>{const s=selSec();if(!s||!s.endKey)return;const o=s.end
   el.addEventListener("drop",e=>{e.preventDefault();e.stopPropagation();el.classList.remove("over");const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)setFrame(slot,f)})});
 
 /* ---------- reframe: a frame keeps its original image; what shows is a crop saved next to its media field,
-   "<ratio> x y w h" (0..1 of the image). A crop made for another ratio stays, unused, until the frame is reframed ---------- */
+   "<ratio> x y w h" (0..1 of the image). A crop made for another ratio stays, unused, until the frame is reframed.
+   A clip works the same, with one crop for the whole clip (clipCrop): the shot's clip (slot "img") or a take ("t:<id>").
+   The cut and the take it came from are one file, so a reframe sets both ---------- */
 const CROPF={img:"imgCrop",key:"keyCrop",endKey:"endCrop"},startSlot=s=>s.key?"key":"img";
+/* where a slot's media and its crop live (an image's imgCrop is never read for a clip) */
+function cropSrc(s,slot){if(!s||!slot)return null;
+  if(slot.startsWith("t:")){const t=(s.takes||[]).find(x=>"t:"+x.id===slot);return t?{o:t,id:t.media,f:"clipCrop",video:true}:null}
+  const video=slot==="img"&&s.kind==="video";return{o:s,id:s[slot],f:video?"clipCrop":CROPF[slot],video}}
 const offRatio=(w,h)=>{const[a,b]=RATIOS[ratioOf(cur)];return Math.abs(w/h/(a/b)-1)>.034};
-function cropOf(s,slot){const v=s&&s[CROPF[slot]];if(typeof v!=="string"||slot==="img"&&s.kind==="video")return null;const p=v.split(" "),n=p.slice(1).map(Number);
+function cropOf(s,slot){const r=cropSrc(s,slot),v=r&&r.o[r.f];if(typeof v!=="string")return null;const p=v.split(" "),n=p.slice(1).map(Number);
   return p[0]===ratioOf(cur)&&n.length===4&&n.every(x=>x>=0&&x<=1)&&n[2]>0&&n[3]>0&&n[0]+n[2]<1.001&&n[1]+n[3]<1.001?n:null}
 const cropFor=(s,id)=>{const k=["key","img","endKey"].find(k=>id&&s[k]===id);return k?cropOf(s,k):null};
 async function cropBlob(id,c){const b=await mediaBlob(id);if(!b)throw new Error("frame image missing");const bm=await createImageBitmap(b),sw=c[2]*bm.width,sh=c[3]*bm.height,k=Math.min(1,1920/Math.max(sw,sh));
@@ -2814,23 +2830,32 @@ async function cropBlob(id,c){const b=await mediaBlob(id);if(!b)throw new Error(
   return new Promise((ok,no)=>cv.toBlob(x=>x?ok(x):no(new Error("crop failed")),"image/jpeg",.92))}
 /* what the monitor, the strip and the frame cards show: the cropped picture once it's made (the original until then) */
 const cropURLs=new Map();
-function frameURL(s,slot){const id=s&&s[slot],u=mediaURL(id),c=u&&cropOf(s,slot);if(!c)return u;const k=id+" "+c.join(" "),v=cropURLs.get(k);if(typeof v==="string")return v;
+function frameURL(s,slot){const id=s&&s[slot],u=mediaURL(id),c=u&&!(slot==="img"&&s.kind==="video")&&cropOf(s,slot);if(!c)return u;const k=id+" "+c.join(" "),v=cropURLs.get(k);if(typeof v==="string")return v;
   if(v===undefined){cropURLs.set(k,null);cropBlob(id,c).then(b=>{if(cropURLs.size>60){const[k0,u0]=cropURLs.entries().next().value;if(u0)URL.revokeObjectURL(u0);cropURLs.delete(k0)}cropURLs.set(k,URL.createObjectURL(b));refreshFrames()},()=>{})}
   return u}
-function refreshFrames(){lastKey="";renderMonitor();renderStrip();if(side==="b"){renderBList();renderFrames()}}
+function refreshFrames(){lastKey="";renderMonitor();renderStrip();if(side==="b"){renderBList();renderFrames();renderBTakes()}}
+/* a clip with its crop: the video scaled so the crop fills a box in the project's ratio, the monitor's frame or a
+   .vcrop box (CSS). Without a crop, the clip as before (cover) */
+const cropCSS=c=>{const p=v=>(100*v).toFixed(3)+"%";return `position:absolute;inset:auto;max-width:none;object-fit:fill;width:${p(1/c[2])};height:${p(1/c[3])};left:${p(-c[0]/c[2])};top:${p(-c[1]/c[3])}`};
+const clipHTML=(u,c,at)=>c?`<span class="vcrop"><video src="${u}" ${at} style="${cropCSS(c)}"></video></span>`:`<video src="${u}" ${at}></video>`;
 /* the dialog: a fixed box in the project's ratio; the image under it moves (drag, arrows) and zooms (wheel, pinch,
    slider) from "covers the box" up to 4×. State is the crop's centre and the zoom, so a resize keeps the framing */
 const rfDlg=$("dlgFrame"),rfSt=$("rfStage");let rf=null;
-function openReframe(s,slot){const u=s&&mediaURL(s[slot]);if(!u||rfDlg.open)return;const c=cropOf(s,slot),im=$("rfImg");
-  rf={s,slot,id:s[slot],z:1,cx:.5,cy:.5,ptr:new Map()};$("rfTitle").textContent="Reframe for "+ratioOf(cur);
-  im.onload=()=>{if(!rf)return;rf.iw=im.naturalWidth;rf.ih=im.naturalHeight;if(c){rf.z=rfClamp(rfGeo().cw/c[2]);rf.cx=c[0]+c[2]/2;rf.cy=c[1]+c[3]/2}rfDraw()};
-  rfDlg.showModal();im.src=u;rfSt.focus()}
+/* a clip shows its first frame, paused; the scrubber under it moves through the clip to check the framing over time */
+function openReframe(s,slot){const r=cropSrc(s,slot),u=r&&mediaURL(r.id);if(!u||rfDlg.open)return;const c=cropOf(s,slot),vid=r.video,el=$(vid?"rfVid":"rfImg");
+  rf={s,slot,id:r.id,el,z:1,cx:.5,cy:.5,ptr:new Map()};$("rfTitle").textContent="Reframe for "+ratioOf(cur);
+  $("rfImg").hidden=vid;el.hidden=false;$("rfScrub").hidden=true;
+  const ready=(w,h)=>{if(!rf||rf.el!==el||!w||!h)return;rf.iw=w;rf.ih=h;if(c){rf.z=rfClamp(rfGeo().cw/c[2]);rf.cx=c[0]+c[2]/2;rf.cy=c[1]+c[3]/2}rfDraw()};
+  if(vid)el.onloadedmetadata=()=>{const d=el.duration,t=$("rfTime");if(isFinite(d)&&d>0){t.max=d;t.step=Math.min(.01,d/20);t.value=0;$("rfScrub").hidden=false}ready(el.videoWidth,el.videoHeight)};
+  else el.onload=()=>ready(el.naturalWidth,el.naturalHeight);
+  rfDlg.showModal();el.src=vid?u+"#t=0.001":u;rfSt.focus()}
+$("rfTime").oninput=e=>{if(rf&&rf.el.tagName==="VIDEO"&&rf.iw)rf.el.currentTime=+e.target.value};
 const rfClamp=z=>Math.min(4,Math.max(1,z));
 function rfGeo(){const W=rfSt.clientWidth,H=rfSt.clientHeight,[a,b]=RATIOS[ratioOf(cur)],bw=Math.max(1,Math.min(W-32,(H-32)*a/b)),bh=bw*b/a,sc=Math.max(bw/rf.iw,bh/rf.ih)*rf.z;
   return{W,H,bw,bh,sc,cw:bw/(rf.iw*sc),ch:bh/(rf.ih*sc)}}
 function rfDraw(){if(!rf||!rf.iw)return null;const g=rfGeo(),cl=(v,h)=>Math.min(1-h,Math.max(h,v));rf.cx=cl(rf.cx,g.cw/2);rf.cy=cl(rf.cy,g.ch/2);
   const bx=(g.W-g.bw)/2,by=(g.H-g.bh)/2,px=v=>v+"px";Object.assign($("rfBox").style,{left:px(bx),top:px(by),width:px(g.bw),height:px(g.bh)});
-  Object.assign($("rfImg").style,{width:px(rf.iw*g.sc),height:px(rf.ih*g.sc),left:px(bx+g.bw/2-rf.cx*rf.iw*g.sc),top:px(by+g.bh/2-rf.cy*rf.ih*g.sc)});$("rfZoom").value=rf.z;return g}
+  Object.assign(rf.el.style,{width:px(rf.iw*g.sc),height:px(rf.ih*g.sc),left:px(bx+g.bw/2-rf.cx*rf.iw*g.sc),top:px(by+g.bh/2-rf.cy*rf.ih*g.sc)});$("rfZoom").value=rf.z;return g}
 rfSt.addEventListener("pointerdown",e=>{if(!rf)return;rfSt.setPointerCapture(e.pointerId);rf.ptr.set(e.pointerId,[e.clientX,e.clientY])});
 rfSt.addEventListener("pointermove",e=>{const o=rf&&rf.ptr.get(e.pointerId);if(!o||!rf.iw)return;const q=[...rf.ptr.values()].find(x=>x!==o);
   if(q){const d0=Math.hypot(o[0]-q[0],o[1]-q[1]);if(d0>0)rf.z=rfClamp(rf.z*Math.hypot(e.clientX-q[0],e.clientY-q[1])/d0)}
@@ -2842,10 +2867,13 @@ rfSt.addEventListener("keydown",e=>{const d={ArrowLeft:[-1,0],ArrowRight:[1,0],A
 $("rfZoom").oninput=e=>{if(rf){rf.z=rfClamp(+e.target.value);rfDraw()}};
 addEventListener("resize",()=>{if(rfDlg.open)rfDraw()});
 /* Use this framing saves the crop; Use as is keeps the whole image (and drops an earlier crop); Esc changes nothing */
-function rfSave(v){const{s,slot,id}=rf,f=CROPF[slot];if(cur&&S().includes(s)&&s[slot]===id&&s[f]!==v){hRec("framing of shot "+shotNo(s),()=>{if(v)s[f]=v;else delete s[f]});scheduleSave();refreshFrames()}rfDlg.close()}
+function rfSave(v){const{s,slot,id}=rf,r=cropSrc(s,slot);
+  /* nothing if the shot or its file changed meanwhile (a collaborator); a clip's crop goes to every holder of that file in the shot */
+  const hs=!cur||!S().includes(s)||!r||r.id!==id?[]:r.video?[...(s.kind==="video"&&s.img===id?[s]:[]),...(s.takes||[]).filter(t=>t.media===id)]:[r.o];
+  if(hs.some(o=>o[r.f]!==v)){hRec("framing of shot "+shotNo(s),()=>hs.forEach(o=>{if(v)o[r.f]=v;else delete o[r.f]}));scheduleSave();refreshFrames()}rfDlg.close()}
 $("rfForm").onsubmit=e=>{e.preventDefault();const g=rfDraw();if(!g)return;const r4=v=>Math.round(v*1e4)/1e4;rfSave([ratioOf(cur),...[rf.cx-g.cw/2,rf.cy-g.ch/2,g.cw,g.ch].map(r4)].join(" "))};
 $("rfAsIs").onclick=()=>{if(rf)rfSave(undefined)};
-rfDlg.addEventListener("close",()=>{rf=null;$("rfImg").removeAttribute("src")});
+rfDlg.addEventListener("close",()=>{rf=null;const v=$("rfVid");$("rfImg").removeAttribute("src");if(v.getAttribute("src")){v.removeAttribute("src");v.load()}v.hidden=true});
 [["fStartRf",s=>startSlot(s)],["fEndRf",()=>"endKey"]].forEach(([b,slot])=>$(b).onclick=()=>{const s=selSec();if(s)openReframe(s,slot(s))});
 
 async function frameDataURL(id,c){if(c)return blobToDataURL(await cropBlob(id,c));const b=await mediaBlob(id);if(!b)throw new Error("frame image missing");
@@ -2927,16 +2955,18 @@ function playInCut(s){setSide("a");select(s.id,true);if(hasAudio)audio.play().ca
 $("bTakes").addEventListener("click",async e=>{
   const b=e.target.closest("[data-act]");if(!b)return;const card=b.closest(".take"),s=selSec();if(!s||!card)return;
   const t=(s.takes||[]).find(x=>x.id===card.dataset.id);if(!t)return;const act=b.dataset.act;if(act.startsWith("cg"))return cgAct(act,s,t,b,card);
-  if(act==="use"){
+  if(act==="pv"){if(b.paused)b.play().catch(()=>{});else b.pause()}
+  else if(act==="rf")openReframe(s,"t:"+t.id);
+  else if(act==="use"){
     const old=s.img;hRec("take in cut for shot "+shotNo(s),()=>{
       if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff){s.key=s.img;if(s.imgCrop)s.keyCrop=s.imgCrop}delete s.imgCrop;   /* keep side A's keyframe as this shot's start frame */
-      s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0});scheduleSave();releaseMedia(old);
+      s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0;if(t.clipCrop)s.clipCrop=t.clipCrop;else delete s.clipCrop});scheduleSave();releaseMedia(old);
     renderBTakes();renderBList();renderFrames();toast(`Take is now in the cut for shot ${pad(S().indexOf(s)+1)}`);
   }else if(act==="play"){playInCut(s)}
   else if(act==="next"){
     const nx=S()[S().indexOf(s)+1];if(!nx)return;b.disabled=true;b.textContent="Grabbing…";
     const blob=await lastFrameBlob(t.media);if(!blob){toast("Couldn't grab the last frame");renderBTakes();return}
-    const r=await assets.upload(blob,{type:"image/jpeg"});if(!cur||!S().includes(nx))return;const old=nx.key;hRec("start frame of shot "+shotNo(nx),()=>{nx.key=r.id;nx.keyOff=false;delete nx.keyCrop});scheduleSave();releaseMedia(old);
+    const r=await assets.upload(blob,{type:"image/jpeg"});if(!cur||!S().includes(nx))return;const old=nx.key;hRec("start frame of shot "+shotNo(nx),()=>{nx.key=r.id;nx.keyOff=false;if(t.clipCrop)nx.keyCrop=t.clipCrop;else delete nx.keyCrop});scheduleSave();releaseMedia(old);   /* the frame is the clip's size: its crop fits */
     renderBList();toast(`Shot ${pad(S().indexOf(nx)+1)} now starts where this take ends`);b.disabled=false;b.innerHTML=NEXT_LABEL;
   }else if(act==="dl"){
     const bl=await mediaBlob(t.media);if(!bl){toast("This take's file is missing");return}
@@ -2947,7 +2977,7 @@ $("bTakes").addEventListener("click",async e=>{
   }else if(act==="del"){
     if(b.dataset.armed!=="1"){b.dataset.armed="1";const lbl=b.textContent;b.textContent="Tap again";setTimeout(()=>{if(b.isConnected){b.dataset.armed="";b.textContent=lbl}},2600);return}
     hRec("delete take from shot "+shotNo(s),()=>{s.takes=s.takes.filter(x=>x!==t);
-      if(t.media&&s.img===t.media){s.img="";s.kind="";s.clipDur=0}});
+      if(t.media&&s.img===t.media){s.img="";s.kind="";s.clipDur=0;delete s.clipCrop}});
     scheduleSave();releaseMedia(t.media);if(t.code){cgStop(t);releaseMedia(t.code.asset)}renderBTakes();renderBList();renderBHead();
   }
 });
@@ -4277,7 +4307,7 @@ rnDlg.addEventListener("close",()=>{if(rjob)rjob.abort();rnRelease();if(rnFrom&&
    black, with one note naming the shot. Only the current shot's media is open. exact: seek the clip frame by frame
    (fast path); otherwise it plays along (real time) */
 function rnSource(job,o,g){const W=o.w,H=o.h;let cs=null;
-  const cover=sh=>{const c=!sh.video&&sh.crop;if(c){g.drawImage(sh.el,c[0]*sh.w,c[1]*sh.h,c[2]*sh.w,c[3]*sh.h,0,0,W,H);return}const k=Math.max(W/sh.w,H/sh.h),dw=sh.w*k,dh=sh.h*k;g.drawImage(sh.el,(W-dw)/2,(H-dh)/2,dw,dh)};
+  const cover=sh=>{const c=sh.crop;if(c){g.drawImage(sh.el,c[0]*sh.w,c[1]*sh.h,c[2]*sh.w,c[3]*sh.h,0,0,W,H);return}const k=Math.max(W/sh.w,H/sh.h),dw=sh.w*k,dh=sh.h*k;g.drawImage(sh.el,(W-dw)/2,(H-dh)/2,dw,dh)};
   const mark=()=>{if(!o.wm)return;const fs=Math.round(H*.03);g.save();g.globalAlpha=.55;g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=fs/3;
     g.font=`600 ${fs}px "Instrument Sans",system-ui,sans-serif`;g.textAlign="right";g.textBaseline="alphabetic";g.fillText("Cue Board",W-fs,H-fs);g.restore()};
   const black=()=>{g.fillStyle="#000";g.fillRect(0,0,W,H);mark()};
