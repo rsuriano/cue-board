@@ -2115,8 +2115,8 @@ function renderMonitor(force){
     const vd=$("mvid");
     sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}${isBlock(s)?`<div class="shot">Block · cut in your editor</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?missHTML("div","miss",s.img,(s.kind==="video"?"Clip":"Image")+" not on this device yet"):""}`;missSoon();
     if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
-    else if(s.img&&s.kind==="video"){im.hidden=true;vd.hidden=false;vd.style.cssText=vc?cropCSS(vc):"";sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}}
-    else{vd.hidden=true;try{vd.pause()}catch(e){}
+    else if(s.img&&s.kind==="video"){vd.style.cssText=vc?cropCSS(vc):"";sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}if(vd.hidden||vd._sec!==s.id){vd._sec=s.id;const w=Math.max(0,t-a);if(vd.readyState>=1&&Math.abs(vd.currentTime-w)>.04){vd.style.visibility="hidden";vd.currentTime=w}else im.hidden=true;vd.hidden=false}else im.hidden=true}
+    else{vd.hidden=true;vd._sec=null;try{vd.pause()}catch(e){}
       if(s.img){im.hidden=false;sl.className="slate cap";{const u=fu;if(u&&im.getAttribute("src")!==u)im.src=u}}
       else{im.hidden=true;sl.className="slate"}}
   }
@@ -2135,6 +2135,8 @@ function syncVideo(t,a){
 $("mimg").onerror=()=>{$("mimg").hidden=true;$("slate").className="slate"};
 $("mvid").onerror=()=>{$("mvid").hidden=true;$("slate").className="slate"};
 $("mvid").addEventListener("loadedmetadata",()=>renderMonitor());
+/* the seek finished: show the clip; the previous still stays under it until then, so the cut never blinks */
+$("mvid").addEventListener("seeked",()=>{const v=$("mvid");if(v.style.visibility!=="hidden")return;v.style.visibility="";if(!v.hidden)requestAnimationFrame(()=>{if(!v.hidden&&!v.style.visibility)$("mimg").hidden=true})});
 
 /* ---------- playback ---------- */
 function seek(t){t=Math.max(0,Math.min(dur()-.01,t));if(hasAudio)audio.currentTime=t;else vt=t;placePlayhead();renderMonitor()}
