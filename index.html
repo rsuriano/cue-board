@@ -2639,7 +2639,7 @@ const BUILTIN=[
   {id:"bytedance/seedance-2.0-fast",name:"Seedance 2.0 Fast",durations:rng(4,15),res:["480p","720p"],frames:FR,audio:true,seed:true,pricing:{video_tokens:"0.0000042",video_tokens_without_audio:"0.0000042"}}
 ];
 let catalog=BUILTIN.slice();
-const normModel=m=>({id:m.id,name:String(m.name||m.id).replace(/^[^:]+:\s*/,""),durations:m.supported_durations||[],res:m.supported_resolutions||[],ratios:m.supported_aspect_ratios||[],frames:m.supported_frame_images||[],audio:!!m.generate_audio,seed:!!m.seed,pricing:m.pricing_skus||{}});
+const normModel=m=>({id:m.id,name:String(m.name||m.id).replace(/^[^:]+:\s*/,""),durations:m.supported_durations||[],res:m.supported_resolutions||[],ratios:m.supported_aspect_ratios||[],frames:m.supported_frame_images||[],audio:!!m.generate_audio,seed:!!m.seed,pricing:m.pricing_skus||{},pass:m.allowed_passthrough_parameters||[]});
 const modelById=id=>catalog.find(m=>m.id===id)||BUILTIN.find(m=>m.id===id)||catalog[0]||BUILTIN[0];
 function visibleModels(){const fav=FAV.map(id=>catalog.find(m=>m.id===id)||BUILTIN.find(m=>m.id===id)).filter(Boolean);
   return showAll?[...fav,...catalog.filter(m=>!FAV.includes(m.id))]:fav}
@@ -2756,7 +2756,7 @@ function takeHTML(s,t,num){
   const hasNext=!!S()[S().indexOf(s)+1];
   let btns="";
   if(t.status==="completed"&&t.media){
-    btns+=incut?`<button type="button" class="btn small" data-act="play">${ico("play")}Play in cut</button>`:`<button type="button" class="btn small primary" data-act="use">Use in cut</button>`;
+    btns+=incut?`<button type="button" class="btn small" data-act="play">${ico("play")}Play in cut</button><button type="button" class="btn small ghost" data-act="out" title="The shot goes back to its keyframe. The take stays here.">Remove from cut</button>`:`<button type="button" class="btn small primary" data-act="use">Use in cut</button>`;
     if(hasNext)btns+=`<button type="button" class="btn small ghost" data-act="next" title="Grab this take's last frame and use it as the next shot's start frame">${NEXT_LABEL}</button>`;
     btns+=`<button type="button" class="btn small ghost" data-act="rf">Reframe</button><button type="button" class="btn small ghost" data-act="dl">Download</button><button type="button" class="btn small ghost" data-act="del">Delete</button>`;
   }else if(busy){btns+=`<button type="button" class="btn small ghost" data-act="del" title="Stops tracking this job here. OpenRouter may still finish and bill it.">Forget</button>`}
@@ -2881,11 +2881,20 @@ rfDlg.addEventListener("close",()=>{rf=null;const v=$("rfVid");$("rfImg").remove
 async function frameDataURL(id,c){if(c)return blobToDataURL(await cropBlob(id,c));const b=await mediaBlob(id);if(!b)throw new Error("frame image missing");
   const small=b.size>3.5e6?await shrinkTo(b,1920):b;return blobToDataURL(small)}
 const corsHint=e=>"Couldn't reach OpenRouter from this page"+(viaProxy?"":". If it keeps happening, start the app with node server.mjs (see README)")+(e&&e.message?` (${e.message})`:"");
+/* the prompt goes out as written: models that rewrite short prompts (Wan's prompt_extend, Veo's enhancePrompt,
+   Hailuo's prompt_optimizer, HeyGen's prompt_enhancement) get the switch off, but only when OpenRouter's catalog lists it
+   for that model (an unlisted key is not forwarded, and we never risk a rejected job). Veo nests under "parameters". */
+const PROMPT_REWRITE=["prompt_extend","enhancePrompt","prompt_optimizer","prompt_enhancement"];
+function literalPrompt(m){const keys=PROMPT_REWRITE.filter(k=>(m.pass||[]).includes(k));if(!keys.length)return null;
+  const off=Object.fromEntries(keys.map(k=>[k,false]));
+  if(/^google\/veo/.test(m.id))return{"google-vertex":{parameters:off}};
+  return{[m.id.split("/")[0]]:off}}
 async function submitTake(s,o){
   const pid=cur&&cur.id,m=modelById(o.model);
   const body={model:m.id,prompt:o.prompt,duration:o.dur,resolution:o.res,aspect_ratio:genRatio(m)};
   if(m.audio)body.generate_audio=!!o.audio;
   if(o.seed!==""&&o.seed!=null&&m.seed)body.seed=+o.seed;
+  const lit=literalPrompt(m);if(lit)body.provider={options:lit};
   const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:"",dev:deviceId};
   (s.takes=s.takes||[]).unshift(t);if(selSec()===s)renderBTakes();renderBList();
   try{
@@ -2953,6 +2962,8 @@ function lastFrameBlob(id){return new Promise(res=>{const v=document.createEleme
   v.onloadedmetadata=()=>{v.currentTime=Math.max(0,v.duration-.05)};
   v.onseeked=()=>{try{const c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);c.toBlob(b=>fin(b),"image/jpeg",.92)}catch(e){fin(null)}};
   v.onerror=()=>fin(null);setTimeout(()=>fin(null),12000)})}
+function outOfCut(s){if(s.key&&!s.keyOff){s.img=s.key;if(s.keyCrop)s.imgCrop=s.keyCrop;else delete s.imgCrop}else{s.img="";delete s.imgCrop}
+  s.kind="";s.clipDur=0;delete s.clipCrop}
 function playInCut(s){setSide("a");select(s.id,true);if(hasAudio)audio.play().catch(()=>{});else toast("Load the song on side A to play the cut")}
 $("bTakes").addEventListener("click",async e=>{
   const b=e.target.closest("[data-act]");if(!b)return;const card=b.closest(".take"),s=selSec();if(!s||!card)return;
@@ -2965,6 +2976,8 @@ $("bTakes").addEventListener("click",async e=>{
       s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0;if(t.clipCrop)s.clipCrop=t.clipCrop;else delete s.clipCrop});scheduleSave();releaseMedia(old);
     renderBTakes();renderBList();renderFrames();toast(`Take is now in the cut for shot ${pad(S().indexOf(s)+1)}`);
   }else if(act==="play"){playInCut(s)}
+  else if(act==="out"){if(s.img!==t.media)return;hRec("take out of the cut for shot "+shotNo(s),()=>outOfCut(s));scheduleSave();
+    renderBTakes();renderBList();renderFrames();toast(s.img?`Shot ${pad(S().indexOf(s)+1)} shows its keyframe again`:`Shot ${pad(S().indexOf(s)+1)} has no picture now`)}
   else if(act==="next"){
     const nx=S()[S().indexOf(s)+1];if(!nx)return;b.disabled=true;b.textContent="Grabbing…";
     const blob=await lastFrameBlob(t.media);if(!blob){toast("Couldn't grab the last frame");renderBTakes();return}
@@ -2979,7 +2992,7 @@ $("bTakes").addEventListener("click",async e=>{
   }else if(act==="del"){
     if(b.dataset.armed!=="1"){b.dataset.armed="1";const lbl=b.textContent;b.textContent="Tap again";setTimeout(()=>{if(b.isConnected){b.dataset.armed="";b.textContent=lbl}},2600);return}
     hRec("delete take from shot "+shotNo(s),()=>{s.takes=s.takes.filter(x=>x!==t);
-      if(t.media&&s.img===t.media){s.img="";s.kind="";s.clipDur=0;delete s.clipCrop}});
+      if(t.media&&s.img===t.media)outOfCut(s)});
     scheduleSave();releaseMedia(t.media);if(t.code){cgStop(t);releaseMedia(t.code.asset)}renderBTakes();renderBList();renderBHead();
   }
 });
@@ -4175,7 +4188,7 @@ function cgCard(s,t,all){const vs=all.filter(x=>x.code&&x.code.thread===t.code.t
   const fixEst=cgEstTxt(cgEstOf(cgModel(),cgUser(s,{prompt:t.prompt,seed:t.code.seed,bt:null}),(t.code.tokensOut||1000)*4)),nv=Math.max(...vs.map(x=>x.code.v||1))+1;
   if(t.status==="completed"&&t.media){
     b+=`<div class="cg-ask"><input class="cgask" aria-label="Ask for a change" placeholder="Ask for a change" enterkeyhint="send" autocomplete="off"><button type="button" class="btn" data-act="cgask">Send</button><p class="muted">For example “slower” or “warmer colours”. Makes v${nv} from v${t.code.v}: ${fixEst}.</p></div>`;
-    b+=`<div class="row">${incut?`<button type="button" class="btn small" data-act="play">${ico("play")}Play in cut</button>`:`<button type="button" class="btn small primary" data-act="use">Use in cut</button>`}<button type="button" class="btn small ghost" data-act="dl">Download</button><button type="button" class="btn small ghost" data-act="del">Delete</button></div>`}
+    b+=`<div class="row">${incut?`<button type="button" class="btn small" data-act="play">${ico("play")}Play in cut</button><button type="button" class="btn small ghost" data-act="out" title="The shot goes back to its keyframe. The take stays here.">Remove from cut</button>`:`<button type="button" class="btn small primary" data-act="use">Use in cut</button>`}<button type="button" class="btn small ghost" data-act="dl">Download</button><button type="button" class="btn small ghost" data-act="del">Delete</button></div>`}
   else{const again=t.code.asset&&(t.error==="Recording stopped"||t.status==="cancelled"),fix=t.status==="failed"&&t.code.asset&&!again;
     b+=`<p class="cg-why">${fix?`The app recorded nothing. “Fix it” sends the code and the error to the model for a new try (${fixEst}).`:again?"The code is saved. Record again costs nothing.":"The app recorded nothing."}</p><div class="tp">${esc(t.code.ask?"Asked: "+t.code.ask:t.prompt)}</div>
     <div class="row">${fix?`<button type="button" class="btn small primary" data-act="cgfix">Fix it</button>`:again?`<button type="button" class="btn small primary" data-act="cgagain">Record again</button>`:`<button type="button" class="btn small" data-act="cgretry">Try again</button>`}${t.status!=="completed"&&vs.length>1?"":show}<button type="button" class="btn small ghost" data-act="del">Remove</button></div>`}
