@@ -355,6 +355,9 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .setTab[hidden]{display:none}
 #setPaneModel,#setPaneAcct{display:grid;gap:var(--gap-block)}
 #setPaneModel[hidden],#setPaneAcct[hidden]{display:none}
+/* Rami 26/11: lines define the sections; no explanatory text under every control */
+#setPaneModel .setSep{padding-top:var(--sp-4);border-top:var(--hairline) solid var(--border-subtle)}
+#setPaneModel .hint:not(.rn-err){display:none}
 
 .sidetab[aria-selected="true"]{background:var(--surface-3);color:var(--ink);box-shadow:inset 0 0 0 var(--hairline) var(--border-strong)}
 .sidetab:focus-visible{outline:var(--ring) solid var(--accent);outline-offset:var(--sp-px)}
@@ -1615,8 +1618,8 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
     <div class="field" id="setKeyF"><label for="setKey">Or paste a key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
     <p class="hint" id="setConn"></p>
     <label class="chk"><input type="checkbox" id="setAll"> Show every video model OpenRouter offers, not just Wan and Seedance</label>
-    <div class="cg-or field" id="falRow"><label class="cg-lbl" for="setFal">fal.ai <span class="muted">(optional)</span></label><input id="setFal" type="password" autocomplete="off" spellcheck="false" placeholder="Paste a fal.ai key" aria-describedby="setFalHint"><p class="hint" id="setFalHint">Adds Hailuo, Kling and more Wan models. Only in this browser, sent only to fal.ai. Get a key at fal.ai/dashboard/keys.</p></div>
-    <div class="row"><label class="field" for="setImg">Frame model<select id="setImg"></select></label><label class="field" for="setImgRes">Frame size<select id="setImgRes"><option value="1K">1K (drafts, 720p)</option><option value="2K">2K (1080p)</option></select></label><label class="field" for="setImgN">Versions per Generate<select id="setImgN"><option value="1">1 (half the cost)</option><option value="2">2 (pick the best)</option></select></label></div>
+    <div class="cg-or field setSep" id="falRow"><label class="cg-lbl" for="setFal">fal.ai <span class="muted">(optional)</span></label><input id="setFal" type="password" autocomplete="off" spellcheck="false" placeholder="Paste a fal.ai key" aria-describedby="setFalHint"><p class="hint" id="setFalHint">Adds Hailuo, Kling and more Wan models. Only in this browser, sent only to fal.ai. Get a key at fal.ai/dashboard/keys.</p></div>
+    <div class="row setSep"><label class="field" for="setImg">Frame model<select id="setImg"></select></label><label class="field" for="setImgRes">Frame size<select id="setImgRes"><option value="1K">1K (drafts, 720p)</option><option value="2K">2K (1080p)</option></select></label><label class="field" for="setImgN">Versions per Generate<select id="setImgN"><option value="1">1 (half the cost)</option><option value="2">2 (pick the best)</option></select></label></div>
   <div class="row"><button type="button" id="setTest" class="btn">Test key</button><span id="setMsg" class="muted"></span><span class="grow"></span><button type="button" id="setClose" class="btn ghost">Close</button><button type="submit" class="btn primary">Save</button></div>
   </div>
   <div id="setPaneAcct" role="tabpanel" aria-labelledby="setTabAcct" hidden>
