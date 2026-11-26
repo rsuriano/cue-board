@@ -87,6 +87,31 @@ await page.click(card('t3') + ' [data-act="del"]'); await page.click(card('t3') 
 const c3 = await shot(2);
 check('deleting the take in the cut keeps the keyframe', c3.img === img3 && !!img3 && c3.kind === '', JSON.stringify(c3));
 
+// a new image on side A becomes side B's start frame, even when an older start frame was set (or turned off)
+const png = async c => Buffer.from((await page.evaluate(c => { const cv = document.createElement('canvas'); cv.width = 320; cv.height = 180; const g = cv.getContext('2d'); g.fillStyle = c; g.fillRect(0, 0, 320, 180); return cv.toDataURL('image/png'); }, c)).split(',')[1], 'base64');
+async function sideAImage(i, color) {
+  await page.evaluate(i => { __t.setSide('a'); __t.select(__t.S()[i].id, true); }, i); await page.waitForTimeout(300);
+  const prev = (await shot(i)).img;
+  await page.setInputFiles('#f-img', { name: color.slice(1) + '.png', mimeType: 'image/png', buffer: await png(color) });
+  await page.waitForFunction(([i, prev]) => __t.S()[i].img && __t.S()[i].img !== prev, [i, prev], { timeout: 10000 });
+}
+const startOf = i => page.evaluate(i => { const s = __t.S()[i]; return { img: s.img, key: s.key || '', keyOff: !!s.keyOff }; }, i);
+// shot 1 still has the take in the cut (undo above) and its old image copied as start frame
+check('before: shot 1 has an older start frame', !!(await startOf(0)).key);
+await sideAImage(0, '#3c7ac8');
+let k1 = await startOf(0);
+check('new side A image: start frame follows it', k1.key === '' && !k1.keyOff, JSON.stringify(k1));
+await open(0);
+check('side B shows it as the start frame, "from side A"', /from side A/.test(await page.textContent('#fStartNote')));
+// a start frame turned off with "Don't use": a new side A image brings it back
+await page.click('#fStartClr'); await page.waitForTimeout(200);
+check('start frame turned off', (await startOf(0)).keyOff);
+await sideAImage(0, '#5aa05a');
+k1 = await startOf(0);
+check('new side A image after "Don\'t use": start frame is back', k1.key === '' && !k1.keyOff, JSON.stringify(k1));
+await page.keyboard.press('Control+z'); await page.waitForTimeout(300);
+check('undo brings the previous state back', (await startOf(0)).keyOff);
+
 // prompt rewrite switches
 const lit = await page.evaluate(() => ({
   wanNow: __t.literalPrompt({ id: 'alibaba/wan-3.0', pass: [] }),
