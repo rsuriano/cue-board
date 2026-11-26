@@ -653,17 +653,14 @@ dialog::backdrop{background:var(--backdrop)}
   .bgen .frames{grid-template-columns:minmax(0,1fr);gap:var(--sp-3)}
   .bgen .frame{grid-template-columns:minmax(var(--frame-w),32%) minmax(0,1fr);grid-template-rows:auto 1fr;gap:var(--sp-1-5) var(--sp-3);padding:0;background:none;border:0;border-radius:0}
   .bgen .fimg{grid-area:1/1/span 2;align-self:start;width:min(100%,var(--frame-h) * var(--fr,1.7778));padding:var(--sp-1)}
-  .bgen .frame>.row{align-self:start;gap:0 var(--sp-1)}
-  /* two lines at every width: the buttons that set the frame, then the quiet ones */
-  .bgen .frame>.row::after{content:"";flex-basis:100%;order:1}
-  .bgen .frame>.row>:is(.btn.ghost,.muted){order:2}
-  .bgen .frame>.row .btn.ghost{padding-inline:var(--sp-1-5)}
-  /* Rami 26/11: the end frame's three actions on one line; tighter buttons, a slightly narrower picture */
-  .bgen .frame>.row .btn:not(.ghost){padding-inline:var(--sp-2)}
-  @media (max-width:1359px){.bgen .frame>.row .btn:not(.ghost){padding-inline:var(--sp-1-5)}}
-  .bgen #fEnd>.row>#fEndFrom{order:0;margin-left:0;padding-inline:var(--sp-1-5)}
+  /* frame actions: ONE line at every width (Rami 26/11: a second line looks amateurish).
+     Text for the two actions that set a frame (Upload, Generate); every other action is an icon with its name as tooltip. */
+  .bgen .frame>.row{align-self:start;flex-wrap:nowrap;gap:var(--sp-1);min-width:0}
+  .bgen .frame>.row .btn{flex:none}
+  .bgen .frame>.row .btn:not(.icon){padding-inline:var(--sp-2)}
+  .bgen .frame>.row .btn.icon{width:var(--h-sm);padding:0}
   .bgen .frame{grid-template-columns:minmax(76px,28%) minmax(0,1fr)}
-  .bgen .frame>.row>:is(.btn:not(.ghost)+.btn.ghost:not([hidden]),.btn.ghost[hidden]+.btn.ghost){margin-left:calc(-1 * var(--sp-1-5))}
+  @media (max-width:1439px){.bgen .frame>.row{gap:var(--sp-0-5)}.bgen .frame>.row .btn:not(.icon){padding-inline:var(--sp-1-5)}.bgen .frame>.row .btn.icon{width:24px}.bgen .frame{grid-template-columns:minmax(72px,25%) minmax(0,1fr)}}
   .bgen .refs:has(>.linkbtn){display:block;min-height:0}
   .bgen .refs>.linkbtn{margin-right:var(--sp-2)}
   .bgen .fgen{grid-column:1/-1}
@@ -1457,7 +1454,7 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
           <div class="frame" id="fStart">
             <div class="fhead"><b>Start frame</b><span class="muted" id="fStartNote"></span></div>
             <div class="fimg" id="fStartImg"></div>
-            <div class="row"><label class="btn small" for="fStartIn">Upload</label><input type="file" id="fStartIn" accept="image/*" hidden><button type="button" class="btn small" id="fStartGen" aria-pressed="false">Generate</button><button type="button" class="btn ghost small" id="fStartRf" hidden>Reframe</button><button type="button" class="btn ghost small" id="fStartClr">Clear</button><span class="muted" id="fStartWarn"></span></div>
+            <div class="row"><label class="btn small" for="fStartIn">Upload</label><input type="file" id="fStartIn" accept="image/*" hidden><button type="button" class="btn small" id="fStartGen" aria-pressed="false">Generate</button><button type="button" class="btn ghost small icon" id="fStartRf" hidden aria-label="Reframe" title="Reframe"><svg class="ico" aria-hidden="true"><use href="#i-crop"/></svg></button><button type="button" class="btn ghost small icon" id="fStartClr" aria-label="Clear" title="Clear"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button><span class="muted" id="fStartWarn"></span></div>
             <div class="fgen" id="fStartPanel" hidden>
               <span class="muted" id="fStartLead"></span>
               <textarea id="fStartPrompt" rows="3" aria-label="Frame prompt"></textarea>
@@ -1468,7 +1465,7 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
           <div class="frame" id="fEnd">
             <div class="fhead"><b>End frame <span class="muted">(optional)</span></b><span class="muted" id="fEndNote"></span></div>
             <div class="fimg" id="fEndImg"></div>
-            <div class="row"><label class="btn small" for="fEndIn" id="fEndUp">Upload</label><input type="file" id="fEndIn" accept="image/*" hidden><button type="button" class="btn small" id="fEndGen" aria-pressed="false">Generate</button><button type="button" class="btn small ghost" id="fEndFrom" aria-pressed="false" title="Edit the start frame: keep everything, change one thing">From start</button><button type="button" class="btn ghost small" id="fEndRf" hidden>Reframe</button><button type="button" class="btn ghost small" id="fEndClr">Clear</button><span class="muted" id="fEndWarn"></span></div>
+            <div class="row"><label class="btn small" for="fEndIn" id="fEndUp">Upload</label><input type="file" id="fEndIn" accept="image/*" hidden><button type="button" class="btn small" id="fEndGen" aria-pressed="false">Generate</button><button type="button" class="btn small ghost icon" id="fEndFrom" aria-pressed="false" aria-label="From start" title="From start: edit the start frame, keep everything, change one thing"><svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg></button><button type="button" class="btn ghost small icon" id="fEndRf" hidden aria-label="Reframe" title="Reframe"><svg class="ico" aria-hidden="true"><use href="#i-crop"/></svg></button><button type="button" class="btn ghost small icon" id="fEndClr" aria-label="Clear" title="Clear"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button><span class="muted" id="fEndWarn"></span></div>
             <div class="fgen" id="fEndPanel" hidden>
               <span class="muted" id="fEndLead"></span>
               <textarea id="fEndPrompt" rows="3" aria-label="Frame prompt"></textarea>
@@ -2821,7 +2818,7 @@ function renderBShot(){
 function fillFrame(pre,id,note,enabled,clearLabel,slot){
   const box=$(pre),img=$(pre+"Img"),s=selSec(),fc=s&&s[CROPF[slot]];box.classList.toggle("has",!!id);box.classList.toggle("off",!enabled);$(pre+"Rf").hidden=!id||!mediaURL(id);
   img.innerHTML=id&&mediaURL(id)?`<img src="${frameURL(s,slot)}" alt="">`:isMissing(id)?missHTML("span","",id,"Not on this device yet"):`<span>${enabled?"Drop an image here":"This model can't take an end frame"}</span>`;missSoon();
-  $(pre+"Note").textContent=note;$(pre+"Clr").hidden=!id;$(pre+"Clr").textContent=clearLabel||"Clear";$(pre+"Warn").textContent="";
+  $(pre+"Note").textContent=note;$(pre+"Clr").hidden=!id;{const c=$(pre+"Clr"),l=clearLabel||"Clear";c.setAttribute("aria-label",l);c.title=l}$(pre+"Warn").textContent="";
   const im=img.querySelector("img"),k=ratioOf(cur);if(im)im.onload=()=>{$(pre+"Warn").textContent=cropOf(s,slot)||!offRatio(im.naturalWidth,im.naturalHeight)?"":fc?`Framed for ${fc.split(" ")[0]}: reframe it for ${k}`:`${im.naturalWidth}×${im.naturalHeight}, not ${k}: it may get cropped`};
 }
 function renderFrames(){
@@ -2829,7 +2826,7 @@ function renderFrames(){
   fillFrame("fStart",st,fromA?"from side A":(s.keyOff?"not used":""),true,fromA?"Don't use":"Clear",startSlot(s));
   const endOk=m.frames.includes("last_frame");
   fillFrame("fEnd",s.endKey,s.endKey&&!endOk?"ignored by this model":"",endOk||!!s.endKey,"","endKey");
-  $("fEndFrom").disabled=!st;$("fEndFrom").title=st?"Edit the start frame: keep everything, change one thing":"Add a start frame first";
+  $("fEndFrom").disabled=!st;$("fEndFrom").title=st?"From start: edit the start frame, keep everything, change one thing":"From start: add a start frame first";
 }
 /* OpenRouter can list a video model while no provider serves it ("No endpoints found"): ask once per model per
    10 minutes and say so before a take is sent. A failed check never blocks (null = unknown). */
