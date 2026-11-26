@@ -32,7 +32,7 @@ for (;; port++) {
   if (ok) break;
 }
 const origin = `http://127.0.0.1:${port}`;
-const browser = await chromium.launch({ executablePath: '/snap/bin/chromium', headless: true, args: ['--no-sandbox'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME || '/snap/bin/chromium', headless: true, args: ['--no-sandbox'] });
 let fails = 0;
 const check = (name, ok, ev = '') => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ev ? ' · ' + ev : ''}`); };
 
@@ -237,7 +237,8 @@ check('5. after reload, polling resumes and the take finishes', !!after && after
 const hostile = project({ takes: [
   { id: 'h1', jobId: '../../evil.example/x', prov: 'fal', model: W30, modelName: 'Wan 3.0 · fal', res: '480p', dur: 5, prompt: 'x', status: 'pending', created: Date.now(), media: '', error: '', note: '' },
   { id: 'h2', jobId: 'req-ok', prov: 'fal', model: 'fal:evil.example/x', modelName: 'X', res: '480p', dur: 5, prompt: 'x', status: 'pending', created: Date.now(), media: '', error: '', note: '' },
-  { id: 'h3', jobId: 'req-old', prov: 'fal', model: W30, modelName: 'Wan 3.0 · fal', res: '480p', dur: 5, prompt: 'x', status: 'pending', created: Date.now() - 4 * 3600e3, media: '', error: '', note: '' }] });
+  { id: 'h3', jobId: 'req-old', prov: 'fal', model: W30, modelName: 'Wan 3.0 · fal', res: '480p', dur: 5, prompt: 'x', status: 'pending', created: Date.now() - 4 * 3600e3, media: '', error: '', note: '' },
+  { id: 'h4', jobId: '', model: 'alibaba/wan-3.0', modelName: 'Wan 3.0', res: '480p', dur: 6, audio: false, seed: '', prompt: 'or retry', status: 'failed', created: Date.now(), media: '', error: 'HTTP 500', note: '' }] });
 hostile.project.id = 'p-hostile';
 const r0 = reqs.length;
 await load(page, hostile);
@@ -248,6 +249,10 @@ const late = reqs.slice(r0);
 check('risk: a take with a bad request id or a model not on the list fails, no request', tk.filter(t => t.jobId !== 'req-old').every(t => t.status === 'failed') && late.every(x => !x.url.includes('evil')), JSON.stringify(tk.map(t => [t.jobId, t.status, t.error])));
 check('risk: a fal job older than 3 hours stops polling and says so', tk.find(t => t.jobId === 'req-old').status === 'failed' && /3 hours/.test(tk.find(t => t.jobId === 'req-old').error));
 check('risk: then polling stops', await page.evaluate(async () => { await __t.pollOnce(); return !__t.polling; }));
+const o0 = orPosts().length, f0 = falPosts().length;
+await page.click('#bTakes .take:last-child [data-act="retry"]'); await page.waitForTimeout(800);
+const orRetry = orPosts()[o0];
+check('risk: Retry on an OpenRouter take (fal key set) goes to OpenRouter, not fal', !!orRetry && JSON.parse(orRetry.body).model === 'alibaba/wan-3.0' && JSON.parse(orRetry.body).prompt === 'or retry' && falPosts().length === f0 && !(await takes(page)).find(t => t.prompt === 'or retry').prov);
 check('7. never in any request URL (whole run)', reqs.every(x => !x.url.includes(FAL_KEY) && !x.url.includes('secretpart')));
 
 check('no page errors', errs.length === 0, errs.join(' | '));

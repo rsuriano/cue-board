@@ -1543,6 +1543,7 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
     <p class="hint" id="orOnHint" hidden>The key is only in this browser. To set a spending limit or delete the key, go to <a id="orLink" href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/keys</a>.</p></div>
   <div class="field" id="setKeyF"><label for="setKey">Or paste a key</label><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" aria-describedby="setKeyHint"><p class="hint" id="setKeyHint">Stored only in this browser and sent only to OpenRouter. Get one at openrouter.ai/keys; a spending limit on the key is a good idea.</p></div>
   <p class="muted" id="setConn"></p>
+  <div class="field"><label for="setFal">fal.ai key (optional)</label><input id="setFal" type="password" autocomplete="off" spellcheck="false" placeholder="Paste a fal.ai key" aria-describedby="setFalHint"><p class="hint" id="setFalHint">Adds the video models that fal.ai serves to the model list. Stored only in this browser and sent only to fal.ai. Get one at fal.ai/dashboard/keys.</p></div>
   <div class="row"><label class="field" for="setImg">Frame model<select id="setImg"></select></label><label class="field" for="setImgRes">Frame size<select id="setImgRes"><option value="1K">1K (drafts, 720p)</option><option value="2K">2K (1080p)</option></select></label><label class="field" for="setImgN">Versions per Generate<select id="setImgN"><option value="1">1 (half the cost)</option><option value="2">2 (pick the best)</option></select></label></div>
   <label class="chk"><input type="checkbox" id="setAll"> Show every video model OpenRouter offers, not just Wan and Seedance</label>
   <div class="row"><button type="button" id="setTest" class="btn">Test key</button><span id="setMsg" class="muted"></span><span class="grow"></span><button type="button" id="setClose" class="btn ghost">Close</button><button type="submit" class="btn primary">Save</button></div>
@@ -2647,11 +2648,28 @@ const BUILTIN=[
   {id:"bytedance/seedance-2.5",name:"Seedance 2.5",durations:rng(4,30),res:["480p","720p"],frames:FR,audio:true,seed:true,pricing:{video_tokens:"0.0000107",video_tokens_without_audio:"0.0000107"}},
   {id:"bytedance/seedance-2.0-fast",name:"Seedance 2.0 Fast",durations:rng(4,15),res:["480p","720p"],frames:FR,audio:true,seed:true,pricing:{video_tokens:"0.0000042",video_tokens_without_audio:"0.0000042"}}
 ];
+/* fal.ai (docs/specs/fal-provider.md): an optional second provider, with the user's own key, listed only when that key
+   is set. Fields and prices from each model's fal.ai API page (Nov 2026). `f` maps the take to fal's input: img/end =
+   frame fields, lit = no prompt rewrite, neg = the Avoid field, durStr = duration as a string, resUp = "480P" */
+const FAL_Q="https://queue.fal.run/",FAL_MAX=3*3600e3,FAL_ID=/^[\w-]{1,128}$/;
+let falKey="";
+const falPrice=(a,b,c,r=["480p","720p","1080p"])=>Object.fromEntries([a,b,c].map((v,i)=>["duration_seconds_"+r[i],v]).filter(x=>x[1]));
+const FAL=[
+  {id:"fal:alibaba/wan-3.0/image-to-video",name:"Wan 3.0 · fal",durations:rng(2,30),res:["480p","720p","1080p"],frames:FR,audio:true,seed:true,pricing:falPrice("0.05","0.1","0.2"),
+    f:{img:"start_image_url",end:"end_image_url",audio:"audio",need:true,lit:{enable_prompt_expansion:false}}},
+  {id:"fal:fal-ai/wan-25-preview/image-to-video",name:"Wan 2.5 · fal",durations:[5,10],res:["480p","720p","1080p"],frames:["first_frame"],audio:false,seed:true,pass:["negative_prompt"],pricing:falPrice("0.05","0.1","0.15"),
+    f:{img:"image_url",neg:"negative_prompt",durStr:true,need:true,lit:{enable_prompt_expansion:false}}},
+  {id:"fal:minimax/h3-max/image-to-video",name:"MiniMax H3 Max · fal",durations:rng(1,15),res:["480p","768p","1080p"],frames:FR,audio:false,seed:true,pricing:falPrice("0.05","0.08","0.16",["480p","768p","1080p"]),
+    f:{img:"image_url",end:"end_image_url",resUp:true,lit:{prompt_expansion_mode:"disabled"}}},
+  {id:"fal:kling/v4/image-to-video",name:"Kling 4.0 · fal",durations:rng(3,30),res:["720p","1080p"],frames:FR,audio:false,seed:false,pricing:falPrice(null,"0.157","0.235"),
+    f:{img:"start_image_url",end:"end_image_url",need:true}}
+].map(m=>({...m,prov:"fal",ep:m.id.slice(4),ratios:[],pass:m.pass||[]}));
+const isFal=m=>!!m&&m.prov==="fal";
 let catalog=BUILTIN.slice();
 const normModel=m=>({id:m.id,name:String(m.name||m.id).replace(/^[^:]+:\s*/,""),durations:m.supported_durations||[],res:m.supported_resolutions||[],ratios:m.supported_aspect_ratios||[],frames:m.supported_frame_images||[],audio:!!m.generate_audio,seed:!!m.seed,pricing:m.pricing_skus||{},pass:m.allowed_passthrough_parameters||[]});
-const modelById=id=>catalog.find(m=>m.id===id)||BUILTIN.find(m=>m.id===id)||catalog[0]||BUILTIN[0];
+const modelById=id=>catalog.find(m=>m.id===id)||BUILTIN.find(m=>m.id===id)||FAL.find(m=>m.id===id)||catalog[0]||BUILTIN[0];
 function visibleModels(){const fav=FAV.map(id=>catalog.find(m=>m.id===id)||BUILTIN.find(m=>m.id===id)).filter(Boolean);
-  return showAll?[...fav,...catalog.filter(m=>!FAV.includes(m.id))]:fav}
+  return [...(showAll?[...fav,...catalog.filter(m=>!FAV.includes(m.id))]:fav),...(falKey?FAL:[])]}
 const hasAuth=()=>!!apiKey||(viaProxy&&proxyHasKey);
 const fmtUSD=v=>v==null||!isFinite(v)?"—":(v<0.995?v.toFixed(2):v.toFixed(2))+" USD";
 const isBusy=t=>["submitting","pending","in_progress","downloading","writing","testing","recording","saving"].includes(t.status);
@@ -2745,7 +2763,7 @@ function renderGen(){
   const s=selSec();if(!s)return;
   const ms=visibleModels();if(!ms.some(m=>m.id===gen.model))gen.model=ms[0].id;const m=modelById(gen.model);
   $("gModel").innerHTML=ms.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");$("gModel").value=m.id;
-  checkEndpoints(m.id);const off=noProvider(m.id);
+  if(!isFal(m))checkEndpoints(m.id);const off=noProvider(m.id);
   $("gAvail").hidden=!off;$("gAvail").textContent=off?`OpenRouter has no provider for ${m.name} right now. Pick another model or try later.`:"";
   $("gGo").disabled=off;$("gGo").title=off?"No provider serves this model right now":"";
   $("gNegWrap").hidden=!negKey(m);if(document.activeElement!==$("gNeg"))$("gNeg").value=s.negPrompt||"";
@@ -2780,7 +2798,7 @@ function takeHTML(s,t,num){
     btns+=incut?`<button type="button" class="btn small" data-act="play">${ico("play")}Play in cut</button><button type="button" class="btn small ghost" data-act="out" title="The shot goes back to its keyframe. The take stays here.">Remove from cut</button>`:`<button type="button" class="btn small primary" data-act="use">Use in cut</button>`;
     if(hasNext)btns+=`<button type="button" class="btn small ghost" data-act="next" title="Grab this take's last frame and use it as the next shot's start frame">${NEXT_LABEL}</button>`;
     btns+=`<button type="button" class="btn small ghost" data-act="rf">Reframe</button><button type="button" class="btn small ghost" data-act="dl">Download</button><button type="button" class="btn small ghost" data-act="del">Delete</button>`;
-  }else if(busy){btns+=`<button type="button" class="btn small ghost" data-act="del" title="Stops tracking this job here. OpenRouter may still finish and bill it.">Forget</button>`}
+  }else if(busy){btns+=`<button type="button" class="btn small ghost" data-act="del" title="Stops tracking this job here. ${t.prov==="fal"?"fal.ai":"OpenRouter"} may still finish and bill it.">Forget</button>`}
   else{btns+=`<button type="button" class="btn small" data-act="retry">Retry</button><button type="button" class="btn small ghost" data-act="del">Remove</button>`}
   const fit=t.clipDur?` · ${t.clipDur.toFixed(1)} s`:"";
   return `<div class="tv">${vis}<span class="badge">take ${num}</span>${incut?'<span class="incut-badge">in cut</span>':""}</div>
@@ -2918,30 +2936,34 @@ function literalPrompt(m){const keys=PROMPT_REWRITE.filter(k=>(m.pass||[]).inclu
   if(/^google\/veo/.test(m.id))return{"google-vertex":{parameters:off}};
   return{[m.id.split("/")[0]]:off}}
 async function submitTake(s,o){
-  const pid=cur&&cur.id,m=modelById(o.model);
+  const pid=cur&&cur.id,m=modelById(o.model),fal=isFal(m);
   const body={model:m.id,prompt:o.prompt,duration:o.dur,resolution:o.res,aspect_ratio:genRatio(m)};
   if(m.audio)body.generate_audio=!!o.audio;
   if(o.seed!==""&&o.seed!=null&&m.seed)body.seed=+o.seed;
-  const neg=negKey(m)?String(o.neg||"").trim():"",po=providerOpts(m,neg);if(po)body.provider={options:po};
-  const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,neg,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:"",dev:deviceId};
+  const neg=negKey(m)?String(o.neg||"").trim():"",po=!fal&&providerOpts(m,neg);if(po)body.provider={options:po};
+  const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,neg,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:"",dev:deviceId,...(fal?{prov:"fal"}:{})};
   (s.takes=s.takes||[]).unshift(t);if(selSec()===s)renderBTakes();renderBList();
   try{
     const fr=[];
     if(o.startId)fr.push({type:"image_url",image_url:{url:await frameDataURL(o.startId,cropFor(s,o.startId))},frame_type:"first_frame"});
     if(o.endId&&m.frames.includes("last_frame")){fr.push({type:"image_url",image_url:{url:await frameDataURL(o.endId,cropFor(s,o.endId))},frame_type:"last_frame"});t.end=true}
-    if(fr.length)body.frame_images=fr;
+    if(fal){const r=await falFetch(m.ep,falBody(m,o,fr)),j=await r.json().catch(()=>({}));
+      if(!r.ok||!FAL_ID.test(j.request_id||"")){t.status="failed";t.error=falErr(j)||("HTTP "+r.status)}else{t.jobId=j.request_id;t.status="pending"}}
+    else{if(fr.length)body.frame_images=fr;
     const r=await apiFetch("/videos",{method:"POST",body});const j=await r.json().catch(()=>({}));
-    if(!r.ok||!j.id){t.status="failed";t.error=errText(j.error)||("HTTP "+r.status)}else{t.jobId=j.id;t.status=j.status||"pending"}
-  }catch(e){t.status="failed";t.error=corsHint(e)}
+    if(!r.ok||!j.id){t.status="failed";t.error=errText(j.error)||("HTTP "+r.status)}else{t.jobId=j.id;t.status=j.status||"pending"}}
+  }catch(e){t.status="failed";t.error=fal?"Couldn't reach fal.ai from this page"+(e&&e.message?` (${e.message})`:""):corsHint(e)}
   if(!cur||cur.id!==pid)return;
   scheduleSave();if(selSec()===s)renderBTakes();renderBList();ensurePolling();
 }
 $("gGo").onclick=()=>{
   const s=selSec();if(!s)return;
-  if(!hasAuth()){openSettings("Connect OpenRouter to generate takes.");return}
+  const m=modelById(gen.model),fal=isFal(m);
+  if(fal?!falKey:!hasAuth()){openSettings(fal?"Add your fal.ai key to use fal models.":"Connect OpenRouter to generate takes.");return}
   const prompt=$("bPrompt").value.trim();if(!prompt){toast("Write a video prompt first");$("bPrompt").focus();return}
   if(noProvider(gen.model)){toast("No provider serves this model right now");return}
-  const m=modelById(gen.model),dd=+$("gDur").value,r=ratePerSec(m,gen.res,gen.audio&&m.audio,!!startFrameId(s));
+  if(fal&&m.f.need&&!startFrameId(s)){toast("This model needs a start frame");return}
+  const dd=+$("gDur").value,r=ratePerSec(m,gen.res,gen.audio&&m.audio,!!startFrameId(s));
   const base={model:m.id,prompt,neg:$("gNeg").value,dur:dd,res:gen.res,audio:gen.audio,startId:startFrameId(s),endId:m.frames.includes("last_frame")?s.endKey:"",est:r==null?null:r*dd};
   for(let k=0;k<gen.count;k++)submitTake(s,{...base,seed:gen.seed!==""?String(+gen.seed+k):""});
   toast(gen.count>1?`${gen.count} takes sent`:"Take sent");
@@ -2958,7 +2980,7 @@ async function pollOnce(){
   S().forEach(s=>(s.takes||[]).forEach(t=>{if(t.jobId&&ownJob(t)&&["pending","in_progress","downloading"].includes(t.status))pend.push([s,t])}));
   if(!pend.length){clearInterval(pollTimer);pollTimer=null;return}
   polling=true;
-  for(const [s,t] of pend){if(!cur||cur.id!==pid)break;try{await pollTake(s,t,pid)}catch(e){t.note="Can't reach OpenRouter, retrying…"}
+  for(const [s,t] of pend){if(!cur||cur.id!==pid)break;try{await pollTake(s,t,pid)}catch(e){t.note=`Can't reach ${t.prov==="fal"?"fal.ai":"OpenRouter"}, retrying…`}
     if(cur&&cur.id===pid&&selSec()===s)renderBTakes()}
   polling=false;if(cur&&cur.id===pid){renderBList();renderBHead()}
 }
@@ -2970,6 +2992,7 @@ async function downloadJob(id,j){
   if(!r.ok)throw new Error("download failed (HTTP "+r.status+")");return r.blob();
 }
 async function pollTake(s,t,pid){
+  if(t.prov==="fal")return falPoll(s,t,pid);
   const r=await apiFetch("/videos/"+encodeURIComponent(t.jobId));
   if(!r.ok){if(r.status===404){if(!ownJob(t))return;t.status="failed";t.error="OpenRouter doesn't know this job anymore";scheduleSave()}else t.note="Status check failed (HTTP "+r.status+"), retrying…";return}
   const j=await r.json();if(!cur||cur.id!==pid)return;t.note="";
@@ -2977,12 +3000,50 @@ async function pollTake(s,t,pid){
   if(j.status==="completed"){
     if(t.status!=="downloading"){t.status="downloading";if(selSec()===s)renderBTakes()}
     let blob;try{blob=await downloadJob(t.jobId,j)}catch(e){t.note=e.message+", retrying…";return}
-    const type=blob.type&&blob.type.startsWith("video/")?blob.type:"video/mp4";
-    const up=await assets.upload(blob,{type});if(!cur||cur.id!==pid)return;
-    t.media=up.id;t.clipDur=(await probeDur(blob))||t.dur;t.status="completed";t.done=Date.now();scheduleSave();
-    toast(`Take ready for shot ${pad(S().indexOf(s)+1)}`);refreshCredits();
+    await finishTake(s,t,pid,blob);
   }else if(["failed","cancelled","expired"].includes(j.status)){t.status=j.status;t.error=errText(j.error)||j.status;scheduleSave()}
   else if(j.status&&j.status!==t.status){t.status=j.status;scheduleSave()}
+}
+
+async function finishTake(s,t,pid,blob){
+  const type=blob.type&&blob.type.startsWith("video/")?blob.type:"video/mp4";
+  const up=await assets.upload(blob,{type});if(!cur||cur.id!==pid)return;
+  t.media=up.id;t.clipDur=(await probeDur(blob))||t.dur;t.status="completed";t.done=Date.now();scheduleSave();
+  toast(`Take ready for shot ${pad(S().indexOf(s)+1)}`);refreshCredits();
+}
+/* ---------- fal.ai queue (https://fal.ai/docs/model-endpoints/queue): submit to queue.fal.run/<model>, then status and
+   result at <owner>/<app>/requests/<id>. The key goes only in the header, only to queue.fal.run; the URLs are built
+   here from the model list and a checked request id, never taken from the take (it syncs and imports) or a response */
+/* a time limit on every fal request: a hung one would hold up the polling of every take, OpenRouter's too */
+const falWait=ms=>AbortSignal.timeout?AbortSignal.timeout(ms):undefined;
+function falFetch(path,body){return fetch(FAL_Q+path,{method:body?"POST":"GET",headers:{Authorization:"Key "+falKey,...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined,credentials:"omit",cache:"no-store",signal:falWait(9e4)})}
+function falBody(m,o,fr){const f=m.f,b={prompt:o.prompt,...f.lit,duration:f.durStr?String(o.dur):o.dur,resolution:f.resUp?String(o.res).toUpperCase():o.res};
+  if(f.audio)b[f.audio]=!!(m.audio&&o.audio);
+  if(m.seed&&o.seed!==""&&o.seed!=null)b.seed=+o.seed;
+  const neg=String(o.neg||"").trim();if(f.neg&&neg)b[f.neg]=neg;
+  for(const x of fr){const k=x.frame_type==="first_frame"?f.img:f.end;if(k)b[k]=x.image_url.url}return b}
+/* fal's errors: {detail:"text"} or {detail:[{loc,msg,type}]} (validation); never repeats the key */
+function falErr(j){const d=j&&j.detail,e=Array.isArray(d)?d.map(x=>x&&(x.msg||x.type)).filter(Boolean).join("; "):typeof d==="string"?d:errText(j&&j.error);
+  return falKey&&e?e.split(falKey).join("…"):e}
+async function falPoll(s,t,pid){
+  const m=FAL.find(x=>x.id===t.model),fail=e=>{t.status="failed";t.error=e;t.note="";scheduleSave()};
+  if(!m||!FAL_ID.test(t.jobId))return fail("Not a fal.ai job this app knows");
+  if(Date.now()-(+t.created||0)>FAL_MAX)return fail("fal.ai didn't finish this job in 3 hours");
+  if(!falKey){t.note="Add your fal.ai key in Settings to finish this take";return}
+  const gone=r=>r.status>=400&&r.status<500&&![401,403,408,429].includes(r.status),url=m.ep.split("/").slice(0,2).join("/")+"/requests/"+t.jobId;
+  const r=await falFetch(url+"/status"),j=await r.json().catch(()=>({}));if(!cur||cur.id!==pid)return;
+  if(!r.ok){if(gone(r))return fail(r.status===404?"fal.ai doesn't know this job anymore":falErr(j)||"HTTP "+r.status);
+    t.note=r.status===401||r.status===403?"fal.ai refused the key: check it in Settings":"Status check failed (HTTP "+r.status+"), retrying…";return}
+  t.note="";
+  if(j.status==="IN_QUEUE"||j.status==="IN_PROGRESS"){const v=j.status==="IN_QUEUE"?"pending":"in_progress";if(t.status!==v){t.status=v;scheduleSave()}return}
+  if(j.status!=="COMPLETED")return;
+  if(j.error)return fail(falErr({error:j.error}));
+  if(t.status!=="downloading"){t.status="downloading";if(selSec()===s)renderBTakes()}
+  const q=await falFetch(url),o=await q.json().catch(()=>({}));if(!cur||cur.id!==pid)return;
+  if(!q.ok){if(gone(q))return fail(falErr(o)||"HTTP "+q.status);t.note="Result failed (HTTP "+q.status+"), retrying…";return}
+  const u=o.video&&o.video.url;if(typeof u!=="string"||!/^https:\/\//.test(u))return fail("fal.ai sent no video");
+  const v=await fetch(u,{credentials:"omit",signal:falWait(6e5)});if(!v.ok){t.note="download failed (HTTP "+v.status+"), retrying…";return}
+  await finishTake(s,t,pid,await v.blob());
 }
 
 /* ---------- take actions ---------- */
@@ -3138,7 +3199,7 @@ $("fEndFrom").onclick=()=>openPanel("endKey","from");
 
 /* ---------- settings ---------- */
 function openSettings(msg){
-  $("setKey").value=apiKey;$("setAll").checked=showAll;$("setMsg").textContent=msg||"";
+  $("setKey").value=apiKey;$("setFal").value=falKey;$("setAll").checked=showAll;$("setMsg").textContent=msg||"";
   $("setImg").innerHTML=IMG_MODELS.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");$("setImg").value=imgSet.model;$("setImgRes").value=imgSet.res;$("setImgN").value=String(imgSet.n);
   $("setConn").textContent=viaProxy?(proxyHasKey?"Running through the local server, which already has an API key. You can leave the field empty.":"Running through the local server. Requests go through it to OpenRouter."):"This page calls OpenRouter directly from your browser.";
   $("setTabAcct").hidden=!AUTH_URL;setSetTab("model");renderOr();
@@ -3158,6 +3219,7 @@ $("settingsb").onclick=()=>openSettings();
 $("setClose").onclick=$("setClose2").onclick=()=>$("dlgSettings").close();
 $("setForm").onsubmit=async e=>{e.preventDefault();
   apiKey=$("setKey").value.trim();showAll=$("setAll").checked;await putSetting("apiKey",apiKey);await putSetting("showAll",showAll);
+  falKey=$("setFal").value.trim();await putSetting("falKey",falKey);
   imgSet.model=$("setImg").value;imgSet.res=$("setImgRes").value;imgSet.n=+$("setImgN").value;await putSetting("img",{model:imgSet.model,res:imgSet.res,n:imgSet.n});
   $("dlgSettings").close();toast("Settings saved");credits=null;renderB();refreshCredits();refreshCatalog().then(()=>{if(side==="b")renderGen()})};
 $("setTest").onclick=async()=>{
@@ -4513,7 +4575,7 @@ renderAll();
   store=localStore();
   if(!(await idb())){setStatus("err","Browser storage unavailable");toast("This browser blocks local storage, so nothing will be saved")}
   else setStatus("ok","Saved locally");
-  try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im);const cg=await getSetting("codegen");if(cg)Object.assign(cgSet,cg)}catch(e){}
+  try{apiKey=(await getSetting("apiKey"))||"";showAll=!!(await getSetting("showAll"));falKey=(await getSetting("falKey"))||"";const g=await getSetting("gen");if(g)Object.assign(gen,g);const im=await getSetting("img");if(im)Object.assign(imgSet,im);const cg=await getSetting("codegen");if(cg)Object.assign(cgSet,cg)}catch(e){}
   orReturn();
   try{const c=await getSetting("collab");if(c&&typeof c==="object"&&c.rooms&&typeof c.rooms==="object")cset={name:typeof c.name==="string"?c.name:"",rooms:c.rooms};
     deviceId=(await getSetting("deviceId"))||"";if(!deviceId){deviceId=uid("d");await putSetting("deviceId",deviceId)}}catch(e){}
