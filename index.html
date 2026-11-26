@@ -2457,8 +2457,11 @@ async function uploadMedia(f){
     if(f.size>MAX){msg.textContent="The GIF is over 500 MB.";return}
     type="image/gif";msg.textContent="Uploading GIF…";
   }else{msg.textContent="Uploading…";blob=await shrink(f);type=blob.type||"image/jpeg"}
-  try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img;hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur;delete s.imgCrop;delete s.clipCrop});scheduleSave();
-    releaseMedia(old);msg.textContent="";renderStrip();renderEditor();renderMonitor(true);
+  try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img,oldKey=kind==="image"?s.key:"";
+    /* a new picture on side A is the shot's start frame on side B too: a start frame copied or set earlier would hide it */
+    hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur;delete s.imgCrop;delete s.clipCrop;
+      if(kind==="image"){s.key="";s.keyOff=false;delete s.keyCrop}});scheduleSave();
+    releaseMedia(old);if(oldKey&&oldKey!==old)releaseMedia(oldKey);msg.textContent="";renderStrip();renderEditor();renderMonitor(true);
     /* a clip not in the project's ratio opens Reframe, as a frame image does */
     if(kind==="video"){const v=document.createElement("video");v.muted=true;v.preload="metadata";v.onloadedmetadata=()=>{if(offRatio(v.videoWidth,v.videoHeight)&&selSec()===s&&s.img===r.id)openReframe(s,"img");v.removeAttribute("src")};v.src=mediaURL(r.id)}}
   catch(e){const c=e&&e.code;msg.textContent=c==="too_large"?"The file is too big (20 MB max).":c==="unsupported_type"?"That format can't be uploaded: use JPG, PNG, GIF, MP4 or WebM.":c==="quota_or_state"?"The board is out of storage.":c==="rate_limited"?"Too many uploads in a row, wait a moment.":"Couldn't upload the file."}
