@@ -1,5 +1,7 @@
 # Side B (Takes): plan
 
+> The full screenshot sets were left out of the repo to keep history small. One before/after pair is in `img/`; `design/b-side-check.mjs` regenerates the after set.
+
 Goal: side B reads like side A. The pictures first, the controls in a panel on the side, the keyboard for the rest.
 Numbers (F1…F10, W1…W8) are the frustrations and wishes in `EDITOR-NOTES.md`. Checks: `design/b-side-check.mjs`
 (same item numbers). Screenshots: `before/` (main) and `after/`, at 1440x900, 1280x720, 390x844, 375x667.

@@ -1,5 +1,7 @@
 # Side B (Takes): notes from an editor
 
+> The full screenshot sets were left out of the repo to keep history small. One before/after pair is in `img/`; `design/b-side-check.mjs` regenerates the after set.
+
 I cut music videos and short films in Resolve and Premiere. I took Cue Board's side B for a working session: an 8-shot cut of the Mountain King (40 s), 1 to 4 takes per shot, start frames on most shots, an end frame on shot 3, one take already in the cut, one failed take, two shots with nothing yet. I went shot to shot, set a start frame, wrote a prompt, picked a model and duration, compared takes, put one in the cut, played it in the cut, reframed, downloaded, deleted, and went back and forth to side A. I did this at 1440x900 and 1280x720, and the main path once at 390x844 (phone).
 
 I couldn't generate real takes (no key). Everything else is what the app really did. Screenshots: `docs/b-side/editor-shots/` (`d1440-*`, `d1280-*`, `p390-*`). Measurements from the run (positions, sizes, labels, file names): `docs/b-side/walk-log.json`.
