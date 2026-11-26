@@ -16,7 +16,7 @@ const srv = createServer((q, r) => {
   try { if (!statSync(p).isFile()) throw 0; r.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' });
     let body = readFileSync(p);
     // test-only hook: the app's functions live in its script scope, so the served copy exposes a few of them
-    if (p.endsWith('index.html')) body = String(body).replace('window.cueEDL=', 'window.__t={get S(){return S},get setSide(){return setSide},get select(){return select},get literalPrompt(){return literalPrompt},get providerOpts(){return providerOpts},get modelById(){return modelById}};window.cueEDL=');
+    if (p.endsWith('index.html')) body = String(body).replace('window.cueEDL=', 'window.__t={get S(){return S},get setSide(){return setSide},get select(){return select},get literalPrompt(){return literalPrompt},get providerOpts(){return providerOpts},get checkEndpoints(){return checkEndpoints},get noProvider(){return noProvider},get catalog(){return catalog},set showAll(v){showAll=v},get modelById(){return modelById}};window.cueEDL=');
     r.end(body); }
   catch { r.writeHead(404); r.end(); }
 });
@@ -135,6 +135,34 @@ check('Veo: negativePrompt next to enhancePrompt', JSON.stringify(po.veo) === '{
 check('Wan once listed: negative_prompt under alibaba', JSON.stringify(po.wanLater) === '{"alibaba":{"prompt_extend":false,"negative_prompt":"blur"}}', JSON.stringify(po.wanLater));
 check('Wan today: nothing sent', po.wanNow === null);
 check('empty negative: nothing added', po.empty === null, JSON.stringify(po.empty));
+
+// a model OpenRouter lists but no provider serves: the box says so and Generate is off
+await ctx.unroute('**/*');
+await ctx.route('**/*', r => {
+  const u = r.request().url();
+  if (u.startsWith(origin)) return r.continue();
+  const m = u.match(/openrouter\.ai\/api\/v1\/models\/(.+)\/endpoints/);
+  if (m) return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify({ data: { id: decodeURIComponent(m[1]), endpoints: /hailuo/.test(m[1]) ? [] : [{ provider_name: 'Alibaba' }] } }) });
+  return r.abort();
+});
+const pickModel = async id => { await page.evaluate(id => { const sel = document.getElementById('gModel');
+  if (![...sel.options].some(o => o.value === id)) { const o = document.createElement('option'); o.value = id; o.textContent = id; sel.append(o); }
+  sel.value = id; sel.dispatchEvent(new Event('change', { bubbles: true })); }, id); await page.waitForTimeout(600); };
+await pickModel('alibaba/wan-3.0');
+check('Wan (served): no warning, Generate on', await page.isHidden('#gAvail') && !(await page.isDisabled('#gGo')));
+const showAll = await page.evaluate(() => { const c = document.getElementById('setAll'); return c ? c.checked : null; });
+await page.evaluate(() => { const c = document.getElementById('setAll'); if (c && !c.checked) { c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); } });
+await page.evaluate(() => { if (!__t.catalog.some(m => m.id === 'minimax/hailuo-3-max')) __t.showAll = true; __t.catalog.push({ id: 'minimax/hailuo-3-max', name: 'Hailuo 3 Max', durations: [6, 10], res: ['768p', '1080p'], ratios: [], frames: ['first_frame'], audio: false, seed: false, pricing: {}, pass: ['aigc_watermark'] }); });
+await pickModel('minimax/hailuo-3-max');
+await page.waitForTimeout(400);
+await page.screenshot({ path: join(out, 'no-provider.png'), clip: await page.locator('.genfoot').first().boundingBox() });
+const avail = await page.evaluate(() => ({ model: document.getElementById('gModel').value, hidden: document.getElementById('gAvail').hidden, txt: document.getElementById('gAvail').textContent, off: document.getElementById('gGo').disabled }));
+check('Hailuo 3 Max (no provider): warning shown, Generate off', avail.model === 'minimax/hailuo-3-max' && !avail.hidden && avail.off && /no provider/.test(avail.txt), JSON.stringify(avail));
+const st = await page.evaluate(async () => { await __t.checkEndpoints('minimax/hailuo-3-max'); return __t.noProvider('minimax/hailuo-3-max'); });
+check('endpoint check marks Hailuo 3 Max as unserved', st === true);
+await pickModel('alibaba/wan-3.0');
+check('back on Wan: warning gone, Generate on', await page.isHidden('#gAvail') && !(await page.isDisabled('#gGo')));
 
 // prompt rewrite switches
 const lit = await page.evaluate(() => ({

@@ -1440,6 +1440,7 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
           </div>
           <div class="genfoot">
             <span class="muted" id="gFit"></span>
+            <span class="warn" id="gAvail" role="status" hidden></span>
             <span class="est" id="gEst"></span>
             <button type="button" id="gGo" class="btn primary">Generate take</button>
           </div>
@@ -2732,10 +2733,21 @@ function renderFrames(){
   fillFrame("fEnd",s.endKey,s.endKey&&!endOk?"ignored by this model":"",endOk||!!s.endKey,"","endKey");
   $("fEndFrom").disabled=!st;$("fEndFrom").title=st?"Edit the start frame: keep everything, change one thing":"Add a start frame first";
 }
+/* OpenRouter can list a video model while no provider serves it ("No endpoints found"): ask once per model per
+   10 minutes and say so before a take is sent. A failed check never blocks (null = unknown). */
+const epState=new Map();
+async function checkEndpoints(id){const c=epState.get(id);if(c&&(c.busy||Date.now()-c.at<6e5))return;epState.set(id,{busy:true,at:0,none:c?c.none:null});
+  let none=null;try{const r=await apiFetch("/models/"+id.split("/").map(encodeURIComponent).join("/")+"/endpoints",{auth:false});
+    if(r.ok){const j=await r.json(),d=j&&j.data,e=d&&Array.isArray(d.endpoints)?d.endpoints:null;if(e)none=e.length===0}}catch(e){}
+  epState.set(id,{busy:false,at:Date.now(),none});if(gen.model===id)renderGen()}
+const noProvider=id=>!!(epState.get(id)&&epState.get(id).none===true);
 function renderGen(){
   const s=selSec();if(!s)return;
   const ms=visibleModels();if(!ms.some(m=>m.id===gen.model))gen.model=ms[0].id;const m=modelById(gen.model);
   $("gModel").innerHTML=ms.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");$("gModel").value=m.id;
+  checkEndpoints(m.id);const off=noProvider(m.id);
+  $("gAvail").hidden=!off;$("gAvail").textContent=off?`OpenRouter has no provider for ${m.name} right now. Pick another model or try later.`:"";
+  $("gGo").disabled=off;$("gGo").title=off?"No provider serves this model right now":"";
   $("gNegWrap").hidden=!negKey(m);if(document.activeElement!==$("gNeg"))$("gNeg").value=s.negPrompt||"";
   if(!m.res.includes(gen.res))gen.res=m.res.includes("480p")?"480p":m.res[0];
   $("gRes").innerHTML=m.res.map(r=>`<option value="${r}">${r}</option>`).join("");$("gRes").value=gen.res;
@@ -2928,6 +2940,7 @@ $("gGo").onclick=()=>{
   const s=selSec();if(!s)return;
   if(!hasAuth()){openSettings("Connect OpenRouter to generate takes.");return}
   const prompt=$("bPrompt").value.trim();if(!prompt){toast("Write a video prompt first");$("bPrompt").focus();return}
+  if(noProvider(gen.model)){toast("No provider serves this model right now");return}
   const m=modelById(gen.model),dd=+$("gDur").value,r=ratePerSec(m,gen.res,gen.audio&&m.audio,!!startFrameId(s));
   const base={model:m.id,prompt,neg:$("gNeg").value,dur:dd,res:gen.res,audio:gen.audio,startId:startFrameId(s),endId:m.frames.includes("last_frame")?s.endKey:"",est:r==null?null:r*dd};
   for(let k=0;k<gen.count;k++)submitTake(s,{...base,seed:gen.seed!==""?String(+gen.seed+k):""});
