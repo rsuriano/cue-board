@@ -718,6 +718,9 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
 .tmeta b{color:var(--ink);font-weight:var(--w-semibold)}
 .tmeta>span:last-child{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap}
 .tp{font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+button.tp{all:unset;box-sizing:border-box;width:100%;font-size:var(--text-sm);line-height:var(--lh-sm);color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:copy;border-radius:var(--r-xs);text-align:left}
+button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}button.tp:focus-visible{outline:2px solid var(--accent,currentColor);outline-offset:2px}
+.tneg{-webkit-line-clamp:1}
 /* actions: cut decisions on the left, file actions on the right */
 .tbody .row{gap:var(--sp-1);padding-top:var(--sp-1)}
 .tbody .row [data-act="dl"],.tbody .row [data-act="del"]:first-child,.tbody .row [data-act="retry"]+[data-act="del"]{margin-left:auto}
@@ -1424,6 +1427,8 @@ button.var:hover,button.var:focus-visible{border-color:var(--accent);box-shadow:
             <button type="button" class="chip" data-add="No cuts, one continuous shot.">no cuts</button>
             <button type="button" class="chip" data-add="Photorealistic, 35mm film grain, warm golden-hour grade.">film look</button>
           </div>
+          <div id="gNegWrap" hidden><label class="field" for="gNeg">Avoid <span class="muted">(negative prompt: only this model takes one)</span></label>
+          <input id="gNeg" type="text" autocomplete="off" placeholder="What must not appear: text, extra people, camera shake"></div>
           </div>
           <div class="genrow">
             <label>Model<select id="gModel"></select></label>
@@ -2731,6 +2736,7 @@ function renderGen(){
   const s=selSec();if(!s)return;
   const ms=visibleModels();if(!ms.some(m=>m.id===gen.model))gen.model=ms[0].id;const m=modelById(gen.model);
   $("gModel").innerHTML=ms.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");$("gModel").value=m.id;
+  $("gNegWrap").hidden=!negKey(m);if(document.activeElement!==$("gNeg"))$("gNeg").value=s.negPrompt||"";
   if(!m.res.includes(gen.res))gen.res=m.res.includes("480p")?"480p":m.res[0];
   $("gRes").innerHTML=m.res.map(r=>`<option value="${r}">${r}</option>`).join("");$("gRes").value=gen.res;
   const dd=shotDur(s,m);$("gDur").innerHTML=(m.durations.length?m.durations:[dd]).map(v=>`<option value="${v}">${v} s</option>`).join("");$("gDur").value=String(dd);
@@ -2768,7 +2774,7 @@ function takeHTML(s,t,num){
   return `<div class="tv">${vis}<span class="badge">take ${num}</span>${incut?'<span class="incut-badge">in cut</span>':""}</div>
   <div class="tbody"><div class="tmeta"><span><b>${esc(t.modelName||t.model)}</b> · ${esc(t.res)} · ${t.dur} s${t.audio?" · audio":""}${t.start?" · start":""}${t.end?"+end":""}</span><span>${cost}</span></div>
   ${t.error?`<div class="cv warn" title="${esc(t.error)}">${esc(t.error)}</div>`:t.note?`<div class="cv">${esc(t.note)}</div>`:""}
-  <div class="tp" title="${esc(t.prompt)}">${esc(t.prompt)}</div><div class="row">${btns}</div></div>`;
+  <button type="button" class="tp" data-act="copy" title="Copy the prompt">${esc(t.prompt)}</button>${t.neg?`<button type="button" class="tp tneg" data-act="copy" data-neg="1" title="Copy the negative prompt">Avoid: ${esc(t.neg)}</button>`:""}<div class="row">${btns}</div></div>`;
 }
 function renderBTakes(){
   const s=selSec(),el=$("bTakes");if(!s){el.innerHTML="";return}
@@ -2785,6 +2791,7 @@ setInterval(()=>{if(side==="b")tickElapsed()},1000);
 
 /* ---------- B interactions ---------- */
 $("bList").addEventListener("click",e=>{const b=e.target.closest(".bitem");if(!b)return;selId=b.dataset.id;renderBList();renderBShot();mBSeek()});
+$("gNeg").addEventListener("input",e=>{const s=selSec();if(!s)return;s.negPrompt=e.target.value;scheduleSave(true)});
 $("bPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;hText(fieldLabel("vidPrompt",s),s,"vidPrompt",e.target.value);scheduleSave(true);updateEst()});
 $("bChips").addEventListener("click",e=>{const c=e.target.closest("[data-add]");if(!c)return;const ta=$("bPrompt"),add=c.dataset.add;
   ta.value=ta.value.trim()?ta.value.replace(/\s*$/,"")+" "+add:add;ta.dispatchEvent(new Event("input"));ta.focus()});
@@ -2888,6 +2895,12 @@ const corsHint=e=>"Couldn't reach OpenRouter from this page"+(viaProxy?"":". If 
    Hailuo's prompt_optimizer, HeyGen's prompt_enhancement) get the switch off, but only when OpenRouter's catalog lists it
    for that model (an unlisted key is not forwarded, and we never risk a rejected job). Veo nests under "parameters". */
 const PROMPT_REWRITE=["prompt_extend","enhancePrompt","prompt_optimizer","prompt_enhancement"];
+const NEG_KEYS=["negativePrompt","negative_prompt"];
+const negKey=m=>NEG_KEYS.find(k=>(m.pass||[]).includes(k))||"";
+/* provider options for one job: the no-rewrite switches plus the negative prompt, under the right slug */
+function providerOpts(m,neg){const lit=literalPrompt(m),k=negKey(m);if(!k||!neg)return lit;
+  const veo=/^google\/veo/.test(m.id),slug=veo?"google-vertex":m.id.split("/")[0],o=lit||{[slug]:veo?{parameters:{}}:{}};
+  (veo?o[slug].parameters:o[slug])[k]=neg;return o}
 function literalPrompt(m){const keys=PROMPT_REWRITE.filter(k=>(m.pass||[]).includes(k));if(!keys.length)return null;
   const off=Object.fromEntries(keys.map(k=>[k,false]));
   if(/^google\/veo/.test(m.id))return{"google-vertex":{parameters:off}};
@@ -2897,8 +2910,8 @@ async function submitTake(s,o){
   const body={model:m.id,prompt:o.prompt,duration:o.dur,resolution:o.res,aspect_ratio:genRatio(m)};
   if(m.audio)body.generate_audio=!!o.audio;
   if(o.seed!==""&&o.seed!=null&&m.seed)body.seed=+o.seed;
-  const lit=literalPrompt(m);if(lit)body.provider={options:lit};
-  const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:"",dev:deviceId};
+  const neg=negKey(m)?String(o.neg||"").trim():"",po=providerOpts(m,neg);if(po)body.provider={options:po};
+  const t={id:uid("t"),jobId:"",model:m.id,modelName:m.name,res:o.res,dur:o.dur,audio:!!body.generate_audio,seed:body.seed??"",prompt:o.prompt,neg,start:!!o.startId,end:false,est:o.est,cost:null,status:"submitting",created:Date.now(),media:"",error:"",note:"",dev:deviceId};
   (s.takes=s.takes||[]).unshift(t);if(selSec()===s)renderBTakes();renderBList();
   try{
     const fr=[];
@@ -2916,7 +2929,7 @@ $("gGo").onclick=()=>{
   if(!hasAuth()){openSettings("Connect OpenRouter to generate takes.");return}
   const prompt=$("bPrompt").value.trim();if(!prompt){toast("Write a video prompt first");$("bPrompt").focus();return}
   const m=modelById(gen.model),dd=+$("gDur").value,r=ratePerSec(m,gen.res,gen.audio&&m.audio,!!startFrameId(s));
-  const base={model:m.id,prompt,dur:dd,res:gen.res,audio:gen.audio,startId:startFrameId(s),endId:m.frames.includes("last_frame")?s.endKey:"",est:r==null?null:r*dd};
+  const base={model:m.id,prompt,neg:$("gNeg").value,dur:dd,res:gen.res,audio:gen.audio,startId:startFrameId(s),endId:m.frames.includes("last_frame")?s.endKey:"",est:r==null?null:r*dd};
   for(let k=0;k<gen.count;k++)submitTake(s,{...base,seed:gen.seed!==""?String(+gen.seed+k):""});
   toast(gen.count>1?`${gen.count} takes sent`:"Take sent");
 };
@@ -2971,6 +2984,9 @@ function playInCut(s){setSide("a");select(s.id,true);if(hasAudio)audio.play().ca
 $("bTakes").addEventListener("click",async e=>{
   const b=e.target.closest("[data-act]");if(!b)return;const card=b.closest(".take"),s=selSec();if(!s||!card)return;
   const t=(s.takes||[]).find(x=>x.id===card.dataset.id);if(!t)return;const act=b.dataset.act;if(act.startsWith("cg"))return cgAct(act,s,t,b,card);
+  if(act==="copy"){const txt=b.dataset.neg?(t.neg||""):b.textContent;
+    try{await navigator.clipboard.writeText(txt);toast(b.dataset.neg?"Negative prompt copied":"Prompt copied")}
+    catch(e){const g=document.createRange();g.selectNodeContents(b);getSelection().removeAllRanges();getSelection().addRange(g);toast("Selected: press Ctrl+C or ⌘C")}return}
   if(act==="pv"){if(b.paused)b.play().catch(()=>{});else b.pause()}
   else if(act==="rf")openReframe(s,"t:"+t.id);
   else if(act==="use"){
@@ -2991,7 +3007,7 @@ $("bTakes").addEventListener("click",async e=>{
     saveFile(bl,`${slug(cur.title)}-shot${pad(S().indexOf(s)+1)}-${slug(t.modelName)}-${t.id.slice(-4)}.mp4`);
   }else if(act==="retry"){
     s.takes=s.takes.filter(x=>x!==t);
-    submitTake(s,{model:t.model,prompt:t.prompt,dur:t.dur,res:t.res,audio:t.audio,seed:t.seed,startId:startFrameId(s),endId:s.endKey,est:t.est});
+    submitTake(s,{model:t.model,prompt:t.prompt,neg:t.neg||"",dur:t.dur,res:t.res,audio:t.audio,seed:t.seed,startId:startFrameId(s),endId:s.endKey,est:t.est});
   }else if(act==="del"){
     if(b.dataset.armed!=="1"){b.dataset.armed="1";const lbl=b.textContent;b.textContent="Tap again";setTimeout(()=>{if(b.isConnected){b.dataset.armed="";b.textContent=lbl}},2600);return}
     hRec("delete take from shot "+shotNo(s),()=>{s.takes=s.takes.filter(x=>x!==t);
@@ -4186,7 +4202,7 @@ function cgCard(s,t,all){const vs=all.filter(x=>x.code&&x.code.thread===t.code.t
     `<div class="cg-err"><b>${ico("alert")}${esc(t.error||"Stopped.")}</b>${t.code.err?`<code>${esc(t.code.err)}</code>`:""}</div>`;
   const show=t.code.asset?`<button type="button" class="btn small ghost" data-act="cgcode">${ico("code")}Show code</button>`:"";
   let b=`<div class="tmeta"><span><b>Code</b> · ${esc(t.modelName||t.model)} · v${t.code.v} · ${t.dur} s</span><span>${usd(t)}</span></div>${t.note?`<div class="cv">${esc(t.note)}</div>`:""}`;
-  if(busy)return[vis,b+`<div class="tp">${esc(t.code.ask||t.prompt)}</div><div class="row"><span class="muted cg-tokens"><span class="tc" data-since="${t.created}"></span></span><span class="grow"></span><button type="button" class="btn small ghost" data-act="cgstop">Stop</button></div>`,num];
+  if(busy)return[vis,b+`<button type="button" class="tp" data-act="copy" title="Copy the prompt">${esc(t.code.ask||t.prompt)}</button><div class="row"><span class="muted cg-tokens"><span class="tc" data-since="${t.created}"></span></span><span class="grow"></span><button type="button" class="btn small ghost" data-act="cgstop">Stop</button></div>`,num];
   if(t.status==="completed"||vs.length>1)b+=`<div class="cg-vhrow"><span class="cg-vh" id="vh-${esc(t.id)}">Versions</span>${show}</div><ul class="cg-vers" aria-labelledby="vh-${esc(t.id)}">${vs.map(x=>`<li><button type="button" class="cg-v" data-act="cgsel" data-v="${esc(x.id)}" aria-current="${x===t}"><span class="cg-vn">v${x.code.v}</span><span class="cg-vt">${esc(x.code.ask||"first version")}${x.status==="failed"?" · failed":isBusy(x)?" · working":""}</span><span class="cg-vc">${x.media&&s.img===x.media?'<span class="ok">in cut</span> · ':""}${usd(x)}</span></button></li>`).join("")}</ul>`;
   const fixEst=cgEstTxt(cgEstOf(cgModel(),cgUser(s,{prompt:t.prompt,seed:t.code.seed,bt:null}),(t.code.tokensOut||1000)*4)),nv=Math.max(...vs.map(x=>x.code.v||1))+1;
   if(t.status==="completed"&&t.media){

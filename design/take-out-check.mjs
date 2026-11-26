@@ -16,7 +16,7 @@ const srv = createServer((q, r) => {
   try { if (!statSync(p).isFile()) throw 0; r.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream' });
     let body = readFileSync(p);
     // test-only hook: the app's functions live in its script scope, so the served copy exposes a few of them
-    if (p.endsWith('index.html')) body = String(body).replace('window.cueEDL=', 'window.__t={get S(){return S},get setSide(){return setSide},get select(){return select},get literalPrompt(){return literalPrompt},get modelById(){return modelById}};window.cueEDL=');
+    if (p.endsWith('index.html')) body = String(body).replace('window.cueEDL=', 'window.__t={get S(){return S},get setSide(){return setSide},get select(){return select},get literalPrompt(){return literalPrompt},get providerOpts(){return providerOpts},get modelById(){return modelById}};window.cueEDL=');
     r.end(body); }
   catch { r.writeHead(404); r.end(); }
 });
@@ -111,6 +111,30 @@ k1 = await startOf(0);
 check('new side A image after "Don\'t use": start frame is back', k1.key === '' && !k1.keyOff, JSON.stringify(k1));
 await page.keyboard.press('Control+z'); await page.waitForTimeout(300);
 check('undo brings the previous state back', (await startOf(0)).keyOff);
+
+// prompt copy on the take card, and the negative prompt field
+await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
+await open(0);
+await page.click('#bTakes .take button.tp');
+await page.waitForTimeout(200);
+await page.screenshot({ path: join(out, 'take-card-copy.png'), clip: await page.locator('#bTakes .take').first().boundingBox() });
+check('clicking a take prompt copies it', (await page.evaluate(() => navigator.clipboard.readText())) === 'slow push in');
+const negUI = await page.evaluate(() => {
+  const g = id => document.getElementById(id), sel = g('gModel');
+  const show = id => { sel.value = id; sel.dispatchEvent(new Event('change', { bubbles: true })); return !g('gNegWrap').hidden; };
+  return { wan: show('alibaba/wan-3.0') };
+});
+check('Wan (no negative in the catalog): the Avoid field is hidden', negUI.wan === false);
+const po = await page.evaluate(() => ({
+  veo: __t.providerOpts({ id: 'google/veo-3.1', pass: ['negativePrompt', 'enhancePrompt'] }, 'text on screen'),
+  wanLater: __t.providerOpts({ id: 'alibaba/wan-3.0', pass: ['negative_prompt', 'prompt_extend'] }, 'blur'),
+  wanNow: __t.providerOpts({ id: 'alibaba/wan-3.0', pass: [] }, 'blur'),
+  empty: __t.providerOpts({ id: 'google/veo-3.1', pass: ['negativePrompt'] }, ''),
+}));
+check('Veo: negativePrompt next to enhancePrompt', JSON.stringify(po.veo) === '{"google-vertex":{"parameters":{"enhancePrompt":false,"negativePrompt":"text on screen"}}}', JSON.stringify(po.veo));
+check('Wan once listed: negative_prompt under alibaba', JSON.stringify(po.wanLater) === '{"alibaba":{"prompt_extend":false,"negative_prompt":"blur"}}', JSON.stringify(po.wanLater));
+check('Wan today: nothing sent', po.wanNow === null);
+check('empty negative: nothing added', po.empty === null, JSON.stringify(po.empty));
 
 // prompt rewrite switches
 const lit = await page.evaluate(() => ({
