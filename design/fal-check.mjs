@@ -179,7 +179,7 @@ check('4. status and result URLs use owner/app only', resGets.length >= 3 && req
 await page.click('#bTakes .take:first-child [data-act="use"]'); await page.waitForTimeout(300);
 check('4. Use in cut works on a fal take', await page.evaluate(() => { const s = __t.S()[0]; return s.kind === 'video' && s.img === s.takes[0].media; }));
 const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 5000 }).catch(() => null), page.click('#bTakes .take:first-child [data-act="dl"]')]);
-check('4. Download works on a fal take', !!dl && /-fal-\w{4}\.mp4$/.test(dl.suggestedFilename()), dl && dl.suggestedFilename());
+check('4. Download works on a fal take', !!dl && /-take\d+-[\w-]*fal\.mp4$/.test(dl.suggestedFilename()), dl && dl.suggestedFilename());
 await page.waitForTimeout(500);
 check('risk: polling stops once every fal job is done', await page.evaluate(async () => { await __t.pollOnce(); return !__t.polling; }));
 await page.screenshot({ path: join(out, 'fal-takes.png'), fullPage: false });
