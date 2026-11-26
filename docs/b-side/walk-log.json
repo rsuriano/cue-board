@@ -1,0 +1,1531 @@
+[
+ [
+  "layout d1440-A",
+  {
+   "#bList": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".bbar": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".frames": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fStart .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fEnd .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bRefs": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#genbox": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bPrompt": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".genrow": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#gGo": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes .take": null,
+   "#bTakes .take .tv": null,
+   ".sidetab[data-side=\"b\"]": {
+    "x": 715,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": null,
+   "docH": 1043,
+   "vh": 900,
+   "takesPerRow": 0,
+   "buttonsPerTake": []
+  }
+ ],
+ [
+  "d1440-A keys hint",
+  "? All shortcuts"
+ ],
+ [
+  "layout d1440-B shot1",
+  {
+   "#bList": {
+    "x": 20,
+    "y": 69,
+    "w": 248,
+    "h": 520,
+    "vis": true
+   },
+   ".bbar": {
+    "x": 284,
+    "y": 69,
+    "w": 1136,
+    "h": 91,
+    "vis": true
+   },
+   ".frames": {
+    "x": 284,
+    "y": 176,
+    "w": 611,
+    "h": 290,
+    "vis": true
+   },
+   "#fStart .fimg": {
+    "x": 301,
+    "y": 225,
+    "w": 263,
+    "h": 148,
+    "vis": true
+   },
+   "#fEnd .fimg": {
+    "x": 614,
+    "y": 225,
+    "w": 263,
+    "h": 148,
+    "vis": true
+   },
+   "#bRefs": {
+    "x": 284,
+    "y": 482,
+    "w": 611,
+    "h": 32,
+    "vis": true
+   },
+   "#genbox": {
+    "x": 911,
+    "y": 176,
+    "w": 509,
+    "h": 477,
+    "vis": true
+   },
+   "#bPrompt": {
+    "x": 928,
+    "y": 285,
+    "w": 475,
+    "h": 114,
+    "vis": true
+   },
+   ".genrow": {
+    "x": 928,
+    "y": 451,
+    "w": 475,
+    "h": 120,
+    "vis": true
+   },
+   "#gGo": {
+    "x": 1291,
+    "y": 604,
+    "w": 112,
+    "h": 32,
+    "vis": true
+   },
+   "#bTakes": {
+    "x": 284,
+    "y": 685,
+    "w": 1136,
+    "h": 420,
+    "vis": true
+   },
+   "#bTakes .take": {
+    "x": 284,
+    "y": 685,
+    "w": 560,
+    "h": 420,
+    "vis": true
+   },
+   "#bTakes .take .tv": {
+    "x": 285,
+    "y": 686,
+    "w": 558,
+    "h": 314,
+    "vis": true
+   },
+   ".sidetab[data-side=\"b\"]": {
+    "x": 715,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": {
+    "x": 25,
+    "y": 74,
+    "w": 238,
+    "h": 62,
+    "vis": true
+   },
+   "docH": 1145,
+   "vh": 900,
+   "takesPerRow": 2,
+   "buttonsPerTake": [
+    [
+     "Very slow pan right across the ridge. Fog rolls.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Static camera, fog rolls through the valley.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ]
+   ]
+  }
+ ],
+ [
+  "d1440-keyboard shot nav (ArrowDown, ], j)",
+  {
+   "before": "s1",
+   "after": "s1",
+   "scrollY": 40
+  }
+ ],
+ [
+  "d1440-? on side B opens shortcuts",
+  false
+ ],
+ [
+  "d1440-start note after upload",
+  ""
+ ],
+ [
+  "d1440-start warn after upload",
+  ""
+ ],
+ [
+  "d1440-prompt after chip",
+  "Peer walks left to right toward the cave, The camera tracks alongside at the same speed."
+ ],
+ [
+  "d1440-models",
+  [
+   "Wan 3.0",
+   "Wan 3.0 Prime",
+   "Seedance 2.5",
+   "Seedance 2.0 Fast"
+  ]
+ ],
+ [
+  "d1440-durations default",
+  {
+   "durs": [
+    "2 s",
+    "3 s",
+    "4 s",
+    "5 s",
+    "6 s",
+    "7 s",
+    "8 s",
+    "9 s",
+    "10 s",
+    "11 s",
+    "12 s",
+    "13 s",
+    "14 s",
+    "15 s",
+    "16 s",
+    "17 s",
+    "18 s",
+    "19 s",
+    "20 s",
+    "21 s",
+    "22 s",
+    "23 s",
+    "24 s",
+    "25 s",
+    "26 s",
+    "27 s",
+    "28 s",
+    "29 s",
+    "30 s"
+   ],
+   "val": "5",
+   "fit": "5 s clip for a 5.0 s slot",
+   "est": "≈ 0.25 USD"
+  }
+ ],
+ [
+  "d1440-after model 2",
+  {
+   "model": "alibaba/wan-3.0-prime",
+   "durs": [
+    "2 s",
+    "3 s",
+    "4 s",
+    "5 s",
+    "6 s",
+    "7 s",
+    "8 s",
+    "9 s",
+    "10 s",
+    "11 s",
+    "12 s",
+    "13 s",
+    "14 s",
+    "15 s",
+    "16 s",
+    "17 s",
+    "18 s",
+    "19 s",
+    "20 s",
+    "21 s",
+    "22 s",
+    "23 s",
+    "24 s",
+    "25 s",
+    "26 s",
+    "27 s",
+    "28 s",
+    "29 s",
+    "30 s"
+   ],
+   "res": "480p",
+   "fit": "5 s clip for a 5.0 s slot",
+   "est": "≈ 0.34 USD",
+   "go": "Generate take",
+   "goOff": false
+  }
+ ],
+ [
+  "d1440-Generate with no key",
+  {
+   "toast": "Ready. Hit play and mark cuts with M",
+   "dialog": [
+    "dlgSettings"
+   ]
+  }
+ ],
+ [
+  "layout d1440-B shot3",
+  {
+   "#bList": {
+    "x": 20,
+    "y": 69,
+    "w": 248,
+    "h": 520,
+    "vis": true
+   },
+   ".bbar": {
+    "x": 284,
+    "y": 69,
+    "w": 1136,
+    "h": 91,
+    "vis": true
+   },
+   ".frames": {
+    "x": 284,
+    "y": 176,
+    "w": 611,
+    "h": 290,
+    "vis": true
+   },
+   "#fStart .fimg": {
+    "x": 301,
+    "y": 225,
+    "w": 263,
+    "h": 148,
+    "vis": true
+   },
+   "#fEnd .fimg": {
+    "x": 614,
+    "y": 225,
+    "w": 263,
+    "h": 148,
+    "vis": true
+   },
+   "#bRefs": {
+    "x": 284,
+    "y": 482,
+    "w": 611,
+    "h": 32,
+    "vis": true
+   },
+   "#genbox": {
+    "x": 911,
+    "y": 176,
+    "w": 509,
+    "h": 477,
+    "vis": true
+   },
+   "#bPrompt": {
+    "x": 928,
+    "y": 285,
+    "w": 475,
+    "h": 114,
+    "vis": true
+   },
+   ".genrow": {
+    "x": 928,
+    "y": 451,
+    "w": 475,
+    "h": 120,
+    "vis": true
+   },
+   "#gGo": {
+    "x": 1291,
+    "y": 604,
+    "w": 112,
+    "h": 32,
+    "vis": true
+   },
+   "#bTakes": {
+    "x": 284,
+    "y": 685,
+    "w": 1136,
+    "h": 888,
+    "vis": true
+   },
+   "#bTakes .take": {
+    "x": 284,
+    "y": 685,
+    "w": 560,
+    "h": 452,
+    "vis": true
+   },
+   "#bTakes .take .tv": {
+    "x": 285,
+    "y": 686,
+    "w": 558,
+    "h": 314,
+    "vis": true
+   },
+   ".sidetab[data-side=\"b\"]": {
+    "x": 715,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": {
+    "x": 25,
+    "y": 74,
+    "w": 238,
+    "h": 62,
+    "vis": true
+   },
+   "docH": 1613,
+   "vh": 900,
+   "takesPerRow": 2,
+   "buttonsPerTake": [
+    [
+     "Slow push-in toward the cave mouth. Torchlight flickers.",
+     "Play in cut",
+     "Remove from cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Slow push-in toward the cave mouth. Torchlight flickers. No cuts.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Push-in, ends on the cave interior frame.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Static camera. Torchlight flickers on the rock.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ]
+   ]
+  }
+ ],
+ [
+  "d1440-two takes playing",
+  [
+   {
+    "paused": false,
+    "t": 1.19,
+    "dur": 12,
+    "loop": true,
+    "muted": true,
+    "controls": true
+   },
+   {
+    "paused": false,
+    "t": 1.18,
+    "dur": 12,
+    "loop": true,
+    "muted": true,
+    "controls": true
+   }
+  ]
+ ],
+ [
+  "d1440-take order (badges)",
+  [
+   "take 4",
+   "take 3",
+   "take 2",
+   "take 1"
+  ]
+ ],
+ [
+  "d1440-in cut now",
+  [
+   false,
+   true,
+   false,
+   false
+  ]
+ ],
+ [
+  "d1440-scroll after use",
+  628
+ ],
+ [
+  "d1440-after play in cut",
+  {
+   "side": "a",
+   "sel": "clip03 · 0:11.06.0sCave mouthPush-in"
+  }
+ ],
+ [
+  "d1440-back on B, selected shot",
+  {
+   "title": "Cave mouth",
+   "scrollY": 0
+  }
+ ],
+ [
+  "d1440-reframe dialog",
+  {
+   "id": "dlgFrame",
+   "text": "Reframe for 16:9\n\nDrag to move it. Pinch, scroll or use the slider to zoom.\n\nTime\nZoom\nUse as is\nUse this framing",
+   "buttons": [
+    "Use as is",
+    "Use this framing"
+   ]
+  }
+ ],
+ [
+  "d1440-reframe primary",
+  "Use this framing"
+ ],
+ [
+  "d1440-download filename",
+  "mountain-king-editor-test-shot03-wan-30-t1.mp4"
+ ],
+ [
+  "d1440-delete first tap label",
+  "Tap again"
+ ],
+ [
+  "d1440-shot list rows",
+  [
+   "01 · 6.0 s | Dawn over the ridge | 2 takes",
+   "02 · 5.0 s | Walk to the cave | no takes",
+   "03 · 6.0 s | Cave mouth | 4 takes · in cut",
+   "04 · 4.0 s | Trolls gather | 1 take",
+   "05 · 3.5 s | Drum hits | 3 takes",
+   "06 · 3.5 s | Eyes in the dark | no takes",
+   "07 · 6.0 s | The chase | 2 takes",
+   "08 · 6.0 s | The fall | 1 take"
+  ]
+ ],
+ [
+  "layout d1440-A again",
+  {
+   "#bList": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".bbar": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".frames": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fStart .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fEnd .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bRefs": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#genbox": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bPrompt": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".genrow": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#gGo": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes .take": null,
+   "#bTakes .take .tv": null,
+   ".sidetab[data-side=\"b\"]": {
+    "x": 715,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "docH": 1043,
+   "vh": 900,
+   "takesPerRow": 0,
+   "buttonsPerTake": []
+  }
+ ],
+ [
+  "layout d1280-A",
+  {
+   "#bList": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".bbar": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".frames": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fStart .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fEnd .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bRefs": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#genbox": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bPrompt": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".genrow": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#gGo": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes .take": null,
+   "#bTakes .take .tv": null,
+   ".sidetab[data-side=\"b\"]": {
+    "x": 635,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": null,
+   "docH": 863,
+   "vh": 720,
+   "takesPerRow": 0,
+   "buttonsPerTake": []
+  }
+ ],
+ [
+  "d1280-A keys hint",
+  "? All shortcuts"
+ ],
+ [
+  "layout d1280-B shot1",
+  {
+   "#bList": {
+    "x": 20,
+    "y": 69,
+    "w": 248,
+    "h": 520,
+    "vis": true
+   },
+   ".bbar": {
+    "x": 284,
+    "y": 69,
+    "w": 976,
+    "h": 91,
+    "vis": true
+   },
+   ".frames": {
+    "x": 284,
+    "y": 176,
+    "w": 524,
+    "h": 266,
+    "vis": true
+   },
+   "#fStart .fimg": {
+    "x": 301,
+    "y": 225,
+    "w": 220,
+    "h": 124,
+    "vis": true
+   },
+   "#fEnd .fimg": {
+    "x": 571,
+    "y": 225,
+    "w": 220,
+    "h": 124,
+    "vis": true
+   },
+   "#bRefs": {
+    "x": 284,
+    "y": 458,
+    "w": 524,
+    "h": 44,
+    "vis": true
+   },
+   "#genbox": {
+    "x": 824,
+    "y": 176,
+    "w": 436,
+    "h": 511,
+    "vis": true
+   },
+   "#bPrompt": {
+    "x": 841,
+    "y": 285,
+    "w": 402,
+    "h": 114,
+    "vis": true
+   },
+   ".genrow": {
+    "x": 841,
+    "y": 485,
+    "w": 402,
+    "h": 120,
+    "vis": true
+   },
+   "#gGo": {
+    "x": 1131,
+    "y": 638,
+    "w": 112,
+    "h": 32,
+    "vis": true
+   },
+   "#bTakes": {
+    "x": 284,
+    "y": 719,
+    "w": 976,
+    "h": 375,
+    "vis": true
+   },
+   "#bTakes .take": {
+    "x": 284,
+    "y": 719,
+    "w": 480,
+    "h": 375,
+    "vis": true
+   },
+   "#bTakes .take .tv": {
+    "x": 285,
+    "y": 720,
+    "w": 478,
+    "h": 269,
+    "vis": true
+   },
+   ".sidetab[data-side=\"b\"]": {
+    "x": 635,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": {
+    "x": 25,
+    "y": 74,
+    "w": 238,
+    "h": 62,
+    "vis": true
+   },
+   "docH": 1134,
+   "vh": 720,
+   "takesPerRow": 2,
+   "buttonsPerTake": [
+    [
+     "Very slow pan right across the ridge. Fog rolls.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Static camera, fog rolls through the valley.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ]
+   ]
+  }
+ ],
+ [
+  "d1280-keyboard shot nav (ArrowDown, ], j)",
+  {
+   "before": "s1",
+   "after": "s1",
+   "scrollY": 40
+  }
+ ],
+ [
+  "d1280-? on side B opens shortcuts",
+  false
+ ],
+ [
+  "d1280-start note after upload",
+  ""
+ ],
+ [
+  "d1280-start warn after upload",
+  ""
+ ],
+ [
+  "d1280-prompt after chip",
+  "Peer walks left to right toward the cave, The camera tracks alongside at the same speed."
+ ],
+ [
+  "d1280-models",
+  [
+   "Wan 3.0",
+   "Wan 3.0 Prime",
+   "Seedance 2.5",
+   "Seedance 2.0 Fast"
+  ]
+ ],
+ [
+  "d1280-durations default",
+  {
+   "durs": [
+    "2 s",
+    "3 s",
+    "4 s",
+    "5 s",
+    "6 s",
+    "7 s",
+    "8 s",
+    "9 s",
+    "10 s",
+    "11 s",
+    "12 s",
+    "13 s",
+    "14 s",
+    "15 s",
+    "16 s",
+    "17 s",
+    "18 s",
+    "19 s",
+    "20 s",
+    "21 s",
+    "22 s",
+    "23 s",
+    "24 s",
+    "25 s",
+    "26 s",
+    "27 s",
+    "28 s",
+    "29 s",
+    "30 s"
+   ],
+   "val": "5",
+   "fit": "5 s clip for a 5.0 s slot",
+   "est": "≈ 0.25 USD"
+  }
+ ],
+ [
+  "d1280-after model 2",
+  {
+   "model": "alibaba/wan-3.0-prime",
+   "durs": [
+    "2 s",
+    "3 s",
+    "4 s",
+    "5 s",
+    "6 s",
+    "7 s",
+    "8 s",
+    "9 s",
+    "10 s",
+    "11 s",
+    "12 s",
+    "13 s",
+    "14 s",
+    "15 s",
+    "16 s",
+    "17 s",
+    "18 s",
+    "19 s",
+    "20 s",
+    "21 s",
+    "22 s",
+    "23 s",
+    "24 s",
+    "25 s",
+    "26 s",
+    "27 s",
+    "28 s",
+    "29 s",
+    "30 s"
+   ],
+   "res": "480p",
+   "fit": "5 s clip for a 5.0 s slot",
+   "est": "≈ 0.34 USD",
+   "go": "Generate take",
+   "goOff": false
+  }
+ ],
+ [
+  "d1280-Generate with no key",
+  {
+   "toast": "Ready. Hit play and mark cuts with M",
+   "dialog": [
+    "dlgSettings"
+   ]
+  }
+ ],
+ [
+  "layout d1280-B shot3",
+  {
+   "#bList": {
+    "x": 20,
+    "y": 69,
+    "w": 248,
+    "h": 520,
+    "vis": true
+   },
+   ".bbar": {
+    "x": 284,
+    "y": 69,
+    "w": 976,
+    "h": 91,
+    "vis": true
+   },
+   ".frames": {
+    "x": 284,
+    "y": 176,
+    "w": 524,
+    "h": 266,
+    "vis": true
+   },
+   "#fStart .fimg": {
+    "x": 301,
+    "y": 225,
+    "w": 220,
+    "h": 124,
+    "vis": true
+   },
+   "#fEnd .fimg": {
+    "x": 571,
+    "y": 225,
+    "w": 220,
+    "h": 124,
+    "vis": true
+   },
+   "#bRefs": {
+    "x": 284,
+    "y": 458,
+    "w": 524,
+    "h": 44,
+    "vis": true
+   },
+   "#genbox": {
+    "x": 824,
+    "y": 176,
+    "w": 436,
+    "h": 511,
+    "vis": true
+   },
+   "#bPrompt": {
+    "x": 841,
+    "y": 285,
+    "w": 402,
+    "h": 114,
+    "vis": true
+   },
+   ".genrow": {
+    "x": 841,
+    "y": 485,
+    "w": 402,
+    "h": 120,
+    "vis": true
+   },
+   "#gGo": {
+    "x": 1131,
+    "y": 638,
+    "w": 112,
+    "h": 32,
+    "vis": true
+   },
+   "#bTakes": {
+    "x": 284,
+    "y": 719,
+    "w": 976,
+    "h": 798,
+    "vis": true
+   },
+   "#bTakes .take": {
+    "x": 284,
+    "y": 719,
+    "w": 480,
+    "h": 407,
+    "vis": true
+   },
+   "#bTakes .take .tv": {
+    "x": 285,
+    "y": 720,
+    "w": 478,
+    "h": 269,
+    "vis": true
+   },
+   ".sidetab[data-side=\"b\"]": {
+    "x": 635,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": {
+    "x": 25,
+    "y": 74,
+    "w": 238,
+    "h": 62,
+    "vis": true
+   },
+   "docH": 1557,
+   "vh": 720,
+   "takesPerRow": 2,
+   "buttonsPerTake": [
+    [
+     "Slow push-in toward the cave mouth. Torchlight flickers.",
+     "Play in cut",
+     "Remove from cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Slow push-in toward the cave mouth. Torchlight flickers. No cuts.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Push-in, ends on the cave interior frame.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Static camera. Torchlight flickers on the rock.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ]
+   ]
+  }
+ ],
+ [
+  "d1280-two takes playing",
+  [
+   {
+    "paused": false,
+    "t": 1.18,
+    "dur": 12,
+    "loop": true,
+    "muted": true,
+    "controls": true
+   },
+   {
+    "paused": false,
+    "t": 1.18,
+    "dur": 12,
+    "loop": true,
+    "muted": true,
+    "controls": true
+   }
+  ]
+ ],
+ [
+  "d1280-take order (badges)",
+  [
+   "take 4",
+   "take 3",
+   "take 2",
+   "take 1"
+  ]
+ ],
+ [
+  "d1280-in cut now",
+  [
+   false,
+   true,
+   false,
+   false
+  ]
+ ],
+ [
+  "d1280-scroll after use",
+  707
+ ],
+ [
+  "d1280-after play in cut",
+  {
+   "side": "a",
+   "sel": "clip03 · 0:11.06.0sCave mouthPush-in"
+  }
+ ],
+ [
+  "d1280-back on B, selected shot",
+  {
+   "title": "Cave mouth",
+   "scrollY": 0
+  }
+ ],
+ [
+  "d1280-reframe dialog",
+  {
+   "id": "dlgFrame",
+   "text": "Reframe for 16:9\n\nDrag to move it. Pinch, scroll or use the slider to zoom.\n\nTime\nZoom\nUse as is\nUse this framing",
+   "buttons": [
+    "Use as is",
+    "Use this framing"
+   ]
+  }
+ ],
+ [
+  "d1280-reframe primary",
+  "Use this framing"
+ ],
+ [
+  "d1280-download filename",
+  "mountain-king-editor-test-shot03-wan-30-t1.mp4"
+ ],
+ [
+  "d1280-delete first tap label",
+  "Tap again"
+ ],
+ [
+  "d1280-shot list rows",
+  [
+   "01 · 6.0 s | Dawn over the ridge | 2 takes",
+   "02 · 5.0 s | Walk to the cave | no takes",
+   "03 · 6.0 s | Cave mouth | 4 takes · in cut",
+   "04 · 4.0 s | Trolls gather | 1 take",
+   "05 · 3.5 s | Drum hits | 3 takes",
+   "06 · 3.5 s | Eyes in the dark | no takes",
+   "07 · 6.0 s | The chase | 2 takes",
+   "08 · 6.0 s | The fall | 1 take"
+  ]
+ ],
+ [
+  "layout d1280-A again",
+  {
+   "#bList": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".bbar": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".frames": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fStart .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#fEnd .fimg": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bRefs": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#genbox": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bPrompt": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".genrow": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#gGo": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes .take": null,
+   "#bTakes .take .tv": null,
+   ".sidetab[data-side=\"b\"]": {
+    "x": 635,
+    "y": 10,
+    "w": 103,
+    "h": 28,
+    "vis": true
+   },
+   "#bList .bitem": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "docH": 863,
+   "vh": 720,
+   "takesPerRow": 0,
+   "buttonsPerTake": []
+  }
+ ],
+ [
+  "layout phone B",
+  {
+   "#bList": {
+    "x": 0,
+    "y": 279,
+    "w": 390,
+    "h": 113,
+    "vis": true
+   },
+   ".bbar": {
+    "x": 16,
+    "y": 409,
+    "w": 358,
+    "h": 124,
+    "vis": true
+   },
+   ".frames": {
+    "x": 16,
+    "y": 651,
+    "w": 358,
+    "h": 608,
+    "vis": true
+   },
+   "#fStart .fimg": {
+    "x": 33,
+    "y": 700,
+    "w": 324,
+    "h": 182,
+    "vis": true
+   },
+   "#fEnd .fimg": {
+    "x": 33,
+    "y": 1012,
+    "w": 324,
+    "h": 182,
+    "vis": true
+   },
+   "#bRefs": {
+    "x": 16,
+    "y": 1275,
+    "w": 358,
+    "h": 64,
+    "vis": true
+   },
+   "#genbox": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bPrompt": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   ".genrow": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#gGo": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bTakes": {
+    "x": 16,
+    "y": 1371,
+    "w": 358,
+    "h": 766,
+    "vis": true
+   },
+   "#bTakes .take": {
+    "x": 16,
+    "y": 1371,
+    "w": 358,
+    "h": 375,
+    "vis": true
+   },
+   "#bTakes .take .tv": {
+    "x": 17,
+    "y": 1372,
+    "w": 356,
+    "h": 200,
+    "vis": true
+   },
+   ".sidetab[data-side=\"b\"]": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "vis": false
+   },
+   "#bList .bitem": {
+    "x": 16,
+    "y": 279,
+    "w": 136,
+    "h": 100,
+    "vis": true
+   },
+   "docH": 844,
+   "vh": 844,
+   "takesPerRow": 1,
+   "buttonsPerTake": [
+    [
+     "Very slow pan right across the ridge. Fog rolls.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ],
+    [
+     "Static camera, fog rolls through the valley.",
+     "Use in cut",
+     "Last framenext shot",
+     "Reframe",
+     "Download",
+     "Delete"
+    ]
+   ]
+  }
+ ],
+ [
+  "phone bitems",
+  8
+ ]
+]
