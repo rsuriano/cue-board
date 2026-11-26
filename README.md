@@ -104,6 +104,15 @@ flowchart LR
    the email you enter with an invite code. There are no passwords. The sync server checks the signature of the
    session itself. It does not call the auth service.
 
+### Using fal.ai
+
+fal.ai is an optional second provider for takes. OpenRouter stays the default. In **Settings**, paste a fal.ai key
+in **fal.ai key**. The model list then shows the fal.ai models, with "· fal" after the name. A take on one of these
+models goes from your browser to fal.ai. The browser stores the key and sends it only to fal.ai, in a header. The key
+is not in project files. The estimate uses the fal.ai price for each second of video. fal.ai does not send the real
+cost back, so the take shows the estimate. Most fal.ai models need a start frame. To remove the fal.ai models, clear
+the key and save.
+
 ## Blocks and your editor
 
 Some stretches of the song need more than one clip. Mark each of these shots as a block. Select the shot and tick
