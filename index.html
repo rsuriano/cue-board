@@ -217,7 +217,7 @@ w.cueHistory={create,diff,between,same,clone,mediaOf,current,GONE};
   /* timeline canvas: read by name from script (getComputedStyle), so they stay literal. They mirror ramp steps above. */
   --tl-ruler:#211f1e; --tl-tick:#47433f; --tl-label:#8f8b84;
   --tl-region-a:#151413; --tl-region-b:#1a1918; --tl-region-sel:#2f261b;
-  --tl-text:#c9c5be; --tl-text-sel:#f0a33a; --tl-cut:#8f8b84; --tl-wave:#858179; --tl-mark:#c9c5be; --tl-range:rgba(237,235,231,.16);
+  --tl-text:#c9c5be; --tl-text-sel:#f0a33a; --tl-cut:#8f8b84; --tl-wave:#858179; --tl-mark:#c9c5be; --tl-range:rgba(237,235,231,.16); --tl-held:rgba(237,235,231,.14); --held-dim:rgba(0,0,0,.45);
   /* type */
   --font-ui:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -548,6 +548,20 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 .thumb img,.thumb video{width:100%;height:100%;object-fit:cover;pointer-events:none}
 .thumb .tn{font:var(--w-medium) var(--text-sm)/var(--lh-control) var(--font-mono);color:var(--ink-4)}
 .badge{position:absolute;left:var(--sp-2);top:var(--sp-2);padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--on-media);color:var(--ink);font:var(--w-semibold) var(--text-sm)/var(--h-xs) var(--font-ui)}
+/* the part of a shot after its clip ran out (it holds the last frame): dimmed and hatched, on the card and the take in the cut */
+.held{position:absolute;top:0;bottom:0;right:0;background:repeating-linear-gradient(-45deg,var(--tl-held) 0 2px,transparent 2px 7px),var(--held-dim)}
+.tv .held{pointer-events:none}   /* the take still plays, scrubs and shows its controls under it */
+/* a still with an end frame: the end frame small in the card's corner */
+.endtn{position:absolute;right:var(--sp-2);bottom:var(--sp-2);width:36%;aspect-ratio:var(--fr,1.7778);overflow:hidden;border:var(--hairline) solid var(--border-control);border-radius:var(--r-xs);background:var(--screen)}
+.thumb .endtn img{display:block}
+/* a number with its label on one line: speed, where the clip starts, where the end frame starts */
+.fnum{display:flex;align-items:center;gap:var(--sp-1-5);white-space:nowrap;font-size:var(--text-sm);color:var(--ink-2)}
+.fnum input{width:4.5em;height:var(--h-sm);padding:0 var(--sp-2);background:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-sm);font-variant-numeric:tabular-nums}
+.edrow{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:nowrap;min-width:0}
+.edrow .endth{flex:0 0 auto;width:48px;aspect-ratio:var(--fr,1.7778);overflow:hidden;border-radius:var(--r-xs);background:var(--screen);display:grid;place-items:center}
+.edrow .endth img{width:100%;height:100%;object-fit:cover}
+.tspd{display:flex;gap:var(--sp-3);flex-wrap:nowrap}
+#tlRead{position:absolute;top:var(--sp-1);padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--on-media);color:var(--ink);font:var(--w-medium) var(--text-sm)/var(--h-xs) var(--font-mono);font-variant-numeric:tabular-nums;pointer-events:none;white-space:nowrap;z-index:3}
 .cbody{display:grid;gap:var(--sp-0-5);min-width:0;padding:var(--inset-card)}
 .cmeta{display:flex;justify-content:space-between;align-items:baseline;gap:var(--sp-2)}
 .cd{font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap}
@@ -1365,6 +1379,7 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
     <div class="monitor" id="monitor"><div class="mframe" id="mframe">
       <img id="mimg" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'/%3E" hidden>
       <video id="mvid" muted playsinline preload="auto" hidden></video>
+      <img id="mimg2" alt="" hidden>
       <div class="slate" id="slate"></div>
       <!-- phone and the landscape viewer: the whole picture plays and pauses (its glyph is the button a screen reader finds), the time sits on it -->
       <button type="button" class="mplay" id="mPlayG" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg></button><span class="mtime" id="mTime"></span></div>
@@ -1382,12 +1397,16 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
         <div class="chips m-only" id="mShotChips" role="group" aria-label="Shot type"></div>
         <label class="chk"><input type="checkbox" id="f-block"> Block: a stretch you'll cut in your editor from several clips</label>
         <label class="field">Notes<textarea id="f-notes" rows="4" placeholder="What happens here, what the viewer should feel…"></textarea></label>
-        <div class="row">
+        <div class="row" id="f-imgrow">
           <label class="btn small" for="f-img" id="f-imglbl">Upload image, GIF or clip</label>
           <input id="f-img" type="file" accept="image/*,video/mp4,video/webm" hidden>
           <button type="button" id="f-imgrf" class="btn ghost small" hidden>Reframe</button><button type="button" id="f-imgdel" class="btn ghost small" hidden>Remove</button>
           <span id="f-imgmsg" class="muted"></span>
         </div>
+        <div class="edrow" id="f-cliprow" hidden><label class="fnum">Speed<input id="f-speed" type="number" min="0.1" max="10" step="0.05" inputmode="decimal">x</label><label class="fnum">Clip starts at<input id="f-off" type="number" min="0" step="0.1" inputmode="decimal">s</label></div>
+        <label class="chk" id="f-endonl" hidden><input type="checkbox" id="f-endon"> End frame</label>
+        <div class="edrow" id="f-endrow" hidden><span class="endth" id="f-endth"></span><label class="btn small" for="f-endimg" id="f-endlbl">Upload image</label><input id="f-endimg" type="file" accept="image/*" hidden><label class="fnum" title="End frame from this many seconds into the shot">From<input id="f-endat" type="number" min="0" step="0.1" inputmode="decimal" aria-label="End frame from, seconds into the shot">s</label></div>
+        <div class="edrow" id="f-endask" hidden><span>Clears side B's end frame too</span><button type="button" id="f-endclr" class="btn small">Clear</button><button type="button" id="f-endkeep" class="btn ghost small">Keep</button></div>
         <details class="prompts" id="f-prompts">
           <summary>Prompts</summary>
           <div class="ph-head"><span>Keyframe (image)</span><button type="button" class="linkbtn" data-copy="f-imgp">Copy</button></div>
@@ -1428,7 +1447,7 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
     </div>
   </div>
 
-  <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><div id="mSpace" class="m-only"></div><div id="ph" class="ph"></div></div><div id="mGrips" class="m-only"></div><button type="button" id="mkClear" class="btn small m-only" aria-label="Clear selection" hidden>Clear</button></div>
+  <div class="timeline"><div id="tl-scroll"><canvas id="tl" height="132"></canvas><span id="tlRead" hidden></span><div id="mSpace" class="m-only"></div><div id="ph" class="ph"></div></div><div id="mGrips" class="m-only"></div><button type="button" id="mkClear" class="btn small m-only" aria-label="Clear selection" hidden>Clear</button></div>
   </section>
   <!-- phone: the one bar; its tools depend on the selection (hidden on desktop) -->
   <div id="mTool" class="m-only m-tool" role="toolbar" aria-label="Tools"></div>
@@ -1677,6 +1696,7 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
   <div class="rf-stage" id="rfStage" tabindex="0" aria-label="Framing. Arrow keys move it"><img id="rfImg" alt=""><video id="rfVid" muted playsinline preload="auto" hidden></video><div class="rf-box" id="rfBox"></div></div>
   <label class="rf-zoom" id="rfScrub" hidden><span>Time</span><input type="range" id="rfTime" min="0" max="1" step="0.01" value="0"></label>
   <label class="rf-zoom"><span>Zoom</span><input type="range" id="rfZoom" min="1" max="4" step="0.01" value="1"></label>
+  <div class="row" id="rfMoveRow" hidden><label class="chk"><input type="checkbox" id="rfMove"> Move</label><span class="seg" id="rfWhich" role="group" aria-label="Which framing" hidden><button type="button" class="btn small" data-w="0" aria-pressed="true">Start</button><button type="button" class="btn small" data-w="1" aria-pressed="false">End</button></span><label class="chk" id="rfEaseL" hidden><input type="checkbox" id="rfEase"> Ease</label></div>
   <div class="row"><span class="grow"></span><button type="button" id="rfAsIs" class="btn ghost">Use as is</button><button type="submit" id="rfOk" class="btn primary">Use this framing</button></div>
 </form></dialog>
 <dialog id="dlgJoin"><form class="dlg" id="joinForm" novalidate>
@@ -1752,7 +1772,7 @@ const fmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=t-m*60;return m+":"+
 const fmtS=t=>{const m=Math.floor(t/60),s=Math.round(t-m*60);return m+":"+pad(s)};
 function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
 function tok(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
-const T={};["--tl-mark","--tl-range","--tl-ruler","--tl-tick","--tl-label","--tl-text","--tl-text-sel","--tl-cut","--tl-wave","--tl-region-a","--tl-region-b","--tl-region-sel"].forEach(n=>T[n]=tok(n));
+const T={};["--tl-held","--held-dim","--tl-mark","--tl-range","--tl-ruler","--tl-tick","--tl-label","--tl-text","--tl-text-sel","--tl-cut","--tl-wave","--tl-region-a","--tl-region-b","--tl-region-sel"].forEach(n=>T[n]=tok(n));
 
 /* ---------- local storage: everything lives in this browser's IndexedDB ----------
    songs    : projectId → {blob, name}        (the mp3)
@@ -1889,6 +1909,28 @@ const S=()=>cur?cur.sections:[];
 function dur(){if(!cur)return 30;const s=S(),last=s.length?s[s.length-1].start:0;
   let d=(cur.song&&cur.song.duration)||(hasAudio&&isFinite(audio.duration)?audio.duration:0);if(!d)d=Math.max(30,last+8);return Math.max(d,last+.5)}
 const secEnd=i=>i<S().length-1?S()[i+1].start:dur();
+/* ---------- clip time (docs/specs/speed-slip-framing.md): the one map from a shot's time to its clip's time ----------
+   speed (0.1x-10x, absent = 1x) and clipOff (where in the clip the shot starts, s, absent = 0) live on the shot and on
+   the take in the cut. Clip time = offset + shot time × speed, held on the last frame once the clip ran out. 0.1 ms
+   past the exact time, so a time on a frame boundary shows that frame, not the one before it (float error). The
+   monitor, the render, the held regions and the thumbnails all read it from here */
+const spdOf=s=>{const v=+(s&&s.speed);return v>0?Math.min(10,Math.max(.1,v)):1};
+const offOf=s=>{const v=+(s&&s.clipOff);return v>0&&isFinite(v)?v:0};
+function srcTime(s,tShot){const d=+s.clipDur||0,t=offOf(s)+Math.max(0,tShot)*spdOf(s)+1e-4;return d>0&&t>=d?{t:d,held:true}:{t,held:false}}
+/* the shot time at which the clip runs out (null: its length isn't known) */
+const heldAt=s=>(+s.clipDur||0)>0?Math.max(0,(s.clipDur-offOf(s))/spdOf(s)):null;
+const heldTip=h=>`Clip ends at ${h.toFixed(1)} s: holds the last frame`;
+/* a shot's clip (and the take in the cut, the same file) carry the same speed, offset and framing */
+const clipHolders=s=>s.img&&s.kind==="video"?[s,...(s.takes||[]).filter(t=>t.media===s.img)]:[];
+const setClipField=(s,f,v)=>clipHolders(s).forEach(o=>{if(v===undefined)delete o[f];else o[f]=v});
+/* a drag's own fields, before and after, as history changes (a collaborator's edit elsewhere meanwhile isn't part of it) */
+const fieldSnap=(s,f)=>[s,...(s.takes||[])].map(o=>({o,c:o===s?{k:"sf",id:s.id,f}:{k:"tf",sid:s.id,id:o.id,f},b:H.clone(o[f])}));
+const fieldDone=snap=>snap.map(x=>({...x.c,b:x.b,a:H.clone(x.o[x.c.f])})).filter(c=>!H.same(c.b,c.a));
+/* an end frame on side A: a still that switches to side B's end frame (endKey) at endAt s into the shot (absent =
+   the middle), with a 0.25 s dissolve centred on it */
+const hasEnd=s=>!!(s.endKey&&s.img&&s.kind!=="video");
+const endAtOf=(s,d)=>{d=d??slotDur(s);const v=+s.endAt;return s.endAt!=null&&v>=0?Math.min(d,v):d/2};
+const endMix=(s,tShot,d)=>hasEnd(s)?Math.min(1,Math.max(0,(tShot-endAtOf(s,d)+.125)/.25)):0;
 function secAt(t){let k=0;S().forEach((s,i)=>{if(s.start<=t+1e-6)k=i});return k}
 const selSec=()=>S().find(s=>s.id===selId)||null;
 const now=()=>hasAudio?audio.currentTime:vt;
@@ -1909,7 +1951,8 @@ function hRec(label,fn,opt){const before=cur?clone(cur):null,pid=cur&&cur.id;
 /* a drag spans many events, so it records only what it owns: the dragged cut's start, before and after */
 const hCut=s=>cur&&s?{pid:cur.id,id:s.id,b:s.start}:null;
 function hCutEnd(t){if(!t||!cur||cur.id!==t.pid)return;const s=S().find(x=>x.id===t.id);
-  if(s){const c={k:"sf",id:t.id,f:"start",b:t.b,a:s.start};c.near=H.between(cur,c);hist.push("move cut",[c],{pid:t.pid})}}
+  if(s){const c={k:"sf",id:t.id,f:"start",b:t.b,a:s.start};c.near=H.between(cur,c);const sp=t.sp?fieldDone(t.sp):[];   /* Shift: the speed it set, in the same step */
+    hist.push(sp.length?"stretch clip":"move cut",[c,...sp],{pid:t.pid})}}
 /* a text field edit: one change, scoped to that field, merged with the previous keystrokes until the field blurs */
 function hText(label,s,f,v){const b=s[f];if(H.same(b,v))return;s[f]=v;hist.push(label,[{k:"sf",id:s.id,f,b:H.clone(b),a:H.clone(v)}],{pid:cur.id,merge:"text:"+s.id+":"+f})}
 const FIELD_LABEL={title:"title",shot:"shot type",notes:"notes",imgPrompt:"frame prompt",vidPrompt:"motion prompt",endPrompt:"end frame prompt",endChange:"end frame change",block:"block"};
@@ -1918,7 +1961,7 @@ document.addEventListener("focusout",e=>{if(e.target&&/INPUT|TEXTAREA/.test(e.ta
 let undoAt=0;
 /* not in the middle of a drag (a cut, a phone grip, a card or a lifted shot): the undo would land inside it, and the
    drop would record its effect as part of the new step */
-function doUndo(dir){if(!cur||drag||mGrip||mLift||(sd&&sd.on))return;hist.breakMerge();
+function doUndo(dir){if(!cur||drag||tlDrag||mGrip||mLift||(sd&&sd.on))return;hist.breakMerge();
   const had=projectMediaIds(cur),r=dir==="undo"?hist.undo(cur):hist.redo(cur);
   if(r.empty){toast(dir==="undo"?"Nothing to undo":"Nothing to redo");return}
   if(!r.ok){toast(`Can't ${dir} ${r.step.label}: ${r.where} changed since`,3000);return}
@@ -2127,7 +2170,12 @@ function renderTimeline(){
   s.forEach((x,i)=>{const x0=x.start*P,x1=secEnd(i)*P,sel=x.id===selId;
     g.fillStyle=sel?T["--tl-region-sel"]:(i%2?T["--tl-region-b"]:T["--tl-region-a"]);g.fillRect(x0,RU,x1-x0,H-RU);
     g.fillStyle=sel?T["--tl-text-sel"]:T["--tl-text"];g.font="600 12px 'Instrument Sans', sans-serif";
-    const lbl=tlLabel(g,pad(i+1),x.title||"Untitled",x1-x0-16);if(lbl)g.fillText(lbl,x0+8,RU+LB/2)});
+    const lbl=tlLabel(g,pad(i+1),x.title||"Untitled",x1-x0-16);if(lbl)g.fillText(lbl,x0+8,RU+LB/2);
+    /* the clip ran out: dimmed and hatched to the end of the shot, under the waveform */
+    const hx=tlHeldX(i);if(hx){g.save();g.beginPath();g.rect(hx,RU+LB,x1-hx,H-RU-LB);g.clip();g.fillStyle=T["--held-dim"];g.fillRect(hx,RU+LB,x1-hx,H-RU-LB);
+      g.strokeStyle=T["--tl-held"];g.lineWidth=2;g.beginPath();for(let k=hx-H;k<x1;k+=7){g.moveTo(k,H);g.lineTo(k+H,0)}g.stroke();g.restore();g.lineWidth=1}
+    /* an end frame on side A: the switch marker, a small diamond at the bottom, draggable */
+    if(hasEnd(x)){const mx=Math.round((x.start+endAtOf(x))*P)+.5;g.fillStyle=T["--tl-mark"];g.fillRect(mx-.5,H-16,1,16);g.beginPath();g.moveTo(mx,H-12);g.lineTo(mx+5,H-7);g.lineTo(mx,H-2);g.lineTo(mx-5,H-7);g.closePath();g.fill()}});
   const pk=cur.song&&cur.song.peaks,sd=(cur.song&&cur.song.duration)||d;
   if(pk&&pk.length){g.fillStyle=T["--tl-wave"];for(let x=0;x<W;x+=2){const idx=Math.min(pk.length-1,Math.floor(x/P/sd*pk.length));const a=Math.max(.75,pk[idx]*h/2);g.fillRect(x,mid-a,1.4,a*2)}}
   else{g.strokeStyle=T["--tl-tick"];g.beginPath();g.moveTo(0,mid+.5);g.lineTo(W,mid+.5);g.stroke();
@@ -2151,7 +2199,7 @@ function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
   const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
   const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
-    const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?clipHTML(mediaURL(s.img)+"#t=0.1",cropOf(s,"img"),'muted playsinline preload="metadata"')+`<span class="badge">clip</span>`:`<img src="${frameURL(s,"img")}" alt="">`;
+    const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?clipHTML(clipThumb(s),cropOf(s,"img"),'muted playsinline preload="metadata"')+`<span class="badge">clip</span>`+heldHTML(s,d):`<img src="${frameURL(s,"img")}" alt="">`+(hasEnd(s)&&mediaURL(s.endKey)?`<span class="endtn"><img src="${frameURL(s,"endKey")}" alt=""></span>`:"");
     return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${csHTML(s,d)}</div>${clipLine(s,d)}</div></button>`});
   const cards=[...el.children],fresh=[];
   if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
@@ -2166,10 +2214,15 @@ const isBlock=s=>!!s&&s.block===true;
 function csHTML(s,d){return isBlock(s)?`<span class="cblk">Block</span>${s.shot?" "+esc(s.shot):""}`:esc(s.shot||clipHint(d))}
 function clipLine(s,d){
   if(!(s.img&&s.kind==="video"&&s.clipDur))return "";
-  const diff=s.clipDur-d;
-  if(diff<-.05)return `<div class="cv warn">clip ${s.clipDur.toFixed(1)}s · ${(-diff).toFixed(1)}s short</div>`;
-  return `<div class="cv">clip ${s.clipDur.toFixed(1)}s${diff>.05?" · "+diff.toFixed(1)+"s extra":" · exact fit"}</div>`;
+  const L=heldAt(s),diff=L-d;   /* the clip's length in the shot, after its offset and at its speed */
+  if(diff<-.05)return `<div class="cv warn">clip ${L.toFixed(1)}s · ${(-diff).toFixed(1)}s short</div>`;
+  return `<div class="cv">clip ${L.toFixed(1)}s${diff>.05?" · "+diff.toFixed(1)+"s extra":" · exact fit"}</div>`;
 }
+/* a clip thumbnail rests where the shot starts in it (its offset) */
+const clipThumb=s=>{const o=srcTime(s,0).t;return mediaURL(s.img)+(o<.1?"#t=0.1":"#t="+o.toFixed(2))};
+/* the held region on a card or the take in the cut: from where the clip runs out to the end of the shot */
+function heldHTML(s,d){const h=s.img&&s.kind==="video"?heldAt(s):null;if(h==null||h>=d-.05)return "";
+  return `<span class="held" style="left:${(100*h/d).toFixed(2)}%" title="${heldTip(h)}"></span>`}
 function renderEdHead(){
   const s=selSec();if(!s)return;const i=S().indexOf(s),a=s.start,b=secEnd(i),d=b-a;
   $("ed-n").textContent=pad(i+1);$("ed-time").textContent=fmt(a)+" → "+fmt(b);
@@ -2181,6 +2234,12 @@ function renderEditor(){
   const s=selSec();$("ed-empty").hidden=!!s;$("ed-body").hidden=!s;$("ed-body").style.display=s?"grid":"none";if(!s)return;
   renderEdHead();mShotChips();setVal("f-title",s.title);setVal("f-shot",s.shot);setVal("f-notes",s.notes);setVal("f-imgp",s.imgPrompt);setVal("f-vidp",s.vidPrompt);$("f-block").checked=isBlock(s);
   $("f-imgdel").hidden=!s.img;$("f-imgrf").hidden=!s.img||!mediaURL(s.img);$("f-imglbl").hidden=!assets;$("f-imglbl").textContent=s.img?(s.kind==="video"?"Replace clip":"Replace image"):"Upload image, GIF or clip";
+  const vid=!!s.img&&s.kind==="video";$("f-cliprow").hidden=!vid;if(vid){setVal("f-speed",String(+spdOf(s).toFixed(4)));setVal("f-off",String(+offOf(s).toFixed(2)))}
+  /* End frame: a still's second image, side B's end frame; off asks before clearing it */
+  if(endAsk&&endAsk!==s.id)endAsk=null;const still=!!s.img&&s.kind!=="video",on=!endAsk&&(!!s.endKey||!!s.endOn);
+  $("f-endonl").hidden=!still;$("f-endon").checked=on;$("f-endrow").hidden=!still||!on;$("f-endask").hidden=!still||!endAsk;
+  if(still&&on){const u=mediaURL(s.endKey)&&frameURL(s,"endKey"),th=$("f-endth");if(th.dataset.u!==(u||"")){th.dataset.u=u||"";th.innerHTML=u?`<img src="${u}" alt="">`:""}
+    $("f-endlbl").textContent=s.endKey?"Replace image":"Upload image";setVal("f-endat",String(+endAtOf(s).toFixed(2)))}
 
   resetDel();resetMtDel();
 }
@@ -2191,25 +2250,33 @@ function renderMonitor(force){
     if(lastKey!=="empty"){lastKey="empty";sl.className="slate";sl.innerHTML=`<div class="shot">Animatic</div><div class="t">Load a song to start</div><p>Hit play, press M at every change in the music, and each stretch becomes a shot with its own notes and keyframe.</p>`}return}
   const i=secAt(t),s=S()[i],a=s.start,b=secEnd(i);
   $("mprog").style.width=Math.min(100,Math.max(0,(t-a)/Math.max(.01,b-a)*100))+"%";
-  const miss=isMissing(s.img),fu=frameURL(s,"img"),vc=s.kind==="video"&&cropOf(s,"img"),key=[s.id,i,s.img,s.kind,s.title,s.shot,isBlock(s),s.notes,miss,fu,vc].join("|");
+  const miss=isMissing(s.img),mv=moves(s,"img"),fu=mv?mediaURL(s.img):frameURL(s,"img"),vc=s.kind==="video"&&cropOf(s,"img"),key=[s.id,i,s.img,s.kind,s.title,s.shot,isBlock(s),s.notes,miss,fu,vc,mv].join("|");
   if(force||key!==lastKey){lastKey=key;
     const vd=$("mvid");
     sl.innerHTML=`<div class="n">${pad(i+1)}</div>${s.shot?`<div class="shot">${esc(s.shot)}</div>`:""}${isBlock(s)?`<div class="shot">Block · cut in your editor</div>`:""}<div class="t">${s.title?esc(s.title):"Untitled"}</div>${s.notes?`<p>${esc(s.notes)}</p>`:""}${miss?missHTML("div","miss",s.img,(s.kind==="video"?"Clip":"Image")+" not on this device yet"):""}`;missSoon();
     if(miss){im.hidden=true;vd.hidden=true;try{vd.pause()}catch(e){}sl.className="slate"}
-    else if(s.img&&s.kind==="video"){vd.style.cssText=vc?cropCSS(vc):"";sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}if(vd.hidden||vd._sec!==s.id){vd._sec=s.id;const w=Math.max(0,t-a);if(vd.readyState>=1&&Math.abs(vd.currentTime-w)>.04){vd.style.visibility="hidden";vd.currentTime=w}else im.hidden=true;vd.hidden=false}else im.hidden=true}
+    else if(s.img&&s.kind==="video"){vd.style.cssText=vc?cropCSS(vc):"";sl.className="slate cap";{const u=mediaURL(s.img);if(u&&vd.getAttribute("src")!==u)vd.src=u}if(vd.hidden||vd._sec!==s.id){vd._sec=s.id;const w=srcTime(s,t-a).t;if(vd.readyState>=1&&Math.abs(vd.currentTime-w)>.04){vd.style.visibility="hidden";vd.currentTime=w}else im.hidden=true;vd.hidden=false}else im.hidden=true}
     else{vd.hidden=true;vd._sec=null;try{vd.pause()}catch(e){}
       if(s.img){im.hidden=false;sl.className="slate cap";{const u=fu;if(u&&im.getAttribute("src")!==u)im.src=u}}
-      else{im.hidden=true;sl.className="slate"}}
+      else{im.hidden=true;sl.className="slate"}
+      im.style.cssText=mv&&!miss?cropCSS(cropOf(s,"img")):""}
   }
-  syncVideo(t,a);
+  syncVideo(t,s,a);syncStill(t,s,a);
 }
-/* the clip plays muted, locked to the song's clock: clip time = song time − section start; it holds its last frame if it runs out */
-function syncVideo(t,a){
+/* a still that moves (framing move) or switches to its end frame: the crop and the dissolve follow the playhead */
+function syncStill(t,s,a){const im=$("mimg"),m2=$("mimg2"),on=!im.hidden&&s.img&&s.kind!=="video"&&!isMissing(s.img);
+  if(on&&moves(s,"img"))setCrop(im,cropAt(s,"img",t-a));
+  const k=on&&hasEnd(s)?endMix(s,t-a):0,u=k>0&&frameURL(s,"endKey");
+  if(u){if(m2.getAttribute("src")!==u)m2.src=u;m2.style.opacity=String(k);m2.hidden=false}else if(!m2.hidden)m2.hidden=true}
+$("mimg2").onerror=()=>{$("mimg2").hidden=true};
+/* the clip plays muted, locked to the song's clock through srcTime (speed, offset); it holds its last frame once it runs out */
+function syncVideo(t,s,a){
   const v=$("mvid");if(v.hidden||!isFinite(v.duration)||!v.duration)return;
-  const want=Math.min(Math.max(0,t-a),v.duration-.05);
-  v.playbackRate=audio.playbackRate||1;
+  const st=srcTime(s,t-a),want=Math.min(st.t,v.duration-.05);
+  v.playbackRate=(audio.playbackRate||1)*spdOf(s);
+  if(s.kind==="video"&&moves(s,"img"))setCrop(v,cropAt(s,"img",t-a));
   if(playing){
-    if(t-a>=v.duration-.06){if(!v.paused)v.pause()}else if(v.paused)v.play().catch(()=>{});
+    if(st.held||st.t>=v.duration-.06){if(!v.paused)v.pause()}else if(v.paused)v.play().catch(()=>{});
     if(Math.abs(v.currentTime-want)>.3)v.currentTime=want;
   }else{if(!v.paused)v.pause();if(Math.abs(v.currentTime-want)>.04)v.currentTime=want}
 }
@@ -2256,19 +2323,44 @@ function scrubTo(e){
   const r=scroller.getBoundingClientRect();
   if(e.clientX>r.right-30)scroller.scrollLeft+=12;else if(e.clientX<r.left+30)scroller.scrollLeft-=12;
 }
+/* where shot i's held region starts on the timeline (px), or null */
+function tlHeldX(i){const x=S()[i],h=x&&x.img&&x.kind==="video"?heldAt(x):null;return h!=null&&h<secEnd(i)-x.start-.05?(x.start+h)*P:null}
+/* an end-frame switch marker under the pointer (the bottom of the timeline, 6 px either side): its shot's index, or -1 */
+function markAt(e){const y=e.clientY-cv.getBoundingClientRect().top,x=cx(e);if(y<cv.clientHeight-18)return -1;
+  return S().findIndex(s=>hasEnd(s)&&Math.abs((s.start+endAtOf(s))*P-x)<=6)}
+const tlRead=(t,e)=>{const r=$("tlRead");if(t==null){r.hidden=true;return}r.textContent=t;r.hidden=false;r.style.left=(cx(e)+12)+"px"};
+/* Shift + drag a cut: the shot before it changes speed so its clip fills the new length. Alt + drag inside a shot
+   slips its clip (where in the clip the shot starts). Drag a switch marker: where the end frame comes in */
+let tlDrag=null;
+const shotRefresh=()=>{renderTimeline();renderStrip();renderEdHead();renderMonitor()};
 cv.addEventListener("pointerdown",e=>{if(!cur||e.button>0||phone())return;const x=cx(e),hit=boundaryAt(x);
   cv.setPointerCapture(e.pointerId);
   if((ioDrag=ioAt(e)))return;
-  if(hit>0){drag=hit;dragH=hCut(S()[hit]);return}
+  if(hit>0){drag=hit;dragH=hCut(S()[hit]);const L=S()[hit-1];dragH.sp=fieldSnap(L,"speed");dragH.L=L.id;return}
+  const mk=markAt(e);if(mk>=0){const s=S()[mk];tlDrag={f:"endAt",id:s.id,snap:fieldSnap(s,"endAt"),x0:x,v0:endAtOf(s)};return}
+  const sl=S()[secAt(x/P)];if(e.altKey&&sl&&sl.img&&sl.kind==="video"&&sl.clipDur){e.preventDefault();tlDrag={f:"clipOff",id:sl.id,snap:fieldSnap(sl,"clipOff"),x0:x,v0:offOf(sl)};return}
   scrub=true;cv.style.cursor="grabbing";scrubTo(e)});
 let dragH=null;
 cv.addEventListener("pointermove",e=>{if(!cur||phone())return;
   if(ioDrag){ioSet(ioDrag,cx(e)/P,true);return}
+  if(tlDrag){const s=S().find(x=>x.id===tlDrag.id);if(!s)return;const dx=(cx(e)-tlDrag.x0)/P,r2=v=>Math.round(v*100)/100;
+    if(tlDrag.f==="endAt"){const v=r2(Math.min(slotDur(s),Math.max(0,tlDrag.v0+dx)));s.endAt=v;tlRead(`End frame from ${v.toFixed(2)} s`,e)}
+    else{const v=r2(Math.min(Math.max(0,s.clipDur-.05),Math.max(0,tlDrag.v0-dx*spdOf(s))));setClipField(s,"clipOff",v>0?v:undefined);tlRead(`Clip starts at ${v.toFixed(2)} s`,e)}
+    shotRefresh();return}
   if(drag){const s=S(),i=dragH?s.findIndex(x=>x.id===dragH.id):drag;if(i<1)return;drag=i;const lo=s[i-1].start+.2,hi=(i<s.length-1?s[i+1].start:dur())-.2;
-    s[i].start=Math.round(Math.min(hi,Math.max(lo,cx(e)/P))*100)/100;renderTimeline();renderStrip();renderEdHead();renderMonitor()}
+    s[i].start=Math.round(Math.min(hi,Math.max(lo,cx(e)/P))*100)/100;
+    const L=s[i-1];if(dragH&&dragH.L===L.id){
+      if(e.shiftKey&&L.img&&L.kind==="video"&&L.clipDur){const v=Math.round(Math.min(10,Math.max(.1,(L.clipDur-offOf(L))/(s[i].start-L.start)))*1e4)/1e4;setClipField(L,"speed",v===1?undefined:v);tlRead(`${v.toFixed(2)}x`,e)}
+      else{dragH.sp.forEach(x=>{if(x.b===undefined)delete x.o.speed;else x.o.speed=x.b});tlRead(null)}}   /* Shift let go: the speed it had */
+    shotRefresh()}
   else if(scrub)scrubTo(e);
-  else cv.style.cursor=ioAt(e)||boundaryAt(cx(e))>0?"ew-resize":"pointer"});
-const endDrag=()=>{ioDrag="";if(drag){drag=null;hCutEnd(dragH);dragH=null;scheduleSave();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
+  else{const mk=markAt(e),bd=boundaryAt(cx(e))>0;cv.style.cursor=ioAt(e)||bd||mk>=0?"ew-resize":"pointer";
+    let tip="";if(!bd&&mk>=0)tip="End frame from "+endAtOf(S()[mk]).toFixed(1)+" s";
+    else if(!bd&&e.clientY-cv.getBoundingClientRect().top>40){const i=secAt(cx(e)/P),hx=tlHeldX(i);if(hx!=null&&cx(e)>=hx)tip=heldTip(heldAt(S()[i]))}
+    if(cv.title!==tip)cv.title=tip}});
+const endDrag=()=>{ioDrag="";tlRead(null);
+  if(tlDrag){const t=tlDrag;tlDrag=null;const ch=fieldDone(t.snap);if(ch.length&&cur){hist.push(t.f==="endAt"?"end frame switch":"clip start",ch,{pid:cur.id});scheduleSave()}renderEditor();renderMonitor(true)}
+  if(drag){drag=null;hCutEnd(dragH);dragH=null;scheduleSave();renderEditor();renderMonitor(true)}if(scrub){scrub=false;cv.style.cursor="pointer";renderMonitor(true)}};
 cv.addEventListener("pointerup",endDrag);cv.addEventListener("pointercancel",endDrag);
 /* wheel over the song: scroll sideways; Ctrl/⌘ + wheel zooms around the pointer */
 scroller.addEventListener("wheel",e=>{
@@ -2541,7 +2633,7 @@ async function uploadMedia(f){
   }else{msg.textContent="Uploading…";blob=await shrink(f);type=blob.type||"image/jpeg"}
   try{const r=await assets.upload(blob,{type});if(!cur||!S().includes(s))return;const old=s.img,oldKey=kind==="image"?s.key:"";
     /* a new picture on side A is the shot's start frame on side B too: a start frame copied or set earlier would hide it */
-    hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur;delete s.imgCrop;delete s.clipCrop;
+    hRec((kind==="video"?"clip":"image")+" for shot "+shotNo(s),()=>{s.img=r.id;s.kind=kind;s.clipDur=clipDur;delete s.imgCrop;delete s.imgCrop2;CLIPF.forEach(f=>delete s[f]);
       if(kind==="image"){s.key="";s.keyOff=false;delete s.keyCrop}});scheduleSave();
     releaseMedia(old);if(oldKey&&oldKey!==old)releaseMedia(oldKey);msg.textContent="";renderStrip();renderEditor();renderMonitor(true);
     /* a clip not in the project's ratio opens Reframe, as a frame image does */
@@ -2549,8 +2641,27 @@ async function uploadMedia(f){
   catch(e){const c=e&&e.code;msg.textContent=c==="too_large"?"The file is too big (20 MB max).":c==="unsupported_type"?"That format can't be uploaded: use JPG, PNG, GIF, MP4 or WebM.":c==="quota_or_state"?"The board is out of storage.":c==="rate_limited"?"Too many uploads in a row, wait a moment.":"Couldn't upload the file."}
 }
 $("f-img").onchange=e=>{const f=e.target.files[0];e.target.value="";uploadMedia(f).then(()=>{const t=$("f-imgmsg").textContent;if(phone()&&t)toast(t)})};
-$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;hRec(`remove ${s.kind==="video"?"clip":"image"} from shot ${shotNo(s)}`,()=>{s.img="";s.kind="";s.clipDur=0;delete s.imgCrop;delete s.clipCrop});scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
+$("f-imgdel").onclick=()=>{const s=selSec();if(!s||!s.img)return;const old=s.img;hRec(`remove ${s.kind==="video"?"clip":"image"} from shot ${shotNo(s)}`,()=>{s.img="";s.kind="";s.clipDur=0;delete s.imgCrop;delete s.imgCrop2;CLIPF.forEach(f=>delete s[f])});scheduleSave();releaseMedia(old);renderStrip();renderEditor();renderMonitor(true)};
 $("f-imgrf").onclick=()=>openReframe(selSec(),"img");
+/* speed, where the clip starts, where the end frame comes in: typed numbers, clamped, one undo step each */
+let endAsk=null;
+const afterShotEdit=()=>{scheduleSave();renderStrip();renderEditor();renderTimeline();renderMonitor(true);if(side==="b"){renderBTakes();renderBList()}};
+function clipNum(s,f,raw){const v0=parseFloat(String(raw).replace(",","."));if(!s||!isFinite(v0))return false;
+  if(f==="speed"){const v=Math.round(Math.min(10,Math.max(.1,v0))*1e4)/1e4;hRec("speed of shot "+shotNo(s),()=>setClipField(s,"speed",v===1?undefined:v))}
+  else if(f==="clipOff"){const v=Math.round(Math.min(s.clipDur?Math.max(0,s.clipDur-.05):1e4,Math.max(0,v0))*100)/100;hRec("clip start of shot "+shotNo(s),()=>setClipField(s,"clipOff",v>0?v:undefined))}
+  else{const v=Math.round(Math.min(slotDur(s),Math.max(0,v0))*100)/100;hRec("end frame switch of shot "+shotNo(s),()=>{s.endAt=v})}
+  return true}
+const NUMV={speed:s=>+spdOf(s).toFixed(4),clipOff:s=>+offOf(s).toFixed(2),endAt:s=>+endAtOf(s).toFixed(2)};
+[["f-speed","speed"],["f-off","clipOff"],["f-endat","endAt"]].forEach(([id,f])=>$(id).addEventListener("change",e=>{const s=selSec();clipNum(s,f,e.target.value);afterShotEdit();if(s)e.target.value=String(NUMV[f](s))}));   /* the value it took (clamped), focus stays */
+$("f-endon").onchange=e=>{const s=selSec();if(!s)return;
+  if(e.target.checked){endAsk=null;if(!s.endKey)s.endOn=true}
+  else if(s.endKey)endAsk=s.id;   /* it is side B's end frame too: ask */
+  else delete s.endOn;
+  scheduleSave();renderEditor()};
+$("f-endkeep").onclick=()=>{endAsk=null;renderEditor()};
+$("f-endclr").onclick=()=>{const s=selSec();endAsk=null;if(!s||!s.endKey){renderEditor();return}const o=s.endKey;
+  hRec("clear end frame of shot "+shotNo(s),()=>{s.endKey="";delete s.endCrop;delete s.endOn;delete s.endAt});releaseMedia(o);afterShotEdit()};
+$("f-endimg").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)setFrame("endKey",f).then(()=>{lastKey="";afterShotEdit()})};
 document.addEventListener("dragover",e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes("Files"))e.preventDefault()});
 document.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(!f)return;e.preventDefault();
   if(side!=="a"){if(/\.json$/i.test(f.name))importFile(f);return}
@@ -2802,7 +2913,7 @@ function renderBHead(){
 }
 function renderBList(){
   $("bList").innerHTML=S().map((s,i)=>{const d=slotDur(s),st=startFrameId(s),tk=s.takes||[],busy=tk.some(isBusy),cut=s.img&&s.kind==="video";
-    const th=cut&&mediaURL(s.img)?clipHTML(mediaURL(s.img)+"#t=0.1",cropOf(s,"img"),'muted preload="metadata"'):st&&mediaURL(st)?`<img src="${frameURL(s,startSlot(s))}" alt="">`:"";
+    const th=cut&&mediaURL(s.img)?clipHTML(clipThumb(s),cropOf(s,"img"),'muted preload="metadata"'):st&&mediaURL(st)?`<img src="${frameURL(s,startSlot(s))}" alt="">`:"";
     /* what is left to do on the shot: which take is in the cut (or none), then a missing start frame and failed takes */
     const k=cut?tk.findIndex(t=>t.media===s.img):-1,bad=tk.filter(t=>/^(failed|cancelled|expired)$/.test(t.status)).length,todo=[st||cut?"":"no start frame",bad?`<span class="warn">${bad} failed</span>`:""].filter(Boolean).join(" · ");
     return `<button type="button" class="bitem${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><span class="bt">${th||`<span class="bph m-only">${s.title?esc(s.title):"Untitled"}</span>`}</span><span class="bi"><span class="tc">${pad(i+1)}<span class="bd"> · ${d.toFixed(1)} s</span></span><span class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</span><span class="cv">${tk.length?tk.length+(tk.length>1?" takes":" take"):"no takes"}${busy?" · rendering":""}${cut?` · <span class="bx">${k>=0?`take ${tk.length-k} `:""}</span>in cut`:tk.length?`<span class="bx"> · nothing in cut</span>`:""}</span>${todo?`<span class="cv bw">${todo}</span>`:""}</span></button>`}).join("");
@@ -2859,7 +2970,7 @@ function updateEst(){
   $("gGo").textContent=gen.count>1?`Generate ${gen.count} takes`:"Generate take";
 }
 const statusLabel=t=>({submitting:"Sending",pending:"Queued",in_progress:"Rendering",downloading:"Downloading",failed:"Failed",cancelled:"Cancelled",expired:"Expired"}[t.status]||t.status);
-function takeSig(s,t){return [phone(),t.status,t.media,!!mediaURL(t.media),t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1],cropOf(s,"t:"+t.id)].join("|")+(t.kind==="code"&&t.code?"|"+cgSig(s,t):"")}
+function takeSig(s,t){return [phone(),t.status,t.media,!!mediaURL(t.media),t.cost,t.error,t.note,s.img===t.media&&!!t.media,!!S()[S().indexOf(s)+1],cropOf(s,"t:"+t.id),spdOf(s),offOf(s),slotDur(s).toFixed(2)].join("|")+(t.kind==="code"&&t.code?"|"+cgSig(s,t):"")}
 function takeHTML(s,t,num){
   const incut=!!t.media&&s.img===t.media,busy=isBusy(t);
   if(t.kind==="code"&&t.code){const[v,b,n]=cgCard(s,t,s.takes||[]);return `<div class="tv">${v}<span class="badge">take ${n}</span>${incut?'<span class="incut-badge">in cut</span>':""}</div><div class="tbody">${b}</div>`}
@@ -2885,10 +2996,12 @@ function takeHTML(s,t,num){
   }else if(busy){btns+=`<button type="button" class="btn small ghost" data-act="del" title="Stops tracking this job here. ${t.prov==="fal"?"fal.ai":"OpenRouter"} may still finish and bill it.">Forget</button>`}
   else{btns+=`<button type="button" class="btn small" data-act="retry">Retry</button><button type="button" class="btn small ghost" data-act="del">Remove</button>`}
   const fit=t.clipDur?` · ${t.clipDur.toFixed(1)} s`:"";
-  return `<div class="tv">${vis}<span class="badge">take ${num}</span>${incut?'<span class="incut-badge">in cut</span>':""}</div>
+  /* the take in the cut plays as the shot's clip: its speed, where it starts, and where it runs out */
+  const spd=incut&&t.media&&mediaURL(t.media)?`<div class="tspd"><label class="fnum">Speed<input type="number" data-f="speed" min="0.1" max="10" step="0.05" inputmode="decimal" value="${+spdOf(s).toFixed(4)}">x</label><label class="fnum">Clip starts at<input type="number" data-f="clipOff" min="0" step="0.1" inputmode="decimal" value="${+offOf(s).toFixed(2)}">s</label></div>`:"";
+  return `<div class="tv">${vis}<span class="badge">take ${num}</span>${incut?'<span class="incut-badge">in cut</span>'+heldHTML(s,slotDur(s)):""}</div>
   <div class="tbody"><div class="tmeta"><span><b>${esc(t.modelName||t.model)}</b> · ${esc(t.res)} · ${t.dur} s${t.audio?" · audio":""}${t.start?" · start":""}${t.end?"+end":""}</span><span>${cost}</span></div>
   ${t.error?`<div class="cv warn" title="${esc(t.error)}">${esc(t.error)}</div>`:t.note?`<div class="cv">${esc(t.note)}</div>`:""}
-  <button type="button" class="tp" data-act="copy" title="Copy the prompt">${esc(t.prompt)}</button>${t.neg?`<button type="button" class="tp tneg" data-act="copy" data-neg="1" title="Copy the negative prompt">Avoid: ${esc(t.neg)}</button>`:""}<div class="row">${btns}</div></div>`;
+  <button type="button" class="tp" data-act="copy" title="Copy the prompt">${esc(t.prompt)}</button>${t.neg?`<button type="button" class="tp tneg" data-act="copy" data-neg="1" title="Copy the negative prompt">Avoid: ${esc(t.neg)}</button>`:""}${spd}<div class="row">${btns}</div></div>`;
 }
 function renderBTakes(){
   const s=selSec(),el=$("bTakes");if(!s){el.innerHTML="";return}
@@ -2912,7 +3025,8 @@ $("bList").addEventListener("click",e=>{const b=e.target.closest(".bitem");if(b)
 let bPlay=null;
 function bStop(){const p=bPlay;if(!p)return;bPlay=null;clearTimeout(p.tm);try{p.v.pause()}catch(e){}p.card.classList.remove("playing");if(hasAudio){playing=false;cancelAnimationFrame(raf);stop();seek(p.t0)}}
 function bPlayTake(v){const card=v.closest(".take"),same=bPlay&&bPlay.v===v;bStop();const s=selSec();if(same||!s||!card)return;const a=s.start,b=secEnd(S().indexOf(s));
-  bPlay={v,card,b,t0:now()};card.classList.add("playing");v.loop=false;v.currentTime=0;v.playbackRate=hasAudio?audio.playbackRate||1:1;v.play().catch(()=>{});
+  const ic=card.classList.contains("incut");   /* the take in the cut plays as the cut does: its start and speed */
+  bPlay={v,card,b,t0:now()};card.classList.add("playing");v.loop=false;v.currentTime=ic?srcTime(s,0).t:0;v.playbackRate=(hasAudio?audio.playbackRate||1:1)*(ic?spdOf(s):1);v.play().catch(()=>{});
   if(hasAudio){seek(a);audio.play().catch(()=>bStop())}else bPlay.tm=setTimeout(bStop,(b-a)*1000)}
 audio.addEventListener("pause",()=>bStop());
 /* the pointer across a take that isn't playing scrubs it */
@@ -2933,6 +3047,7 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="Enter"&&own&&tg===own){const u=own.querySelector('[data-act="use"]');if(!u)return;e.preventDefault();
     const id=own.dataset.id;u.click();const n=cs.length&&[...$("bTakes").querySelectorAll(".take")].find(c=>c.dataset.id===id);if(n)n.focus()}
 });
+$("bTakes").addEventListener("change",e=>{const f=e.target.dataset&&e.target.dataset.f,s=selSec();if(!f||!s)return;if(clipNum(s,f,e.target.value))afterShotEdit()});
 $("gNeg").addEventListener("input",e=>{const s=selSec();if(!s)return;s.negPrompt=e.target.value;scheduleSave(true)});
 $("bPrompt").addEventListener("input",e=>{const s=selSec();if(!s)return;hText(fieldLabel("vidPrompt",s),s,"vidPrompt",e.target.value);scheduleSave(true);updateEst()});
 $("bChips").addEventListener("click",e=>{const c=e.target.closest("[data-add]");if(!c)return;const ta=$("bPrompt"),add=c.dataset.add;
@@ -2976,8 +3091,15 @@ function cropSrc(s,slot){if(!s||!slot)return null;
   if(slot.startsWith("t:")){const t=(s.takes||[]).find(x=>"t:"+x.id===slot);return t?{o:t,id:t.media,f:"clipCrop",video:true}:null}
   const video=slot==="img"&&s.kind==="video";return{o:s,id:s[slot],f:video?"clipCrop":CROPF[slot],video}}
 const offRatio=(w,h)=>{const[a,b]=RATIOS[ratioOf(cur)];return Math.abs(w/h/(a/b)-1)>.034};
-function cropOf(s,slot){const r=cropSrc(s,slot),v=r&&r.o[r.f];if(typeof v!=="string")return null;const p=v.split(" "),n=p.slice(1).map(Number);
-  return p[0]===ratioOf(cur)&&n.length===4&&n.every(x=>x>=0&&x<=1)&&n[2]>0&&n[3]>0&&n[0]+n[2]<1.001&&n[1]+n[3]<1.001?n:null}
+const parseCrop=(v,end)=>{if(typeof v!=="string")return null;const p=v.split(" "),n=p.slice(1,5).map(Number);
+  return p[0]===ratioOf(cur)&&p.length===(end&&p[5]==="ease"?6:5)&&n.every(x=>x>=0&&x<=1)&&n[2]>0&&n[3]>0&&n[0]+n[2]<1.001&&n[1]+n[3]<1.001?n:null};
+function cropOf(s,slot){const r=cropSrc(s,slot);return r?parseCrop(r.o[r.f]):null}
+/* a framing move (Reframe's Move): the end framing next to the start one, "<field>2", " ease" at its end when eased */
+const cropEnd=(s,slot)=>{const r=cropSrc(s,slot),v=r&&r.o[r.f+"2"],c=parseCrop(v,true);return c?{c,ease:/ ease$/.test(v)}:null};
+const moves=(s,slot)=>!!(cropOf(s,slot)&&cropEnd(s,slot));
+/* the one crop function: a slot's framing at a time into the shot (d: the shot's length); without a move, its one framing */
+function cropAt(s,slot,tShot,d){const a=cropOf(s,slot),e=a&&cropEnd(s,slot);if(!e)return a;d=d??slotDur(s);
+  let u=d>0?Math.min(1,Math.max(0,tShot/d)):0;if(e.ease)u=u*u*(3-2*u);return a.map((v,i)=>v+(e.c[i]-v)*u)}
 const cropFor=(s,id)=>{const k=["key","img","endKey"].find(k=>id&&s[k]===id);return k?cropOf(s,k):null};
 async function cropBlob(id,c){const b=await mediaBlob(id);if(!b)throw new Error("frame image missing");const bm=await createImageBitmap(b),sw=c[2]*bm.width,sh=c[3]*bm.height,k=Math.min(1,1920/Math.max(sw,sh));
   const cv=document.createElement("canvas");cv.width=Math.max(1,Math.round(sw*k));cv.height=Math.max(1,Math.round(sh*k));cv.getContext("2d").drawImage(bm,c[0]*bm.width,c[1]*bm.height,sw,sh,0,0,cv.width,cv.height);bm.close();
@@ -2991,20 +3113,34 @@ function refreshFrames(){lastKey="";renderMonitor();renderStrip();if(side==="b")
 /* a clip with its crop: the video scaled so the crop fills a box in the project's ratio, the monitor's frame or a
    .vcrop box (CSS). Without a crop, the clip as before (cover) */
 const cropCSS=c=>{const p=v=>(100*v).toFixed(3)+"%";return `position:absolute;inset:auto;max-width:none;object-fit:fill;width:${p(1/c[2])};height:${p(1/c[3])};left:${p(-c[0]/c[2])};top:${p(-c[1]/c[3])}`};
+/* a moving framing, frame by frame: only the box changes (cropCSS set it up; the seek's visibility stays) */
+const setCrop=(el,c)=>{const p=v=>(100*v).toFixed(3)+"%";Object.assign(el.style,{width:p(1/c[2]),height:p(1/c[3]),left:p(-c[0]/c[2]),top:p(-c[1]/c[3])})};
 const clipHTML=(u,c,at)=>c?`<span class="vcrop"><video src="${u}" ${at} style="${cropCSS(c)}"></video></span>`:`<video src="${u}" ${at}></video>`;
 /* the dialog: a fixed box in the project's ratio; the image under it moves (drag, arrows) and zooms (wheel, pinch,
    slider) from "covers the box" up to 4×. State is the crop's centre and the zoom, so a resize keeps the framing */
 const rfDlg=$("dlgFrame"),rfSt=$("rfStage");let rf=null;
 /* a clip shows its first frame, paused; the scrubber under it moves through the clip to check the framing over time */
 function openReframe(s,slot){const r=cropSrc(s,slot),u=r&&mediaURL(r.id);if(!u||rfDlg.open)return;const c=cropOf(s,slot),vid=r.video,el=$(vid?"rfVid":"rfImg");
-  rf={s,slot,id:r.id,el,z:1,cx:.5,cy:.5,ptr:new Map()};$("rfTitle").textContent="Reframe for "+ratioOf(cur);
-  $("rfImg").hidden=vid;el.hidden=false;$("rfScrub").hidden=true;
-  const ready=(w,h)=>{if(!rf||rf.el!==el||!w||!h)return;rf.iw=w;rf.ih=h;if(c){rf.z=rfClamp(rfGeo().cw/c[2]);rf.cx=c[0]+c[2]/2;rf.cy=c[1]+c[3]/2}rfDraw()};
+  /* what plays in the cut (the shot's picture, a take) can move: a start and an end framing */
+  const canMove=slot==="img"||slot.startsWith("t:"),e=canMove&&c&&cropEnd(s,slot);
+  rf={s,slot,id:r.id,el,z:1,cx:.5,cy:.5,ptr:new Map(),f:[null,null],w:0,move:!!e};$("rfTitle").textContent="Reframe for "+ratioOf(cur);
+  $("rfImg").hidden=vid;el.hidden=false;$("rfScrub").hidden=true;$("rfMoveRow").hidden=!canMove;$("rfMove").checked=!!e;$("rfEase").checked=!!(e&&e.ease);rfWhichUI();
+  const ready=(w,h)=>{if(!rf||rf.el!==el||!w||!h)return;rf.iw=w;rf.ih=h;if(c)Object.assign(rf,rfFrom(c));if(e)rf.f[1]=rfFrom(e.c);rfDraw()};
   if(vid)el.onloadedmetadata=()=>{const d=el.duration,t=$("rfTime");if(isFinite(d)&&d>0){t.max=d;t.step=Math.min(.01,d/20);t.value=0;$("rfScrub").hidden=false}ready(el.videoWidth,el.videoHeight)};
   else el.onload=()=>ready(el.naturalWidth,el.naturalHeight);
   rfDlg.showModal();el.src=vid?u+"#t=0.001":u;rfSt.focus()}
 $("rfTime").oninput=e=>{if(rf&&rf.el.tagName==="VIDEO"&&rf.iw)rf.el.currentTime=+e.target.value};
 const rfClamp=z=>Math.min(4,Math.max(1,z));
+/* a framing as the dialog's state (zoom, centre), and back as the saved string */
+const rfFrom=c=>{const z=rf.z;rf.z=1;const cw=rfGeo().cw;rf.z=z;return{z:rfClamp(cw/c[2]),cx:c[0]+c[2]/2,cy:c[1]+c[3]/2}};
+const rfState=()=>({z:rf.z,cx:rf.cx,cy:rf.cy});
+function rfStr(st){const keep=rfState();Object.assign(rf,st);const g=rfDraw(),r4=v=>Math.round(v*1e4)/1e4,v=[ratioOf(cur),...[rf.cx-g.cw/2,rf.cy-g.ch/2,g.cw,g.ch].map(r4)].join(" ");Object.assign(rf,keep);rfDraw();return v}
+function rfWhichUI(){const on=!!rf&&rf.move;$("rfWhich").hidden=!on;$("rfEaseL").hidden=!on;$("rfWhich").querySelectorAll("[data-w]").forEach(b=>b.setAttribute("aria-pressed",String(!!rf&&+b.dataset.w===rf.w)))}
+/* Start / End: which framing the box sets; a clip shows where the shot starts or ends in it */
+function rfPick(w){if(!rf||!rf.iw)return;rf.f[rf.w]=rfState();rf.w=w;Object.assign(rf,rf.f[w]||rf.f[1-w]);rfDraw();rfWhichUI();
+  if(rf.el.tagName==="VIDEO"&&rf.slot==="img"){const v=rf.el,t=srcTime(rf.s,w?slotDur(rf.s):0).t;v.currentTime=Math.min(t,(v.duration||t)-.05);$("rfTime").value=v.currentTime}}
+$("rfWhich").onclick=e=>{const b=e.target.closest("[data-w]");if(b)rfPick(+b.dataset.w)};
+$("rfMove").onchange=e=>{if(!rf)return;rf.move=e.target.checked;if(rf.move){if(!rf.f[1])rf.f[1]=rfState()}else if(rf.w)rfPick(0);rfWhichUI()};
 function rfGeo(){const W=rfSt.clientWidth,H=rfSt.clientHeight,[a,b]=RATIOS[ratioOf(cur)],bw=Math.max(1,Math.min(W-32,(H-32)*a/b)),bh=bw*b/a,sc=Math.max(bw/rf.iw,bh/rf.ih)*rf.z;
   return{W,H,bw,bh,sc,cw:bw/(rf.iw*sc),ch:bh/(rf.ih*sc)}}
 function rfDraw(){if(!rf||!rf.iw)return null;const g=rfGeo(),cl=(v,h)=>Math.min(1-h,Math.max(h,v));rf.cx=cl(rf.cx,g.cw/2);rf.cy=cl(rf.cy,g.ch/2);
@@ -3021,12 +3157,15 @@ rfSt.addEventListener("keydown",e=>{const d={ArrowLeft:[-1,0],ArrowRight:[1,0],A
 $("rfZoom").oninput=e=>{if(rf){rf.z=rfClamp(+e.target.value);rfDraw()}};
 addEventListener("resize",()=>{if(rfDlg.open)rfDraw()});
 /* Use this framing saves the crop; Use as is keeps the whole image (and drops an earlier crop); Esc changes nothing */
-function rfSave(v){const{s,slot,id}=rf,r=cropSrc(s,slot);
+function rfSave(v,v2){const{s,slot,id}=rf,r=cropSrc(s,slot);
   /* nothing if the shot or its file changed meanwhile (a collaborator); a clip's crop goes to every holder of that file in the shot */
-  const hs=!cur||!S().includes(s)||!r||r.id!==id?[]:r.video?[...(s.kind==="video"&&s.img===id?[s]:[]),...(s.takes||[]).filter(t=>t.media===id)]:[r.o];
-  if(hs.some(o=>o[r.f]!==v)){hRec("framing of shot "+shotNo(s),()=>hs.forEach(o=>{if(v)o[r.f]=v;else delete o[r.f]}));scheduleSave();refreshFrames()}rfDlg.close()}
-$("rfForm").onsubmit=e=>{e.preventDefault();const g=rfDraw();if(!g)return;const r4=v=>Math.round(v*1e4)/1e4;rfSave([ratioOf(cur),...[rf.cx-g.cw/2,rf.cy-g.ch/2,g.cw,g.ch].map(r4)].join(" "))};
-$("rfAsIs").onclick=()=>{if(rf)rfSave(undefined)};
+  const hs=!cur||!S().includes(s)||!r||r.id!==id?[]:r.video?[...(s.kind==="video"&&s.img===id?[s]:[]),...(s.takes||[]).filter(t=>t.media===id)]:[r.o],f2=r?r.f+"2":"";
+  const put=(o,f,x)=>{if(x)o[f]=x;else delete o[f]};
+  if(hs.some(o=>o[r.f]!==v||o[f2]!==v2)){hRec("framing of shot "+shotNo(s),()=>hs.forEach(o=>{put(o,r.f,v);put(o,f2,v2)}));scheduleSave();refreshFrames();lastKey="";renderMonitor(true)}rfDlg.close()}
+/* Move on: the start framing and the end one (" ease" when eased); off: the one framing in the box */
+$("rfForm").onsubmit=e=>{e.preventDefault();if(!rfDraw())return;rf.f[rf.w]=rfState();
+  const v=rfStr(rf.f[rf.move?0:rf.w]||rfState()),v2=rf.move&&rf.f[1]?rfStr(rf.f[1])+($("rfEase").checked?" ease":""):undefined;rfSave(v,v2)};
+$("rfAsIs").onclick=()=>{if(rf)rfSave(undefined,undefined)};
 rfDlg.addEventListener("close",()=>{rf=null;const v=$("rfVid");$("rfImg").removeAttribute("src");if(v.getAttribute("src")){v.removeAttribute("src");v.load()}v.hidden=true});
 [["fStartRf",s=>startSlot(s)],["fEndRf",()=>"endKey"]].forEach(([b,slot])=>$(b).onclick=()=>{const s=selSec();if(s)openReframe(s,slot(s))});
 
@@ -3165,7 +3304,8 @@ function lastFrameBlob(id){return new Promise(res=>{const v=document.createEleme
   v.onseeked=()=>{try{const c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);c.toBlob(b=>fin(b),"image/jpeg",.92)}catch(e){fin(null)}};
   v.onerror=()=>fin(null);setTimeout(()=>fin(null),12000)})}
 function outOfCut(s){if(s.key&&!s.keyOff){s.img=s.key;if(s.keyCrop)s.imgCrop=s.keyCrop;else delete s.imgCrop}else{s.img="";delete s.imgCrop}
-  s.kind="";s.clipDur=0;delete s.clipCrop}
+  s.kind="";s.clipDur=0;delete s.imgCrop2;CLIPF.forEach(f=>delete s[f])}
+const CLIPF=["clipCrop","clipCrop2","speed","clipOff"];
 function playInCut(s){setSide("a");select(s.id,true);if(hasAudio)audio.play().catch(()=>{});else toast("Load the song on side A to play the cut")}
 $("bTakes").addEventListener("click",async e=>{
   const b=e.target.closest("[data-act]");if(!b)return;const card=b.closest(".take"),s=selSec();if(!s||!card)return;
@@ -3177,8 +3317,8 @@ $("bTakes").addEventListener("click",async e=>{
   else if(act==="rf")openReframe(s,"t:"+t.id);
   else if(act==="use"){
     const old=s.img;hRec("take in cut for shot "+shotNo(s),()=>{
-      if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff){s.key=s.img;if(s.imgCrop)s.keyCrop=s.imgCrop}delete s.imgCrop;   /* keep side A's keyframe as this shot's start frame */
-      s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0;if(t.clipCrop)s.clipCrop=t.clipCrop;else delete s.clipCrop});scheduleSave();releaseMedia(old);
+      if(s.img&&s.kind!=="video"&&!s.key&&!s.keyOff){s.key=s.img;if(s.imgCrop)s.keyCrop=s.imgCrop}delete s.imgCrop;delete s.imgCrop2;   /* keep side A's keyframe as this shot's start frame */
+      s.img=t.media;s.kind="video";s.clipDur=t.clipDur||0;for(const f of CLIPF)if(t[f]!==undefined)s[f]=t[f];else delete s[f]});   /* the take's framing, speed and start come with it */scheduleSave();releaseMedia(old);
     renderBTakes();renderBList();renderFrames();toast(`Take is now in the cut for shot ${pad(S().indexOf(s)+1)}`);
   }else if(act==="play"){playInCut(s)}
   else if(act==="out"){if(s.img!==t.media)return;hRec("take out of the cut for shot "+shotNo(s),()=>outOfCut(s));scheduleSave();
@@ -4528,27 +4668,31 @@ rnDlg.addEventListener("close",()=>{if(rjob)rjob.abort();rnRelease();if(rnFrom&&
    black, with one note naming the shot. Only the current shot's media is open. exact: seek the clip frame by frame
    (fast path); otherwise it plays along (real time) */
 function rnSource(job,o,g){const W=o.w,H=o.h;let cs=null;
-  const cover=sh=>{const c=sh.crop;if(c){g.drawImage(sh.el,c[0]*sh.w,c[1]*sh.h,c[2]*sh.w,c[3]*sh.h,0,0,W,H);return}const k=Math.max(W/sh.w,H/sh.h),dw=sh.w*k,dh=sh.h*k;g.drawImage(sh.el,(W-dw)/2,(H-dh)/2,dw,dh)};
+  const cover=(sh,c)=>{if(c){g.drawImage(sh.el,c[0]*sh.w,c[1]*sh.h,c[2]*sh.w,c[3]*sh.h,0,0,W,H);return}const k=Math.max(W/sh.w,H/sh.h),dw=sh.w*k,dh=sh.h*k;g.drawImage(sh.el,(W-dw)/2,(H-dh)/2,dw,dh)};
   const mark=()=>{if(!o.wm)return;const fs=Math.round(H*.03);g.save();g.globalAlpha=.55;g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=fs/3;
     g.font=`600 ${fs}px "Instrument Sans",system-ui,sans-serif`;g.textAlign="right";g.textBaseline="alphabetic";g.fillText("Cue Board",W-fs,H-fs);g.restore()};
   const black=()=>{g.fillStyle="#000";g.fillRect(0,0,W,H);mark()};
-  const free=sh=>{if(!sh||!sh.el)return;try{if(sh.video){sh.el.pause();sh.el.removeAttribute("src");sh.el.load();URL.revokeObjectURL(sh.url)}else sh.el.close()}catch(e){}sh.el=null};
+  const free=sh=>{if(!sh)return;if(sh.e2){try{sh.e2.el.close()}catch(e){}sh.e2=null}if(!sh.el)return;try{if(sh.video){sh.el.pause();sh.el.removeAttribute("src");sh.el.load();URL.revokeObjectURL(sh.url)}else sh.el.close()}catch(e){}sh.el=null};
   const bad=sh=>{free(sh);job.notes.push(`Shot ${pad(sh.n)}'s ${sh.video?(sh.take?"take":"clip"):"image"} could not be read; it rendered black`)};
   async function load(sh){if(!sh.id)return;
     try{const b=await mediaBlob(sh.id);if(!b)throw 0;
       if(sh.video){const v=sh.el=document.createElement("video");sh.url=URL.createObjectURL(b);v.muted=true;v.playsInline=true;v.preload="auto";v.src=sh.url;
         if(v.readyState<2)await rnWait(v,"loadeddata",10000);sh.w=v.videoWidth;sh.h=v.videoHeight;sh.at=-1}
       else{sh.el=await createImageBitmap(b);sh.w=sh.el.width;sh.h=sh.el.height}
-      if(!sh.w||!sh.h)throw 0}catch(e){bad(sh)}}
+      if(!sh.w||!sh.h)throw 0}catch(e){bad(sh);return}
+    /* the end frame (a still that switches to it); one that can't be read just doesn't come in */
+    if(sh.end)try{const el=await createImageBitmap(await mediaBlob(sh.end));sh.e2={el,w:el.width,h:el.height}}catch(e){}}
   job.clean.push(()=>free(cs));
   return async(t,exact)=>{let sh=o.shots[0];for(const x of o.shots)if(x.a<=t+1e-6)sh=x;
     const first=sh!==cs;if(first){free(cs);cs=sh;await load(sh);if(job.cancel)return}
     if(!sh.el){if(first||!exact)black();return}
-    if(!sh.video){if(first||!exact){cover(sh);mark()}return}
-    const v=sh.el,end=isFinite(v.duration)?Math.max(0,v.duration-.04):1e9,want=Math.max(0,Math.min(t-sh.a,end));
-    try{if(exact){if(want===sh.at)return;if(Math.abs(v.currentTime-want)>1e-4){v.currentTime=want;await rnWait(v,"seeked",5000)}sh.at=want}
-      else if(first){v.currentTime=want;if(want<end)v.play().catch(()=>{})}
-      if(job.cancel||!sh.el)return;cover(sh);mark()}catch(e){bad(sh);black()}}}
+    /* the same time map and crop as the monitor (srcTime, cropAt), with the shot as it was when the render started */
+    const ts=t-sh.a,crop=()=>cropAt(sh.s,"img",ts,sh.d);
+    if(!sh.video){if(first||!exact||sh.anim){cover(sh,crop());const k=sh.e2?endMix(sh.s,ts,sh.d):0;if(k>0){g.globalAlpha=k;cover(sh.e2,sh.ecrop);g.globalAlpha=1}mark()}return}
+    const v=sh.el,end=isFinite(v.duration)?Math.max(0,v.duration-.04):1e9,want=Math.max(0,Math.min(srcTime(sh.s,ts).t,end));
+    try{if(exact){if(want!==sh.at){if(Math.abs(v.currentTime-want)>1e-4){v.currentTime=want;await rnWait(v,"seeked",5000)}sh.at=want}else if(!sh.anim)return}
+      else if(first){v.playbackRate=spdOf(sh.s);v.currentTime=want;if(want<end)v.play().catch(()=>{})}
+      if(job.cancel||!sh.el)return;cover(sh,crop());mark()}catch(e){bad(sh);black()}}}
 
 /* faster than real time: every frame drawn, encoded and closed; the song's range encoded first, so the decoded song
    can go before the frames start (the muxer keeps the small encoded audio and interleaves it) */
@@ -4601,7 +4745,7 @@ async function rnRealTime(job,o){const c=document.createElement("canvas");c.widt
    collaborator deleting a take, a replaced song) can't change it halfway; a file that's gone by its turn is a note */
 async function rnStart(){const rg=rnRange();if(rjob||!cur||rnDlg.dataset.mode!=="idle"||!Array.isArray(rg))return;
   const F=$("rnForm").elements,sel=F.rnRange.value!=="all",[t0,t1]=rg,acct=!!account.get(),[w,h]=rnSize(acct&&F.rnRes.value==="1080"?1080:720),pid=cur.id;
-  const shots=S().map((x,i)=>({n:i+1,a:x.start,id:x.img,video:x.kind==="video",crop:cropOf(x,"img"),take:(x.takes||[]).some(t=>t.media&&t.media===x.img)}));
+  const shots=S().map((x,i)=>({n:i+1,a:x.start,d:secEnd(i)-x.start,s:clone(x),id:x.img,video:x.kind==="video",anim:moves(x,"img")||hasEnd(x),end:hasEnd(x)?x.endKey:"",ecrop:cropOf(x,"endKey"),take:(x.takes||[]).some(t=>t.media&&t.media===x.img)}));
   const name=`${rnName(cur.title)} - ${ratioOf(cur).replace(":","x")} - ${sel?t0.toFixed(1)+"s-"+t1.toFixed(1)+"s":"full"}`,named=!!(cur.song&&cur.song.name),stale=songStale;
   const job=rjob={cancel:false,notes:[],clean:[]},clean=()=>job.clean.splice(0).forEach(f=>{try{f()}catch(e){}});
   const gone=new Promise((_,no)=>{job.abort=()=>{job.cancel=true;clean();no(RN_CANCEL)}});

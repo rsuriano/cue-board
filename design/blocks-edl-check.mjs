@@ -238,7 +238,7 @@ try {
     const g = await ph.evaluate(() => { const chips = document.getElementById('mShotChips').getBoundingClientRect(), l = document.getElementById('f-block').closest('label'), r = l.getBoundingClientRect(), n = document.getElementById('f-notes').getBoundingClientRect(); return { open: document.body.classList.contains('m-ed'), chips: chips.bottom, top: r.top, h: Math.round(r.height), w: Math.round(r.width), right: r.right, notes: n.top, vw: innerWidth, ov: document.documentElement.scrollWidth - innerWidth }; });
     check(`[${tag}] the sheet has the Block toggle right under the shot type chips, a 44px row, no overflow`, g.open && g.top >= g.chips - 1 && g.top < g.notes && g.h >= 44 && g.right <= g.vw && g.ov <= 0, JSON.stringify(g));
     const sel = await ph.evaluate(() => __A().S().findIndex(s => s.id === document.querySelector('.card.sel, [aria-current]')?.dataset?.id));
-    await ph.locator('#editor .chk').scrollIntoViewIfNeeded(); await ph.tap('#editor .chk'); await sleep(300);
+    await ph.locator('#editor .chk:has(#f-block)').scrollIntoViewIfNeeded(); await ph.tap('#editor .chk:has(#f-block)'); await sleep(300);
     const pb = await ph.evaluate(() => { const s = __A().S().find(x => x.block === true); return { n: __A().S().filter(x => x.block === true).length, id: s && s.id, slate: document.getElementById('slate').textContent }; });
     check(`[${tag}] a tap on the row ticks it: one block, the slate says so`, pb.n === 1 && pb.slate.includes('Block · cut in your editor'), JSON.stringify({ pb, sel }));
     await ph.screenshot({ path: join(out, `${tag}-sheet-block.png`) });
