@@ -83,7 +83,7 @@ for (const size of SIZES) for (const [prof, mk] of Object.entries(PROFILES)) for
   const g = await page.evaluate(() => {
     const R = e => { if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, b: r.bottom, r: r.right }; };
     const union = l => { const rs = l.map(R).filter(Boolean); if (!rs.length) return null; const x = Math.min(...rs.map(r => r.x)), y = Math.min(...rs.map(r => r.y)), r = Math.max(...rs.map(r => r.r)), b = Math.max(...rs.map(r => r.b)); return { x, y, w: r - x, h: b - y, b, r }; };
-    return { strip: R(document.getElementById('bList')), title: R(document.querySelector('.bshot')), spend: union([...document.querySelectorAll('.bbar .statbox')]), notes: R(document.getElementById('bNotes')),
+    return { strip: R(document.getElementById('bList')), title: R(document.querySelector('.bshot')), spend: union([...document.querySelectorAll('#bAcct .statbox')]), notes: R(document.getElementById('bNotes')),
       frames: R(document.querySelector('.frames')), sel: R(document.querySelector('.bitem.sel .bt')),
       thumbs: [...document.querySelectorAll('.bitem .bt')].map(R).filter(r => r && r.r <= innerWidth && r.x >= 0) };
   });
