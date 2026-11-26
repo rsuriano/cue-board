@@ -651,6 +651,11 @@ dialog::backdrop{background:var(--backdrop)}
   .bgen .frame>.row::after{content:"";flex-basis:100%;order:1}
   .bgen .frame>.row>:is(.btn.ghost,.muted){order:2}
   .bgen .frame>.row .btn.ghost{padding-inline:var(--sp-1-5)}
+  /* Rami 26/11: the end frame's three actions on one line; tighter buttons, a slightly narrower picture */
+  .bgen .frame>.row .btn:not(.ghost){padding-inline:var(--sp-2)}
+  @media (max-width:1359px){.bgen .frame>.row .btn:not(.ghost){padding-inline:var(--sp-1-5)}}
+  .bgen #fEnd>.row>#fEndFrom{order:0;margin-left:0;padding-inline:var(--sp-1-5)}
+  .bgen .frame{grid-template-columns:minmax(76px,28%) minmax(0,1fr)}
   .bgen .frame>.row>:is(.btn:not(.ghost)+.btn.ghost:not([hidden]),.btn.ghost[hidden]+.btn.ghost){margin-left:calc(-1 * var(--sp-1-5))}
   .bgen .refs:has(>.linkbtn){display:block;min-height:0}
   .bgen .refs>.linkbtn{margin-right:var(--sp-2)}
