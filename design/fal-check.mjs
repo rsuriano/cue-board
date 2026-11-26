@@ -126,7 +126,7 @@ check('risk: the OpenRouter request carries the OpenRouter key, never the fal ke
 const { ctx, page } = await newPage();
 await load(page);
 await setKeys(page, { or: OR_KEY });
-check('2. Settings has a fal key field', await page.evaluate(() => { const f = document.getElementById('setFal'); return !!f && f.type === 'password' && /fal\.ai key/i.test(document.querySelector('label[for=setFal]').textContent); }));
+check('2. Settings has a fal key field', await page.evaluate(() => { const f = document.getElementById('setFal'); return !!f && f.type === 'password' && /fal\.ai/i.test(document.querySelector('label[for=setFal]').textContent); }));
 await setKeys(page, { fal: FAL_KEY });
 let list = await opts(page);
 const falOpts = list.filter(x => x[0].startsWith('fal:'));

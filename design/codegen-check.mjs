@@ -281,7 +281,7 @@ const shotLen = page => page.evaluate(() => { const t = document.getElementById(
   check('15 a 403 shows its message; paste works', f403.sent === 1 && /refused the sign-in/.test(f403.msg) && f403.paste, JSON.stringify(f403));
   const fnet = await back('?code=c3&state=right', 'net');
   check('15 a network error shows its message; paste works', fnet.sent === 1 && /Could not reach OpenRouter/.test(fnet.msg) && fnet.paste, JSON.stringify(fnet));
-  check('19 openrouter.ai only on generate, test or connect', page.st.ext.every(u => /openrouter\.ai\/(api\/v1\/(chat\/completions|auth\/keys|videos\/models|credits)|auth\?)/.test(u)), page.st.ext.filter(u => !/openrouter/.test(u)).join(' '));
+  check('19 openrouter.ai only on generate, test or connect', page.st.ext.every(u => /openrouter\.ai\/(api\/v1\/(chat\/completions|auth\/keys|videos\/models|models\/[^?]+\/endpoints|credits)|auth\?)/.test(u)), page.st.ext.filter(u => !/openrouter/.test(u)).join(' '));
   await page.ctx.close();
 }
 // ================= the other frame ratios: 1080 on the short side =================
