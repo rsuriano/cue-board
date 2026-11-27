@@ -57,6 +57,8 @@ const origin = `http://127.0.0.1:${port}`;
 // CUE_CHROMIUM overrides (design/run-local.mjs sets it to Playwright's headless shell, which plays and encodes H.264)
 const browser = await chromium.launch({ executablePath: process.env.CUE_CHROMIUM || '/snap/bin/chromium', headless: true, args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
 let fails = 0;
+// the clip/end-frame fields live in the shot settings popover: open it for the selected shot (idempotent)
+const pop = async () => { await page.evaluate(() => { const p = document.getElementById('shotPop'); if (p && !p.hidden) return; const g = document.querySelector('#strip .card.sel [data-set]'); if (g) g.click(); }); await new Promise(r => setTimeout(r, 150)); };
 const check = (name, ok, ev = '') => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ev ? ' · ' + ev : ''}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
@@ -133,6 +135,7 @@ check('Speed · monitor at 10 s (0.5x): clip time 5 s, source frame 120 ±1', ne
 check('Speed · monitor plays the clip at 0.5x the song', near(mA.rate, .5, 1e-6), String(mA.rate));
 await seekTo(11.9); const mA2 = await monitorFrame();
 check('Speed · at 11.9 s (5.95 s into a 6 s clip) still moving, frame 142-143', mA2.n >= 141 && mA2.n <= 143, JSON.stringify(mA2));
+await pop();
 const edSpeed = await page.evaluate(() => ({ v: document.getElementById('f-speed').value, vis: !!document.getElementById('f-speed').getClientRects().length }));
 check('Speed · side A editor shows the speed next to the clip', edSpeed.vis && Math.abs(+edSpeed.v - .5) < 1e-6, JSON.stringify(edSpeed));
 
@@ -141,6 +144,7 @@ await selectShot(R.B); await seekTo(12);
 const mB0 = await monitorFrame(); await seekTo(14.5); const mB1 = await monitorFrame();
 check('Slip · monitor at shot start shows the clip at 2 s (frame 48 ±1)', near(mB0.n, 48, 1), JSON.stringify(mB0));
 check('Slip · monitor 2.5 s into the shot shows the clip at 4.5 s (frame 108 ±1)', near(mB1.n, 108, 1), JSON.stringify(mB1));
+await pop();
 const offUI = await page.evaluate(() => document.getElementById('f-off').value);
 check('Slip · editor field "Clip starts at" shows 2', Math.abs(+offUI - 2) < 1e-6, offUI);
 
@@ -282,6 +286,7 @@ const c1 = await heldBox(cardSel);
 check('Short clip · strip card: hatched region from 3/5 to the end, with the tooltip', c1 && near(c1.l, .6, .02) && near(c1.r, 1, .01) && c1.title === 'Clip ends at 3.0 s: holds the last frame', JSON.stringify(c1));
 await page.screenshot({ path: join(out, 'speed-card-held.png'), clip: await page.locator(cardSel).boundingBox() });
 // 1.5x from the editor's field
+await pop();
 await page.fill('#f-speed', '1.5'); await page.press('#f-speed', 'Enter'); await sleep(300);
 check('Speed · after Enter the field keeps focus; Tab goes on to "Clip starts at"', await page.evaluate(() => document.activeElement.id) === 'f-speed' && (await page.keyboard.press('Tab'), await page.evaluate(() => document.activeElement.id)) === 'f-off');
 await blur();
@@ -312,9 +317,11 @@ await page.mouse.up(); await page.keyboard.up('Alt'); await sleep(300);
 const off1 = await field(E.L, 'clipOff'), st1 = await startOf(E.L), cutsSame = await page.evaluate(() => __t.S().map(s => s.start).join());
 check('Slip · Alt-drag 1.5 s left inside the shot: the clip starts 1.5 s later', near(+off1, 1.5, .03) && st1 === 19, JSON.stringify({ off1, st1 }));
 check('Slip · a readout shows "Clip starts at" while dragging', /Clip starts at 1\.[45]/.test(slipRead), slipRead);
+await pop();
 check('Slip · the editor field follows', near(+(await page.evaluate(() => document.getElementById('f-off').value)), 1.5, .03));
 await page.keyboard.press('Control+z'); await sleep(300);
 check('Slip · undo restores the offset', (await field(E.L, 'clipOff')) === undefined && (await page.evaluate(() => __t.S().map(s => s.start).join())) === cutsSame);
+await pop();
 await page.fill('#f-off', '9'); await page.press('#f-off', 'Enter'); await sleep(200);
 check('Slip · the field shows the clamped value it took', +(await page.inputValue('#f-off')) === 4.95, await page.inputValue('#f-off'));
 await blur();
@@ -335,6 +342,7 @@ check('Slip · a drag without Alt scrubs, offset untouched', (await field(E.L, '
 
 /* --- End frame on side A --- */
 await selectShot(E.K);
+await pop();
 check('End frame · the checkbox sits in the editor, off for a shot without one', await page.isVisible('#f-endon') && !(await page.isChecked('#f-endon')) && await page.isHidden('#f-endrow'));
 await page.check('#f-endon'); await sleep(200);
 check('End frame · on: a second image slot appears', await page.isVisible('#f-endrow'));
@@ -351,6 +359,7 @@ await page.setInputFiles('#fEndIn', { name: 'blue.png', mimeType: 'image/png', b
 await page.waitForFunction(() => __t.S().find(s => s.id === 'eo').endKey, null, { timeout: 10000 }); await sleep(300);
 await page.evaluate(() => { const d = document.getElementById('dlgFrame'); if (d.open) d.close(); });
 await selectShot(E.O);
+await pop();
 check('End frame · set on side B: side A shows the checkbox on and the slot', await page.isChecked('#f-endon') && await page.isVisible('#f-endrow') && await page.evaluate(() => !!document.querySelector('#f-endth img')));
 // the marker on the timeline: drag it from the middle (2 s) to 3 s
 await selectShot(E.K); T = await tl();
@@ -364,9 +373,11 @@ check('End frame · dragging the marker moves the switch to 3 s, the cuts stay',
 check('End frame · the editor number follows', near(+(await page.evaluate(() => document.getElementById('f-endat').value)), 3, .03));
 await page.keyboard.press('Control+z'); await sleep(300);
 check('End frame · undo puts the switch back', (await field(E.K, 'endAt')) === undefined);
+await pop();
 await page.fill('#f-endat', '0.8'); await page.press('#f-endat', 'Enter'); await sleep(200); await blur();
 check('End frame · "End frame from 0.8 s" typed in the editor', near(+(await field(E.K, 'endAt')), .8, 1e-6));
 // off asks before clearing
+await pop();
 await page.uncheck('#f-endon'); await sleep(200);
 check('End frame · off asks first; nothing cleared yet', await page.isVisible('#f-endask') && !!(await field(E.K, 'endKey')));
 await page.click('#f-endkeep'); await sleep(200);
@@ -400,6 +411,7 @@ check('Framing · undo brings the move back (both framings)', !!(await field(E.K
 for (const w of [1280, 1920]) {
   await page.setViewportSize({ width: w, height: 900 }); await sleep(250);
   for (const id of [E.L, E.K]) { await selectShot(id);
+    await pop();
     const rows = await page.evaluate(() => ['f-cliprow', 'f-endrow', 'f-imgrow'].map(r => { const el = document.getElementById(r); if (!el || !el.getClientRects().length) return null;
       const tops = new Set([...el.children].filter(c => c.getBoundingClientRect().width > 0).map(c => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
       return { r, tops: tops.size, over: el.scrollWidth > el.clientWidth + 1 }; }).filter(Boolean));
@@ -408,6 +420,7 @@ for (const w of [1280, 1920]) {
   const oneLine = sel => page.evaluate(sel => { const el = document.querySelector(sel); if (!el || !el.getClientRects().length) return null;
     const tops = new Set([...el.querySelectorAll(':scope > *, :scope > label > *')].filter(c => c.getBoundingClientRect().width > 0).map(c => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
     return { tops: tops.size, over: el.scrollWidth > el.clientWidth + 1 }; }, sel);
+  await pop();
   await page.uncheck('#f-endon'); await sleep(150); const ask = await oneLine('#f-endask'); await page.click('#f-endkeep'); await sleep(100);
   check(`one line · ${w}px: the ask (text, Clear, Keep)`, ask && ask.tops === 1 && !ask.over, JSON.stringify(ask));
   await page.evaluate(() => __t.setSide('b')); await sleep(200); await page.click(`#bList .bitem[data-id="${E.H}"]`); await sleep(400);
@@ -425,6 +438,7 @@ check('Old project · plays at 1x from the clip start, single framing stays put'
 await selectShot('o1'); await seekTo(1);
 const om = await monitorFrame();
 check('Old project · monitor: frame 24 at 1 s, rate 1', near(om.n, 24, 1) && om.rate === 1, JSON.stringify(om));
+await pop();
 check('Old project · editor speed shows 1, clip start 0', await page.evaluate(() => +document.getElementById('f-speed').value === 1 && +document.getElementById('f-off').value === 0));
 const oc = await heldBox('#strip .card[data-id="o1"]');
 check('Old project · a 3 s clip in a 5 s shot shows its held region (old projects get the new hint, nothing else)', oc && near(oc.l, .6, .02));
