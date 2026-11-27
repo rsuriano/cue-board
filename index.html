@@ -467,16 +467,16 @@ input[type="checkbox"]{width:var(--icon-lg);height:var(--icon-lg);margin:0;accen
 .mframe:has(.slate [data-mact]) .mplay{top:var(--sp-4);margin-top:0}
 
 /* inspector */
-.editor{display:grid;align-content:start;gap:var(--sp-3);min-width:0;min-height:0;overflow:auto;padding:var(--inset-panel);background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
+.editor{display:grid;align-content:start;gap:var(--sp-2);min-width:0;min-height:0;overflow:auto;padding:var(--inset-panel);background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md)}
 #ed-body{gap:var(--sp-3)}
-.ed-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);min-height:var(--h-sm);padding-bottom:var(--sp-3);margin-bottom:var(--sp-1);border-bottom:var(--hairline) solid var(--border-subtle)}
+.ed-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);min-height:var(--h-sm);padding-bottom:var(--sp-2);margin-bottom:0;border-bottom:var(--hairline) solid var(--border-subtle)}
 .ed-head #f-del{margin-right:calc(-1 * var(--sp-2))}
 .ed-n{display:inline-flex;align-items:center;height:var(--h-xs);padding:0 var(--sp-1-5);border-radius:var(--r-xs);background:var(--accent-subtle);color:var(--accent);font:var(--w-semibold) var(--text-sm)/var(--lh-control) var(--font-mono);font-variant-numeric:tabular-nums}
 .ed-head #ed-time{color:var(--ink-2)}
 /* fit hint under the shot's time: plain text, numbers stay tabular */
 .clip{flex-basis:100%;font:var(--w-regular) var(--text-sm)/var(--lh-sm) var(--font-ui);font-variant-numeric:tabular-nums;color:var(--ink-3)}
 .ed-empty{color:var(--ink-2);font-size:var(--text-md);line-height:var(--lh-md);max-width:var(--measure)}
-details.prompts{border-top:var(--hairline) solid var(--border-subtle);padding-top:var(--sp-3);margin-top:var(--sp-1)}
+details.prompts{border-top:var(--hairline) solid var(--border-subtle);padding-top:var(--sp-2);margin-top:0}
 details.prompts summary{list-style:none;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--h-sm);cursor:pointer;font-weight:var(--w-semibold);color:var(--ink);border-radius:var(--r-xs)}
 details.prompts summary::-webkit-details-marker{display:none}
 details.prompts summary::before{content:"";width:var(--sp-1-5);height:var(--sp-1-5);border-right:var(--stroke) solid var(--ink-2);border-bottom:var(--stroke) solid var(--ink-2);transform:rotate(-45deg);margin:0 var(--sp-0-5)}
@@ -541,6 +541,11 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 
 /* ---------- storyboard strip ---------- */
 .strip{display:flex;gap:var(--sp-2);overflow-x:auto;padding-bottom:var(--sp-2)}
+.shotpop{position:fixed;z-index:var(--z-menu);display:grid;gap:var(--sp-3);width:max-content;max-width:min(360px,calc(100vw - 16px));padding:var(--sp-3);background:var(--surface-2,var(--surface-1));border:var(--hairline) solid var(--border-strong,var(--border));border-radius:var(--r-md);box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.shotpop[hidden]{display:none}.shotpop .sp-head{display:flex;gap:var(--sp-2);align-items:baseline;min-width:0}.shotpop .sp-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.shotpop .edrow{flex-wrap:nowrap}
+.card .cset{position:absolute;top:var(--sp-1);right:var(--sp-1);z-index:2;display:grid;place-items:center;width:24px;height:24px;border-radius:var(--r-sm);background:rgba(0,0,0,.55);color:var(--ink);opacity:0;cursor:pointer}
+.card:hover .cset,.card:focus-visible .cset,.card .cset.on,.card .cset[aria-expanded="true"]{opacity:1}.card .cset.on{color:var(--accent)}.card .cset:hover{background:rgba(0,0,0,.75)}
 .card{position:relative;flex:0 0 var(--card-w);display:grid;align-content:start;padding:0;overflow:hidden;text-align:left;background:var(--surface-1);border:var(--hairline) solid var(--border);border-radius:var(--r-md);color:var(--ink);cursor:pointer;user-select:none;-webkit-user-select:none}
 .card:hover{border-color:var(--border-control)}
 .card.sel{border-color:var(--accent);box-shadow:inset 0 0 0 var(--hairline) var(--accent)}
@@ -556,7 +561,8 @@ details.prompts[open] summary::before{transform:rotate(45deg)}
 .thumb .endtn img{display:block}
 /* a number with its label on one line: speed, where the clip starts, where the end frame starts */
 .fnum{display:flex;align-items:center;gap:var(--sp-1-5);white-space:nowrap;font-size:var(--text-sm);color:var(--ink-2)}
-.fnum input{width:4.5em;height:var(--h-sm);padding:0 var(--sp-2);background:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:var(--text-sm);font-variant-numeric:tabular-nums}
+#gNeg{font-size:var(--text-input)}
+.fnum input{width:4.5em;height:var(--h-sm);padding:0 var(--sp-2);background:var(--inset);border:var(--hairline) solid var(--border-control);border-radius:var(--r-sm);color:var(--ink);font-size:max(var(--text-sm),var(--text-input,12px));font-variant-numeric:tabular-nums}
 .edrow{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:nowrap;min-width:0}
 .edrow .endth{flex:0 0 auto;width:48px;aspect-ratio:var(--fr,1.7778);overflow:hidden;border-radius:var(--r-xs);background:var(--screen);display:grid;place-items:center}
 .edrow .endth img{width:100%;height:100%;object-fit:cover}
@@ -1396,17 +1402,13 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
         <label class="field">Shot type<span class="combo"><input id="f-shot" placeholder="Wide shot, close-up…" autocomplete="off" role="combobox" aria-autocomplete="none" aria-expanded="false" aria-controls="shotMenu"><button type="button" class="combo-btn" id="shotBtn" tabindex="-1" aria-label="Show shot types"><svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button><div id="shotMenu" class="menu" role="listbox" aria-label="Shot types" hidden></div></span></label>
         <div class="chips m-only" id="mShotChips" role="group" aria-label="Shot type"></div>
         <label class="chk"><input type="checkbox" id="f-block"> Block: a stretch you'll cut in your editor from several clips</label>
-        <label class="field">Notes<textarea id="f-notes" rows="4" placeholder="What happens here, what the viewer should feel…"></textarea></label>
+        <label class="field">Notes<textarea id="f-notes" rows="3" placeholder="What happens here, what the viewer should feel…"></textarea></label>
         <div class="row" id="f-imgrow">
           <label class="btn small" for="f-img" id="f-imglbl">Upload image, GIF or clip</label>
           <input id="f-img" type="file" accept="image/*,video/mp4,video/webm" hidden>
           <button type="button" id="f-imgrf" class="btn ghost small" hidden>Reframe</button><button type="button" id="f-imgdel" class="btn ghost small" hidden>Remove</button>
           <span id="f-imgmsg" class="muted"></span>
         </div>
-        <div class="edrow" id="f-cliprow" hidden><label class="fnum">Speed<input id="f-speed" type="number" min="0.1" max="10" step="0.05" inputmode="decimal">x</label><label class="fnum">Clip starts at<input id="f-off" type="number" min="0" step="0.1" inputmode="decimal">s</label></div>
-        <label class="chk" id="f-endonl" hidden><input type="checkbox" id="f-endon"> End frame</label>
-        <div class="edrow" id="f-endrow" hidden><span class="endth" id="f-endth"></span><label class="btn small" for="f-endimg" id="f-endlbl">Upload image</label><input id="f-endimg" type="file" accept="image/*" hidden><label class="fnum" title="End frame from this many seconds into the shot">From<input id="f-endat" type="number" min="0" step="0.1" inputmode="decimal" aria-label="End frame from, seconds into the shot">s</label></div>
-        <div class="edrow" id="f-endask" hidden><span>Clears side B's end frame too</span><button type="button" id="f-endclr" class="btn small">Clear</button><button type="button" id="f-endkeep" class="btn ghost small">Keep</button></div>
         <details class="prompts" id="f-prompts">
           <summary>Prompts</summary>
           <div class="ph-head"><span>Keyframe (image)</span><button type="button" class="linkbtn" data-copy="f-imgp">Copy</button></div>
@@ -1625,6 +1627,14 @@ button.tp:hover{color:var(--ink);background:var(--bg-2,rgba(127,127,127,.08))}bu
   <p class="muted" id="szText"></p>
   <div class="row"><span class="grow"></span><button type="submit" value="" class="btn ghost">Cancel</button><button type="submit" value="ok" class="btn primary" id="szGo">Download</button></div>
 </form></dialog>
+<div class="shotpop" id="shotPop" role="dialog" aria-label="Shot settings" hidden>
+  <div class="sp-head"><span class="tc" id="shotPopNo"></span><span class="sp-t" id="shotPopT"></span></div>
+  <div class="edrow" id="f-cliprow" hidden><label class="fnum">Speed<input id="f-speed" type="number" min="0.1" max="10" step="0.05" inputmode="decimal">x</label><label class="fnum">Clip starts at<input id="f-off" type="number" min="0" step="0.1" inputmode="decimal">s</label></div>
+  <label class="chk" id="f-endonl" hidden><input type="checkbox" id="f-endon"> End frame</label>
+  <div class="edrow" id="f-endrow" hidden><span class="endth" id="f-endth"></span><label class="btn small" for="f-endimg" id="f-endlbl">Upload image</label><input id="f-endimg" type="file" accept="image/*" hidden><label class="fnum" title="End frame from this many seconds into the shot">From<input id="f-endat" type="number" min="0" step="0.1" inputmode="decimal" aria-label="End frame from, seconds into the shot">s</label></div>
+  <div class="edrow" id="f-endask" hidden><span>Clears side B's end frame too</span><button type="button" id="f-endclr" class="btn small">Clear</button><button type="button" id="f-endkeep" class="btn ghost small">Keep</button></div>
+  <p class="muted" id="shotPopNone" hidden>Add an image or a clip to this shot first.</p>
+</div>
 <dialog id="dlgSettings"><form class="dlg" id="setForm">
   <h3>Settings</h3>
   <nav class="setTabs" role="tablist" aria-label="Settings"><button type="button" class="setTab" role="tab" id="setTabModel" aria-controls="setPaneModel" aria-selected="true">Model</button><button type="button" class="setTab" role="tab" id="setTabAcct" aria-controls="setPaneAcct" aria-selected="false" hidden>Account</button></nav>
@@ -2195,12 +2205,28 @@ function tlLabel(g,num,title,room){
 }
 function placePlayhead(){if(phone()){$("tc").textContent=fmt(now());mTimeTxt();mSync();mDraw();return}ph.style.transform=`translateX(${now()*P}px)`;$("tc").textContent=fmt(now())}
 /* cards are patched in place when the order is unchanged, so a collaborator's keystroke doesn't reload every thumbnail */
+/* Shot settings popover (Rami 26/11: speed, clip start and end frame live by the shot, not in the editor).
+   It edits the selected shot with the editor's own handlers (same ids); opening selects that shot first. */
+const shotTweaked=s=>!!s&&(spdOf(s)!==1||offOf(s)>0||hasEnd(s));
+let popFor=null;
+function closeShotPop(){const p=$("shotPop");if(p.hidden)return;p.hidden=true;popFor=null;document.querySelectorAll('.cset[aria-expanded="true"]').forEach(b=>b.setAttribute("aria-expanded","false"))}
+function openShotPop(id,x,y,btn,kb){if(!cur)return;const s=S().find(q=>q.id===id);if(!s)return;if(selId!==id)select(id,false);
+  popFor=id;const p=$("shotPop"),i=S().indexOf(s);$("shotPopNo").textContent=pad(i+1);$("shotPopT").textContent=s.title||"Untitled";
+  renderEditor();$("shotPopNone").hidden=!!s.img;p.hidden=false;
+  const r=p.getBoundingClientRect(),W=innerWidth,H=innerHeight,g=btn&&btn.getBoundingClientRect();if(g&&g.width){x=g.right-r.width;y=g.top}   /* from the gear: the popover's right edge lines up with it, above the card */
+  let L=Math.min(Math.max(8,x),W-r.width-8),T=y-r.height-8;if(T<8)T=Math.min(y+8,H-r.height-8);
+  p.style.left=L+"px";p.style.top=T+"px";if(btn)btn.setAttribute("aria-expanded","true");
+  /* focus moves in only when opened from the keyboard: a mouse open keeps the app's shortcuts (undo, space) working */
+  if(kb){const f=[...p.querySelectorAll("input:not([type=file]),button")].find(e=>!e.closest("[hidden]"));if(f)f.focus({preventScroll:true})}}
+document.addEventListener("pointerdown",e=>{if(!$("shotPop").hidden&&!e.target.closest("#shotPop,[data-set]"))closeShotPop()},true);
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("shotPop").hidden){e.stopPropagation();const id=popFor;closeShotPop();const c=document.querySelector(`#strip .card[data-id="${CSS.escape(id||"")}"]`);if(c)c.focus()}},true);
+addEventListener("resize",closeShotPop);
 function renderStrip(){
   const el=$("strip");if(!cur){el.innerHTML="";return}
   const ae=document.activeElement,fid=ae&&ae.classList&&ae.classList.contains("card")&&el.contains(ae)?ae.dataset.id:null;
   const html=S().map((s,i)=>{const d=secEnd(i)-s.start,vid=s.img&&s.kind==="video";
     const media=!mediaURL(s.img)?(isMissing(s.img)?missHTML("span","tn miss",s.img,"Not on this device yet",false):`<span class="tn"></span>`):vid?clipHTML(clipThumb(s),cropOf(s,"img"),'muted playsinline preload="metadata"')+`<span class="badge">clip</span>`+heldHTML(s,d):`<img src="${frameURL(s,"img")}" alt="">`+(hasEnd(s)&&mediaURL(s.endKey)?`<span class="endtn"><img src="${frameURL(s,"endKey")}" alt=""></span>`:"");
-    return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${csHTML(s,d)}</div>${clipLine(s,d)}</div></button>`});
+    return `<button type="button" class="card${s.id===selId?" sel":""}" data-id="${esc(s.id)}"><div class="thumb">${media}</div><span class="cset${shotTweaked(s)?" on":""}" role="button" tabindex="-1" data-set aria-label="Shot settings" title="Shot settings: speed, clip start, end frame"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg></span><div class="cbody"><div class="cmeta"><span class="tc">${pad(i+1)} · ${fmt(s.start)}</span><span class="cd">${d.toFixed(1)}s</span></div><div class="ct">${s.title?esc(s.title):"<em>Untitled</em>"}</div><div class="cs">${csHTML(s,d)}</div>${clipLine(s,d)}</div></button>`});
   const cards=[...el.children],fresh=[];
   if(cards.length===html.length&&cards.every((c,i)=>c.dataset.id===S()[i].id))cards.forEach((c,i)=>{if(c._h===html[i])return;const t=document.createElement("template");t.innerHTML=html[i];const n=t.content.firstElementChild;n._h=html[i];c.replaceWith(n);fresh.push(n)});
   else{el.innerHTML=html.join("");[...el.children].forEach((c,i)=>{c._h=html[i];fresh.push(c)})}
@@ -2535,7 +2561,7 @@ function dropZone(e){
   let best=null,bd=1e9;strip.querySelectorAll(".card").forEach(k=>{if(k===sd.card)return;const r=k.getBoundingClientRect();const d=e.clientX<r.left?r.left-e.clientX:e.clientX>r.right?e.clientX-r.right:0;if(d<bd){bd=d;best=k}});
   if(!best)return null;const r=best.getBoundingClientRect();return{kind:"insert",card:best,side:e.clientX<r.left+r.width/2?"before":"after"};
 }
-strip.addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.button>0||!cur)return;sd={id:c.dataset.id,x:e.clientX,y:e.clientY,on:false,pid:e.pointerId,card:c,zone:null,plan:null}});
+strip.addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.button>0||!cur||e.target.closest("[data-set]"))return;sd={id:c.dataset.id,x:e.clientX,y:e.clientY,on:false,pid:e.pointerId,card:c,zone:null,plan:null}});
 strip.addEventListener("pointermove",e=>{
   if(!sd||e.pointerId!==sd.pid)return;
   if(!sd.on){if(Math.hypot(e.clientX-sd.x,e.clientY-sd.y)<7)return;
@@ -2599,7 +2625,12 @@ strip.addEventListener("wheel",e=>{
   const glide=(e.deltaMode!==0||Math.abs(d)>=50)&&!matchMedia("(prefers-reduced-motion:reduce)").matches;
   strip.scrollTo({left:to,behavior:glide?"smooth":"instant"});
 },{passive:false});
-strip.addEventListener("click",e=>{if(suppressClick){suppressClick=false;return}const c=e.target.closest(".card");if(c)select(c.dataset.id,true)});
+strip.addEventListener("click",e=>{if(suppressClick){suppressClick=false;return}const c=e.target.closest(".card");if(!c)return;
+  const g=e.target.closest("[data-set]");if(g){e.preventDefault();if(popFor===c.dataset.id){closeShotPop();return}const r=g.getBoundingClientRect();openShotPop(c.dataset.id,r.left,r.top,g);return}
+  select(c.dataset.id,true)});
+strip.addEventListener("keydown",e=>{const c=e.target.closest(".card");if(!c)return;if(e.key==="ContextMenu"||(e.shiftKey&&e.key==="F10")){e.preventDefault();const r=c.getBoundingClientRect();openShotPop(c.dataset.id,r.left,r.top,c.querySelector("[data-set]"),true)}});
+strip.addEventListener("contextmenu",e=>{const c=e.target.closest(".card");if(!c)return;e.preventDefault();openShotPop(c.dataset.id,e.clientX,e.clientY,c.querySelector("[data-set]"))});
+cv.addEventListener("contextmenu",e=>{if(!cur||phone())return;e.preventDefault();const s=S()[secAt(cx(e)/P)];if(s)openShotPop(s.id,e.clientX,e.clientY,null)});
 document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText($(b.dataset.copy).value,"Prompt copied"));
 $("copylist").onclick=()=>{if(!cur)return;const txt=(cur.title||"Project")+(cur.song&&cur.song.name?" · "+cur.song.name:"")+"\n"+S().map((s,i)=>{const d=secEnd(i)-s.start;
   return `${pad(i+1)}. ${fmt(s.start)}–${fmt(secEnd(i))} (${d.toFixed(1)}s)${s.shot?" · "+s.shot:""} — ${s.title||"Untitled"}${s.notes?"\n    "+s.notes.replace(/\s*\n\s*/g," "):""}`}).join("\n");copyText(txt,"Shot list copied")};
